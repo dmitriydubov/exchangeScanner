@@ -5,10 +5,11 @@ spring:
   application:
     name: scanner
   datasource:
-    username: admin
-    password: admin
-    url: jdbc:postgresql://localhost:5432/
+    username: postgres
+    password: postgres
+    url: jdbc:postgresql://localhost:5432/scannerdb
   jpa:
     hibernate:
       ddl-auto: update
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
     show-sql: true
