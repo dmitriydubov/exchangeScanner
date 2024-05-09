@@ -1,3 +1,5 @@
 package com.exchange.scanner.dto;
 
-public record Response(boolean result, String message) {}
+import java.util.List;
+
+public record Response(boolean result, String message, List<CoinData> coins) {}

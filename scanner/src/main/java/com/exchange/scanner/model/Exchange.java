@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
+
 @Entity
 @Getter
 @Setter
@@ -24,5 +26,5 @@ public class Exchange {
     private String description;
 
     @Column(nullable = false)
-    private Double commission;
+    private BigDecimal commission;
 }
