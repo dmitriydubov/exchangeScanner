@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Main Page</title>
+    <link rel="stylesheet" type="text/css" href="/css/styles.css">
+    <script defer src="/js/scrypt.js"></script>
+    <script defer src="/js/jquery.js"></script>
+</head>
+<body>
+    <header class="header">
+        <div class="header__wrapper">
+            <div class="container header__content">
+                <a class="header__logo ui-text-colour-w" href="/">Здесь логотип</a>
+                <nav class="header__nav">
+                    <ul class="header__list">
+                        <li class="header__item">
+                            <div class="header-item">
+                                <a class="header__link ui-item-middle ui-text-colour-w">Ссылка 1</a>
+                            </div>
+                        </li>
+                        <li class="header__item">
+                        <div class="header-item">
+                            <a class="header__link ui-item-middle ui-text-colour-w" href="/dashboard">Сканер</a>
+                        </div>
+                    </li>
+                        <li class="header__item">
+                            <div class="header-item">
+                                <a class="header__link ui-item-middle ui-text-colour-w" href="/subscribe">Подписка</a>
+                            </div>
+                        </li>
+                        <li class="header__item">
+                            <div class="header-item">
+                                <a class="header__link ui-item-middle ui-text-colour-w">Ссылка 4</a>
+                            </div>
+                        </li>
+                        <li class="header__item">
+                            <div class="header-item">
+                                <a class="header__link ui-item-middle ui-text-colour-w">Ссылка 5</a>
+                            </div>
+                        </li>
+                        <li class="header__item">
+                            <div class="header-item">
+                                <button class="header__link link-auth ui-item-middle ui-text-colour-w" id="login">
+                                    <span class="header-item__text">Войти</span>
+                                </button>
+                            </div>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </header>
+    <main class="main">
+        <div class="main__wrapper">
+            <div class="container main__content">
+            
+            </div>
+        </div>
+    </main>
+    <footer class="footer">
+        <div class="footer__wrapper">
+            <div class="container footer__content">
+                <nav class="footer__nav">
+                    <ul class="footer__list">
+                        <li class="footer__item">
+                            <div class="footer-item">
+                                <a class="footer__link ui-item-middle ui-text-colour-w">Ссылка 1</a>
+                            </div>
+                        </li>
+                        <li class="footer__item">
+                            <div class="footer-item">
+                                <a class="footer__link ui-item-middle ui-text-colour-w" href="/dashboard">Dashboard</a>
+                            </div>
+                        </li>
+                        <li class="footer__item">
+                            <div class="footer-item">
+                                <a class="footer__link ui-item-middle ui-text-colour-w" href="/subscribe">Подписка</a>
+                            </div>
+                        </li>
+                        <li class="footer__item">
+                            <div class="footer-item">
+                                <a class="footer__link ui-item-middle ui-text-colour-w">Ссылка 4</a>
+                            </div>
+                        </li>
+                        <li class="footer__item">
+                            <div class="footer-item">
+                                <a class="footer__link ui-item-middle ui-text-colour-w">Ссылка 5</a>
+                            </div>
+                        </li>
+                    </ul>
+                </nav>
+                <a class="ui-text-colour-w" href="">Ссылка на Telegram</a>
+                <div class="info">
+                    <span class="info__text ui-text-colour-w">© Project, 2024</span>
+                </div>
+            </div>
+        </div>
+    </footer>
+    <div class="wrapper-popup" id="auth-popup">
+        <div class="popup popup-info">
+            <h3 class="popup-info__header ui-item-xl">Регистрация</h3>
+            <div class="popup__logo">Логотип</div>
+        </div>
+        <div class="popup">
+            <div class="btn-close">
+                <div class="cl-btn-3" id="auth-popup-close">
+                    <span class="top"></span>
+                    <span class="bot"></span>
+                </div>
+            </div>
+            <form class="authentication-form element-active" id="sign-up-form" data-visible="true">
+                <div class="authentication-form__item">
+                    <label class="authentication-form__label" for="username">Введите e-mail:</label>
+                    <input name="username-reg" class="authentication-form__input" id="username" type="email">
+                </div>
+                <div class="authentication-form__item">
+                    <label class="authentication-form__label" for="password">Введите пароль:</label>
+                    <input name="password-reg" class="authentication-form__input" id="password" type="password">
+                </div>
+                <div class="authentication-form__item">
+                    <label class="authentication-form__label" for="password-repeat">Повторите пароль:</label>
+                    <input name="confirm-password" class="authentication-form__input" id="password-repeat" type="password">
+                </div>
+                <div class="authentication-form__item">
+                    <div class="authentication-form__block">
+                        <button class="authentication-form__btn ui-item-middle ui-text-colour-w">
+                            <span class="authentication-form__btn-text">Зарегистрироваться</span>
+                        </button>
+                        <span class="notification">Lorem Ipsum</span>
+                    </div>
+                </div>
+            </form>
+            <form class="authentication-form" id="sign-in-form" data-visible="false">
+                <div class="authentication-form__item">
+                    <label class="authentication-form__label" for="form-login-auth">Введите логин:</label>
+                    <input name="username-auth" class="authentication-form__input" id="form-login-auth" type="email">
+                </div>
+                <div class="authentication-form__item">
+                    <label class="authentication-form__label" for="form-password-auth">Введите пароль:</label>
+                    <input name="password-auth" class="authentication-form__input" id="form-password-auth" type="password">
+                </div>
+                <div class="authentication-form__item">
+                    <div class="authentication-form__block">
+                        <button class="authentication-form__btn ui-item-middle ui-text-colour-w">
+                            <span class="authentication-form__btn-text">Авторизоваться</span>
+                        </button>
+                        <span class="notification" id="notification" data-visible="false">Lorem Ipsum</span>
+                    </div>
+                </div>
+            </form>
+            <div class="authentication-block">
+                <span class="authentication-block__text">Уже есть аккаунт?</span>
+            </div>
+            <div class="authentication-block">
+                <button class="authentication-block__login-btn" id="auth-form-login-btn">
+                    <span class="authentication-block__login-btn-text ui-item-middle">Авторизоваться</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

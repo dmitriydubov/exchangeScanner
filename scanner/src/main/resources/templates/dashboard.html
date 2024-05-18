@@ -6,12 +6,13 @@
     <title>Dashboard</title>
     <link rel="stylesheet" type="text/css" href="/css/styles.css">
     <script defer src="/js/scrypt.js"></script>
+    <script defer src="/js/jquery.js"></script>
 </head>
 <body>
     <header class="header">
         <div class="header__wrapper">
             <div class="container header__content">
-                <a class="header__logo ui-text-colour-w">Здесь логотип</a>
+                <a class="header__logo ui-text-colour-w" href="/">Здесь логотип</a>
                 <nav class="header__nav">
                     <ul class="header__list">
                         <li class="header__item">
@@ -21,12 +22,12 @@
                         </li>
                         <li class="header__item">
                             <div class="header-item">
-                                <a class="header__link ui-item-middle ui-text-colour-w">Dashboard</a>
+                                <a class="header__link ui-item-middle ui-text-colour-w" href="/dashboard">Сканер</a>
                             </div>
                         </li>
                         <li class="header__item">
                             <div class="header-item">
-                                <a class="header__link ui-item-middle ui-text-colour-w">Ссылка 3</a>
+                                <a class="header__link ui-item-middle ui-text-colour-w" href="/subscribe">Подписка</a>
                             </div>
                         </li>
                         <li class="header__item">
@@ -41,9 +42,9 @@
                         </li>
                         <li class="header__item">
                             <div class="header-item">
-                                <a class="header__link link-auth ui-item-middle ui-text-colour-w">
-                                    <span class="header-item__text">Войти</span>
-                                </a>
+                                <button class="logout-btn" id="logout">
+                                    <img class="logout-btn__icon" src="./img/logout.svg">
+                                </button>
                             </div>
                         </li>
                     </ul>
@@ -70,12 +71,12 @@
                         </li>
                         <li class="footer__item">
                             <div class="footer-item">
-                                <a class="footer__link ui-item-middle ui-text-colour-w">Dashboard</a>
+                                <a class="footer__link ui-item-middle ui-text-colour-w" href="/dashboard">Сканер</a>
                             </div>
                         </li>
                         <li class="footer__item">
                             <div class="footer-item">
-                                <a class="footer__link ui-item-middle ui-text-colour-w">Ссылка 3</a>
+                                <a class="footer__link ui-item-middle ui-text-colour-w" href="/subscribe">Подписка</a>
                             </div>
                         </li>
                         <li class="footer__item">
