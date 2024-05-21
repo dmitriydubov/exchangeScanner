@@ -6,7 +6,7 @@ import com.exchange.scanner.security.dto.request.SignInRequest;
 import com.exchange.scanner.security.dto.request.SignUpRequest;
 import com.exchange.scanner.security.dto.response.LoginResponse;
 import com.exchange.scanner.security.dto.response.RefreshTokenResponse;
-import com.exchange.scanner.security.dto.response.SimpleResponse;
+import com.exchange.scanner.dto.SimpleResponse;
 import com.exchange.scanner.security.repository.UserRepository;
 import com.exchange.scanner.security.service.SecurityService;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +31,8 @@ public class SecurityController {
 
     @PostMapping("/sign-up")
     public ResponseEntity<SimpleResponse> signUp(@RequestBody SignUpRequest signUpRequest) {
+        System.out.println(signUpRequest.username());
+        signUpRequest.roles().forEach(r -> System.out.println(r.name()));
         if (userRepository.existsByUsername(signUpRequest.username())) {
             throw new UserAlreadyExistException("Пользователь с данным e-mail уже зарегистрирован");
         }
