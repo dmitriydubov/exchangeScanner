@@ -23,6 +23,10 @@ public class JwtUtils {
         return generateTokenFromUsername(userDetails.getUsername());
     }
 
+    public String generateToken(String username) {
+        return generateTokenFromUsername(username);
+    }
+
     public String generateTokenFromUsername(String username) {
         return Jwts.builder()
                 .setSubject(username)

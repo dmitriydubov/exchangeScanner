@@ -1,5 +1,6 @@
 package com.exchange.scanner.security.service.impl;
 
+import com.exchange.scanner.security.dto.response.RegisterResponse;
 import com.exchange.scanner.security.error.RefreshTokenException;
 import com.exchange.scanner.security.dto.request.RequestTokenRefresh;
 import com.exchange.scanner.security.dto.request.SignInRequest;
@@ -55,14 +56,16 @@ public class SecurityServiceImpl implements SecurityService {
                 .roles(roles).build();
     }
 
-    public void register(SignUpRequest signUpRequest) {
+    public RegisterResponse register(SignUpRequest signUpRequest) {
         var user = User.builder()
                 .username(signUpRequest.username())
                 .password(passwordEncoder.encode(signUpRequest.password()))
                 .regTime(new Date())
                 .roles(signUpRequest.roles())
                 .build();
-        userRepository.save(user);
+        User registeredUser = userRepository.save(user);
+
+        return new RegisterResponse(registeredUser.getId(), registeredUser.getUsername(), jwtUtils.generateToken(registeredUser.getUsername()));
     }
 
     public RefreshTokenResponse refreshToken(RequestTokenRefresh request) {

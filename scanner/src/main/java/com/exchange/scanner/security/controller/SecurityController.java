@@ -1,5 +1,6 @@
 package com.exchange.scanner.security.controller;
 
+import com.exchange.scanner.security.dto.response.RegisterResponse;
 import com.exchange.scanner.security.error.UserAlreadyExistException;
 import com.exchange.scanner.security.dto.request.RequestTokenRefresh;
 import com.exchange.scanner.security.dto.request.SignInRequest;
@@ -14,6 +15,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+
+import java.net.URI;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -30,14 +33,14 @@ public class SecurityController {
     }
 
     @PostMapping("/sign-up")
-    public ResponseEntity<SimpleResponse> signUp(@RequestBody SignUpRequest signUpRequest) {
+    public ResponseEntity<RegisterResponse> signUp(@RequestBody SignUpRequest signUpRequest) {
         System.out.println(signUpRequest.username());
         signUpRequest.roles().forEach(r -> System.out.println(r.name()));
         if (userRepository.existsByUsername(signUpRequest.username())) {
             throw new UserAlreadyExistException("Пользователь с данным e-mail уже зарегистрирован");
         }
-        securityService.register(signUpRequest);
-        return ResponseEntity.ok(new SimpleResponse("Успешная регистрация"));
+        RegisterResponse response = securityService.register(signUpRequest);
+        return ResponseEntity.created(URI.create("/users/" + response.userId())).body(response);
     }
 
     @PostMapping("/refresh-token")
