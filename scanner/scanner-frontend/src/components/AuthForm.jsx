@@ -34,14 +34,10 @@ const AuthForm = ({ onClose }) => {
     }
 
     if (isLoginForm) {
-      response = fetch('/api/v1/auth/sign-in', {
+      response = fetch('http://localhost:8080/api/v1/auth/sign-in', {
         method: 'POST',
         headers: {
-          'Accept': 'application/json',
           'Content-Type': 'application/json',
-          'Host': 'localhost:8080',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'Connection': 'keep-alive',
         },
         body: JSON.stringify({
           username: formData.email,
@@ -49,14 +45,10 @@ const AuthForm = ({ onClose }) => {
         }),
       });
     } else {
-      response = fetch('/api/v1/auth/sign-up', {
+      response = fetch('http://localhost:8080/api/v1/auth/sign-up', {
         method: 'POST',
         headers: {
-          'Accept': 'application/json',
           'Content-Type': 'application/json',
-          'Host': 'localhost:8080',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'Connection': 'keep-alive',
         },
         body: JSON.stringify({
           username: formData.email,
