@@ -1,3 +1,3 @@
-package com.exchange.scanner.dto;
+package com.exchange.scanner.dto.response;
 
 public record SimpleResponse(String message) {}

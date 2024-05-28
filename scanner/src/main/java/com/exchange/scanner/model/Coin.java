@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.Objects;
+
 @Entity
 @Getter
 @Setter
@@ -14,10 +16,10 @@ public class Coin {
     @Column(nullable = false)
     private Integer id;
 
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true)
     private String name;
 
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true)
     private String symbol;
 
     @Column(columnDefinition = "TEXT")
@@ -25,4 +27,19 @@ public class Coin {
 
     @Column(name = "is_block_by_superuser")
     private Boolean isBlockBySuperuser = false;
+
+    @Override
+    @Transient
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Coin coin = (Coin) o;
+        return Objects.equals(symbol, coin.symbol);
+    }
+
+    @Override
+    @Transient
+    public int hashCode() {
+        return Objects.hashCode(symbol);
+    }
 }

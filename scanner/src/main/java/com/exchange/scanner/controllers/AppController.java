@@ -1,10 +1,15 @@
 package com.exchange.scanner.controllers;
 
+import com.exchange.scanner.dto.response.SimpleResponse;
+import com.exchange.scanner.dto.response.exchangedata.ExchangeDataResponse;
 import com.exchange.scanner.model.Exchange;
 import com.exchange.scanner.services.AppService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import java.util.Set;
@@ -19,5 +24,15 @@ public class AppController {
     @GetMapping("/exchanges")
     public ResponseEntity<Set<Exchange>> exchanges() {
         return ResponseEntity.ok(appService.getExchanges());
+    }
+
+    @PostMapping("/refresh-coins")
+    public ResponseEntity<SimpleResponse> refreshCoins() {
+        return ResponseEntity.ok(appService.refreshCoins());
+    }
+
+    @GetMapping("/refresh-data")
+    public ResponseEntity<ExchangeDataResponse> refreshData(@AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(appService.getExchangeData(userDetails));
     }
 }

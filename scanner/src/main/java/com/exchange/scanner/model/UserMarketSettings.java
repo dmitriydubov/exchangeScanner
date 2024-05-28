@@ -1,0 +1,50 @@
+package com.exchange.scanner.model;
+
+import com.exchange.scanner.security.model.User;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.persistence.*;
+import lombok.*;
+
+import java.util.List;
+
+@Entity
+@Getter
+@Setter
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+@Table(name = "user_market_settings")
+public class UserMarketSettings {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(nullable = false)
+    private Long id;
+
+    @OneToOne(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @JoinColumn(name = "user_id", referencedColumnName = "id")
+    private User userId;
+
+    @ElementCollection
+    private List<String> coins;
+
+    @ElementCollection
+    @CollectionTable(name = "markets_buy")
+    private List<String> marketsBuy;
+
+    @ElementCollection
+    @CollectionTable(name = "markets_sell")
+    private List<String> marketsSell;
+
+    @Column(name = "min_volume", nullable = false)
+    private Double minVolume;
+
+    @Column(name = "max_volume", nullable = false)
+    private Double maxVolume;
+
+    @Column(name = "profit_spread", nullable = false)
+    private Double profitSpread;
+
+    @Column(name = "percent_spread", nullable = false)
+    private Double percentSpread;
+}
