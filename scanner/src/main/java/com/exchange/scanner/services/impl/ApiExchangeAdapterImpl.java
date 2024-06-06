@@ -1,13 +1,14 @@
 package com.exchange.scanner.services.impl;
 
+import com.exchange.scanner.dto.response.exchangedata.coinsdata.CoinDataTicker;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
 import com.exchange.scanner.services.ApiExchangeAdapter;
 import com.exchange.scanner.services.impl.api.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import java.util.HashSet;
-import java.util.Set;
+
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -55,5 +56,32 @@ public class ApiExchangeAdapterImpl implements ApiExchangeAdapter {
         }
 
         return coins;
+    }
+
+    @Override
+    public Map<String, List<CoinDataTicker>> getCoinPrice(String exchangeName, Set<Coin> coins) {
+
+        Map<String, List<CoinDataTicker>> coinPriceMap = new HashMap<>();
+
+        switch (exchangeName) {
+            case "Binance" -> coinPriceMap.putAll(apiBinance.getCoinDataTicker(coins)); // Нет api по комиссиям
+            case "Gate.io" -> coinPriceMap.putAll(apiGateIO.getCoinDataTicker(coins));
+            case "MEXC" -> coinPriceMap.putAll(apiMEXC.getCoinDataTicker(coins));
+            case "Bybit" -> coinPriceMap.putAll(apiBybit.getCoinDataTicker(coins)); // Нет api по комиссиям
+            case "Kucoin" ->  coinPriceMap.putAll(apiKucoin.getCoinDataTicker(coins)); // Есть api по всем комиссиям
+            case "Bitget" -> coinPriceMap.putAll(apiBitget.getCoinDataTicker(coins));
+            case "Huobi" -> coinPriceMap.putAll(apiHuobi.getCoinDataTicker(coins));
+            case "Poloniex" -> coinPriceMap.putAll(apiPoloniex.getCoinDataTicker(coins));
+            case "OKX" -> coinPriceMap.putAll(apiOKX.getCoinDataTicker(coins));
+            case "Bitmart" -> coinPriceMap.putAll(apiBitmart.getCoinDataTicker(coins));
+            case "LBank" -> coinPriceMap.putAll(apiLBank.getCoinDataTicker(coins));
+            case "CoinEx" -> coinPriceMap.putAll(apiCoinEx.getCoinDataTicker(coins));
+            case "CoinW" -> coinPriceMap.putAll(apiCoinW.getCoinDataTicker(coins));
+            case "XT" -> coinPriceMap.putAll(apiXT.getCoinDataTicker(coins));
+            case "Probit" -> coinPriceMap.putAll(apiProbit.getCoinDataTicker(coins));
+            case "BingX" -> coinPriceMap.putAll(apiBingX.getCoinDataTicker(coins)); // Нет api по комиссиям
+        }
+
+        return coinPriceMap;
     }
 }

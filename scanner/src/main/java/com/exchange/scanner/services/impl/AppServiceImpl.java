@@ -2,6 +2,8 @@ package com.exchange.scanner.services.impl;
 
 import com.exchange.scanner.dto.response.SimpleResponse;
 import com.exchange.scanner.dto.response.exchangedata.ExchangeDataResponse;
+import com.exchange.scanner.dto.response.exchangedata.coinsdata.CoinDataTicker;
+import com.exchange.scanner.error.NoExchangesException;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
 import com.exchange.scanner.model.UserMarketSettings;
@@ -13,13 +15,16 @@ import com.exchange.scanner.security.repository.UserRepository;
 import com.exchange.scanner.services.ApiExchangeAdapter;
 import com.exchange.scanner.services.AppService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -68,9 +73,9 @@ public class AppServiceImpl implements AppService {
     public SimpleResponse refreshCoins() {
         long start = System.currentTimeMillis();
 
-        Set<Coin> updatedCoins = getCoinsAsync();
+        Map<String, Set<Coin>> updatedCoinsMap = getCoinsAsync();
 
-        saveCoins(updatedCoins);
+        updateCoins(updatedCoinsMap);
 
         long end = System.currentTimeMillis() - start;
         System.out.println("время выполнения обновления валют: " + (end / 1000) + "s");
@@ -78,16 +83,17 @@ public class AppServiceImpl implements AppService {
         return new SimpleResponse("Обновление списка валют успешно завершено");
     }
 
-    private Set<Coin> getCoinsAsync() {
+    private Map<String, Set<Coin>> getCoinsAsync() {
         List<Exchange> exchanges = exchangeRepository.findAll();
-        Set<Coin> updatedCoins = Collections.synchronizedSet(new HashSet<>());
+        if (exchanges.isEmpty()) throw new NoExchangesException("Отсутствует список бирж для обновления монет");
+        Map<String, Set<Coin>> exchangeMap = new ConcurrentHashMap<>();
         ExecutorService executorService = Executors.newFixedThreadPool(exchanges.size());
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         exchanges.forEach(exchange -> {
             CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                 Set<Coin> coins = apiExchangeAdapter.refreshExchangeCoins(exchange);
-                synchronized (updatedCoins) {
-                    updatedCoins.addAll(coins);
+                synchronized (exchangeMap) {
+                    exchangeMap.put(exchange.getName(), coins);
                 }
             }, executorService);
             futures.add(future);
@@ -95,18 +101,76 @@ public class AppServiceImpl implements AppService {
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
         executorService.shutdown();
-        return updatedCoins;
+        return exchangeMap;
+    }
+
+    private void updateCoins(Map<String, Set<Coin>> coinsMap) {
+        Set<Exchange> exchangesToUpdate = new HashSet<>();
+        coinsMap.forEach((exchangeName, coins) -> {
+            Exchange exchange = exchangeRepository.findByName(exchangeName);
+            exchange.getCoins().clear();
+            exchange.setCoins(coins);
+            exchangesToUpdate.add(exchange);
+        });
+
+        saveExchangesAndCoins(exchangesToUpdate);
     }
 
     @Transactional
-    private void saveCoins(Set<Coin> coins) {
-        Set<Coin> dataCoins = new HashSet<>(coinRepository.findAll());
-        Set<Coin> newCoins = new HashSet<>(coins);
-        newCoins.removeAll(dataCoins);
-        coinRepository.saveAll(newCoins);
+    private void saveExchangesAndCoins(Set<Exchange> exchangesToUpdate) {
+        long start = System.currentTimeMillis();
+        coinRepository.deleteAllInBatch();
+        exchangeRepository.saveAll(exchangesToUpdate);
+        long end = System.currentTimeMillis() - start;
+        System.out.println("Время выполнения метода saveExchangesAndCoins равно: " + end / 1000 + "s");
+    }
 
-        Set<Coin> coinsToDelete = new HashSet<>(dataCoins);
-        coinsToDelete.removeAll(coins);
-        coinRepository.deleteAll(coinsToDelete);
+    @Override
+    @Scheduled(fixedRate = 10000)
+    public void checkArbitrageOpportunities() {
+
+        List<Exchange> exchanges = exchangeRepository.findAll();
+        Map<String, List<CoinDataTicker>> coinsMap = getCoinsPricesAsync(exchanges);
+
+        coinsMap.forEach((exchangeForBuy, coinsForBuy) ->
+            coinsMap.forEach((exchangeForSell, coinsForSell) -> {
+                if (!exchangeForBuy.equals(exchangeForSell)) {
+                    coinsForBuy.parallelStream().forEach(coinBuy ->
+                        coinsForSell.parallelStream()
+                            .filter(coinSell -> coinSell.getSymbol().equals(coinBuy.getSymbol()))
+                            .forEach(coinSell -> {
+                                BigDecimal buyPrice = new BigDecimal(coinBuy.getBid());
+                                BigDecimal sellPrice = new BigDecimal(coinSell.getAsk());
+                                BigDecimal spread = sellPrice.subtract(buyPrice);
+                                if (spread.compareTo(BigDecimal.ZERO) > 0) {
+                                    System.out.println("spread");
+                                }
+                            })
+                    );
+                }
+            })
+        );
+    }
+
+    private Map<String, List<CoinDataTicker>> getCoinsPricesAsync(List<Exchange> exchanges) {
+        Map<String, List<CoinDataTicker>> coinsMap = new ConcurrentHashMap<>();
+        ExecutorService executorService = Executors.newFixedThreadPool(exchanges.size());
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+
+        exchanges.forEach(buyExchange -> {
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                Set<Coin> coins = buyExchange.getCoins();
+                Map<String, List<CoinDataTicker>> coinPriceMap = apiExchangeAdapter
+                        .getCoinPrice(buyExchange.getName(), coins);
+                synchronized (coinsMap) {
+                    coinsMap.putAll(coinPriceMap);
+                }
+            }, executorService);
+            futures.add(future);
+        });
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        return coinsMap;
     }
 }

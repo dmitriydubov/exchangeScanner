@@ -14,4 +14,6 @@ public interface AppService {
     ExchangeDataResponse getExchangeData(UserDetails userDetails);
 
     SimpleResponse refreshCoins();
+
+    void checkArbitrageOpportunities();
 }

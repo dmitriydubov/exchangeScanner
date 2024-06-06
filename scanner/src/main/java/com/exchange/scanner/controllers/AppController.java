@@ -21,7 +21,7 @@ public class AppController {
 
     private final AppService appService;
 
-    @GetMapping("/exchanges")
+    @GetMapping("/get-exchanges")
     public ResponseEntity<Set<Exchange>> exchanges() {
         return ResponseEntity.ok(appService.getExchanges());
     }

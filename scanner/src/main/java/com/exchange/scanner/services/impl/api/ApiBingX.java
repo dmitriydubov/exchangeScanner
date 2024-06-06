@@ -1,8 +1,12 @@
 package com.exchange.scanner.services.impl.api;
 
-import com.exchange.scanner.dto.response.exchangedata.bingx.BingXSymbolData;
+import com.exchange.scanner.dto.response.exchangedata.bingx.ticker.BingXTicker;
+import com.exchange.scanner.dto.response.exchangedata.bingx.ticker.BingXTickerData;
+import com.exchange.scanner.dto.response.exchangedata.coinsdata.CoinDataTicker;
+import com.exchange.scanner.dto.response.exchangedata.bingx.exchangeinfo.BingXSymbolData;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.services.impl.api.utils.CoinFactory;
+import com.exchange.scanner.services.impl.api.utils.WebClientBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,9 +16,12 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 
 import java.io.IOException;
-import java.util.Set;
+import java.sql.Timestamp;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -25,9 +32,20 @@ public class ApiBingX implements ApiExchange {
     @Autowired
     private RestTemplate restTemplate;
 
-    private final ObjectMapper objectMapper;
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    private static final String NAME = "BingX";
 
     public final static String BASE_ENDPOINT = "https://open-api.bingx.com";
+
+    private static final int TIMEOUT = 10000;
+
+    private final WebClient webClient;
+
+    public ApiBingX() {
+        this.webClient = WebClientBuilder.buildWebClient(BASE_ENDPOINT, TIMEOUT);
+    }
 
     @Override
     public Set<Coin> getAllCoins() {
@@ -55,5 +73,60 @@ public class ApiBingX implements ApiExchange {
             log.error("Ошибка десериализации ответа от BingX", ex);
             throw new RuntimeException("Ошибка десериализации ответа от BingX", ex);
         }
+    }
+
+    @Override
+    public Map<String, List<CoinDataTicker>> getCoinDataTicker(Set<Coin> coins) {
+        Flux<BingXTickerData> response = getCoinTicker(new ArrayList<>(coins))
+                .flatMapIterable(result -> result);
+
+        List<CoinDataTicker> coinDataTickers = response
+                .map(ApiBingX::getCoinDataTickerDTO)
+                .collectList()
+                .block();
+
+        return Collections.singletonMap(NAME, coinDataTickers);
+    }
+
+    private Flux<List<BingXTickerData>> getCoinTicker(List<Coin> coins) {
+        List<String> coinsSymbols = coins.stream()
+                .map(coin -> coin.getSymbol() + "-USDT")
+                .toList();
+
+        return webClient
+                .get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/openApi/spot/v1/ticker/24hr")
+                        .queryParam("timestamp", new Timestamp(System.currentTimeMillis()).getTime())
+                        .build()
+                )
+                .retrieve()
+                .bodyToFlux(BingXTicker.class)
+                .onErrorMap(throwable -> {
+                    log.error("Ошибка получения информации от " + NAME, throwable);
+                    return new RuntimeException("Ошибка получения информации от " + NAME, throwable);
+                })
+                .flatMapIterable(BingXTicker::getData)
+                .filter(ticker -> coinsSymbols.contains(ticker.getSymbol()) && isNotEmptyValues(ticker))
+                .collectList()
+                .flux();
+    }
+
+    private static CoinDataTicker getCoinDataTickerDTO(BingXTickerData ticker) {
+        return new CoinDataTicker(
+                ticker.getSymbol().replaceAll("-", ""),
+                ticker.getVolume(),
+                ticker.getBidPrice(),
+                ticker.getAskPrice()
+        );
+    }
+
+    private static boolean isNotEmptyValues(BingXTickerData ticker) {
+        return ticker.getBidPrice() != null &&
+                ticker.getAskPrice() != null &&
+                ticker.getVolume() != null &&
+                !ticker.getBidPrice().isEmpty() &&
+                !ticker.getAskPrice().isEmpty() &&
+                !ticker.getVolume().isEmpty();
     }
 }
