@@ -1,7 +1,6 @@
 package com.exchange.scanner.model;
 
 import com.exchange.scanner.security.model.User;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -21,20 +20,9 @@ public class UserMarketSettings {
     @Column(nullable = false)
     private Long id;
 
-    @OneToOne(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @OneToOne(cascade = CascadeType.REMOVE, fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", referencedColumnName = "id")
-    private User userId;
-
-    @ElementCollection
-    private List<String> coins;
-
-    @ElementCollection
-    @CollectionTable(name = "markets_buy")
-    private List<String> marketsBuy;
-
-    @ElementCollection
-    @CollectionTable(name = "markets_sell")
-    private List<String> marketsSell;
+    private User user;
 
     @Column(name = "min_volume", nullable = false)
     private Double minVolume;
@@ -47,4 +35,15 @@ public class UserMarketSettings {
 
     @Column(name = "percent_spread", nullable = false)
     private Double percentSpread;
+
+    @ElementCollection(fetch = FetchType.LAZY)
+    private List<String> coins;
+
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "markets_buy")
+    private List<String> marketsBuy;
+
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "markets_sell")
+    private List<String> marketsSell;
 }

@@ -1,7 +1,7 @@
 package com.exchange.scanner.controllers;
 
 import com.exchange.scanner.dto.response.SimpleResponse;
-import com.exchange.scanner.dto.response.exchangedata.ExchangeDataResponse;
+import com.exchange.scanner.dto.response.event.ArbitrageEvent;
 import com.exchange.scanner.model.Exchange;
 import com.exchange.scanner.services.AppService;
 import lombok.RequiredArgsConstructor;
@@ -31,8 +31,8 @@ public class AppController {
         return ResponseEntity.ok(appService.refreshCoins());
     }
 
-    @GetMapping("/refresh-data")
-    public ResponseEntity<ExchangeDataResponse> refreshData(@AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(appService.getExchangeData(userDetails));
+    @PostMapping("/refresh-data")
+    public ResponseEntity<ArbitrageEvent> refreshData(@AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(appService.getArbitrageOpportunities(userDetails));
     }
 }

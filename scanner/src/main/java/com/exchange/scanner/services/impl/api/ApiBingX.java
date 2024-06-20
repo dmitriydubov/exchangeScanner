@@ -1,12 +1,16 @@
 package com.exchange.scanner.services.impl.api;
 
+import com.exchange.scanner.dto.response.exchangedata.bingx.depth.BingXCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.bingx.ticker.BingXTicker;
 import com.exchange.scanner.dto.response.exchangedata.bingx.ticker.BingXTickerData;
-import com.exchange.scanner.dto.response.exchangedata.coinsdata.CoinDataTicker;
+import com.exchange.scanner.dto.response.exchangedata.responsedata.CoinDataTicker;
 import com.exchange.scanner.dto.response.exchangedata.bingx.exchangeinfo.BingXSymbolData;
+import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.impl.api.utils.CoinFactory;
-import com.exchange.scanner.services.impl.api.utils.WebClientBuilder;
+import com.exchange.scanner.services.utils.ApiExchangeUtils;
+import com.exchange.scanner.services.utils.CoinFactory;
+import com.exchange.scanner.services.utils.WebClientBuilder;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +25,7 @@ import reactor.core.publisher.Flux;
 
 import java.io.IOException;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -40,6 +45,12 @@ public class ApiBingX implements ApiExchange {
     public final static String BASE_ENDPOINT = "https://open-api.bingx.com";
 
     private static final int TIMEOUT = 10000;
+
+    private static final int REQUEST_DELAY_DURATION = 200;
+
+    private static final int DEPTH_REQUEST_LIMIT = 20;
+
+    private static final String TYPE_REQUEST = "step0";
 
     private final WebClient webClient;
 
@@ -86,6 +97,48 @@ public class ApiBingX implements ApiExchange {
                 .block();
 
         return Collections.singletonMap(NAME, coinDataTickers);
+    }
+
+    @Override
+    public Set<CoinDepth> getOrderBook(Set<String> coins) {
+        Flux<CoinDepth> response = getCoinDepth(coins);
+
+        return new HashSet<>(Objects.requireNonNull(response
+                .collectList()
+                .block()));
+    }
+
+
+    private Flux<CoinDepth> getCoinDepth(Set<String> coins) {
+        List<String> coinSymbols = coins.stream().map(coin -> coin + "_USDT").toList();
+
+        return Flux.fromIterable(coinSymbols)
+                .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
+                .flatMap(coin -> webClient
+                        .get()
+                        .uri(uriBuilder -> uriBuilder.path("/openApi/spot/v2/market/depth")
+                                .queryParam("symbol", coin)
+                                .queryParam("depth", DEPTH_REQUEST_LIMIT)
+                                .queryParam("type", TYPE_REQUEST)
+                                .build()
+                        )
+                        .retrieve()
+                        .bodyToFlux(String.class)
+                        .onErrorMap(throwable -> {
+                            log.error("Ошибка получения информации от " + NAME, throwable);
+                            return new RuntimeException("Ошибка получения информации от " + NAME, throwable);
+                        })
+                        .map(response -> {
+                            try {
+                                BingXCoinDepth bingXCoinDepth = objectMapper.readValue(response, BingXCoinDepth.class);
+                                bingXCoinDepth.setCoinName(coin.replaceAll("_USDT", ""));
+
+                                return ApiExchangeUtils.getBingXCoinDepth(bingXCoinDepth);
+                            } catch (JsonProcessingException e) {
+                                throw new RuntimeException(e);
+                            }
+                        })
+                );
     }
 
     private Flux<List<BingXTickerData>> getCoinTicker(List<Coin> coins) {

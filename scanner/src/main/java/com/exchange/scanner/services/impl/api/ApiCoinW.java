@@ -1,12 +1,17 @@
 package com.exchange.scanner.services.impl.api;
 
-import com.exchange.scanner.dto.response.exchangedata.coinsdata.CoinDataTicker;
+import com.exchange.scanner.dto.response.exchangedata.coinw.depth.CoinWCoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.coinw.symbol.CoinWSymbol;
+import com.exchange.scanner.dto.response.exchangedata.responsedata.CoinDataTicker;
 import com.exchange.scanner.dto.response.exchangedata.coinw.exchangeinfo.CoinWSymbolData;
 import com.exchange.scanner.dto.response.exchangedata.coinw.ticker.CoinWTicker;
 import com.exchange.scanner.dto.response.exchangedata.coinw.ticker.CoinWTickerData;
+import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.impl.api.utils.CoinFactory;
-import com.exchange.scanner.services.impl.api.utils.WebClientBuilder;
+import com.exchange.scanner.services.utils.ApiExchangeUtils;
+import com.exchange.scanner.services.utils.CoinFactory;
+import com.exchange.scanner.services.utils.WebClientBuilder;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -17,6 +22,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -27,11 +33,16 @@ public class ApiCoinW implements ApiExchange {
     @Autowired
     private RestTemplate restTemplate;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
     private static final String NAME = "CoinW";
 
     public final static String BASE_ENDPOINT = "https://www.coinw.com";
 
     private static final int TIMEOUT = 10000;
+
+    private static final int REQUEST_DELAY_DURATION = 100;
 
     private final WebClient webClient;
 
@@ -69,6 +80,65 @@ public class ApiCoinW implements ApiExchange {
                 .block();
 
         return Collections.singletonMap(NAME, coinDataTickers);
+    }
+
+    @Override
+    public Set<CoinDepth> getOrderBook(Set<String> coins) {
+        Map<String, String> coinsNumbers = getCoinNumber(coins);
+        Flux<CoinDepth> response = getCoinDepth(coinsNumbers);
+
+        return new HashSet<>(Objects.requireNonNull(response.collectList().block()));
+    }
+
+    private Map<String, String> getCoinNumber(Set<String> coins) {
+        List<String> coinSymbols = coins.stream().map(coin -> coin + "/USDT").toList();
+        Flux<Map<String, String>> coinNumbers = Flux.fromIterable(coinSymbols)
+            .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
+            .flatMap(coin -> webClient
+                .get()
+                .uri(uriBuilder -> uriBuilder.path("/appApi.html")
+                        .queryParam("action", "getSymbol")
+                        .queryParam("symbol", coin)
+                        .build()
+                )
+                .retrieve()
+                .bodyToFlux(CoinWSymbol.class)
+                .onErrorMap(throwable -> {
+                    log.error("Ошибка получения информации от " + NAME, throwable);
+                    return new RuntimeException("Ошибка получения номеров символов от " + NAME, throwable);
+                })
+                .map(response -> Collections.singletonMap(
+                        coin, ApiExchangeUtils.getCoinWSymbolNumber(response.getData().getSymbol(), coin))
+                )
+            );
+
+        return coinNumbers.blockFirst();
+    }
+
+
+    private Flux<CoinDepth> getCoinDepth(Map<String, String> coinNumbers) {
+        Map.Entry<String, String> entry = coinNumbers.entrySet().iterator().next();
+        String coin = entry.getKey();
+        String coinNumber = entry.getValue();
+
+        return webClient
+                .get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/appApi.html")
+                        .queryParam("action", "depth")
+                        .queryParam("symbol", coinNumber)
+                        .build()
+                )
+                .retrieve()
+                .bodyToFlux(CoinWCoinDepth.class)
+                .onErrorMap(throwable -> {
+                    log.error("Ошибка получения информации от " + NAME, throwable);
+                    return new RuntimeException("Ошибка получения информации от " + NAME, throwable);
+                })
+                .map(response -> {
+                    response.setCoinName(coin.replaceAll("/USDT", ""));
+                    return ApiExchangeUtils.getCoinWCoinDepth(response);
+                });
     }
 
     private Flux<List<CoinWTickerData>> getCoinTicker(List<Coin> coins) {

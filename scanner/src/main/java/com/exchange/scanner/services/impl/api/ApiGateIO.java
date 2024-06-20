@@ -1,11 +1,16 @@
 package com.exchange.scanner.services.impl.api;
 
-import com.exchange.scanner.dto.response.exchangedata.coinsdata.*;
+import com.exchange.scanner.dto.response.exchangedata.gateio.depth.GateIOCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.gateio.exchangeinfo.GateIOSymbolData;
 import com.exchange.scanner.dto.response.exchangedata.gateio.ticker.GateIOCoinTicker;
+import com.exchange.scanner.dto.response.exchangedata.responsedata.CoinDataTicker;
+import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.impl.api.utils.CoinFactory;
-import com.exchange.scanner.services.impl.api.utils.WebClientBuilder;
+import com.exchange.scanner.services.utils.ApiExchangeUtils;
+import com.exchange.scanner.services.utils.CoinFactory;
+import com.exchange.scanner.services.utils.WebClientBuilder;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -16,6 +21,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -26,11 +32,18 @@ public class ApiGateIO implements ApiExchange {
     @Autowired
     private RestTemplate restTemplate;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
     private static final String NAME = "Gate.io";
 
     private final static String BASE_ENDPOINT = "https://api.gateio.ws/api/v4";
 
     private static final int TIMEOUT = 10000;
+
+    private static final int REQUEST_DELAY_DURATION = 100;
+
+    private static final int DEPTH_REQUEST_LIMIT = 15;
 
     private final WebClient webClient;
 
@@ -66,6 +79,46 @@ public class ApiGateIO implements ApiExchange {
         Flux<CoinDataTicker> response = getCoinTicker(new ArrayList<>(coins)).map(ApiGateIO::getCoinDataTickerDTO);
         List<CoinDataTicker> coinDataTickers = response.collectList().block();
         return Collections.singletonMap(NAME, coinDataTickers);
+    }
+
+    @Override
+    public Set<CoinDepth> getOrderBook(Set<String> coins) {
+        Flux<CoinDepth> response = getCoinDepth(coins);
+
+        return new HashSet<>(Objects.requireNonNull(response
+                .collectList()
+                .block()));
+    }
+
+    private Flux<CoinDepth> getCoinDepth(Set<String> coins) {
+        List<String> coinSymbols = coins.stream().map(coin -> coin + "_USDT").toList();
+
+        return Flux.fromIterable(coinSymbols)
+                .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
+                .flatMap(coin -> webClient
+                        .get()
+                        .uri(uriBuilder -> uriBuilder.path("/spot/order_book")
+                                .queryParam("currency_pair", coin)
+                                .queryParam("limit", DEPTH_REQUEST_LIMIT)
+                                .build()
+                        )
+                        .retrieve()
+                        .bodyToFlux(String.class)
+                        .onErrorMap(throwable -> {
+                            log.error("Ошибка получения информации от " + NAME, throwable);
+                            return new RuntimeException("Ошибка получения информации от " + NAME, throwable);
+                        })
+                        .map(response -> {
+                            try {
+                                GateIOCoinDepth gateIOCoinDepth = objectMapper.readValue(response, GateIOCoinDepth.class);
+                                gateIOCoinDepth.setCoinName(coin.replaceAll("_USDT", ""));
+
+                                return ApiExchangeUtils.getGateIOCoinDepth(gateIOCoinDepth);
+                            } catch (JsonProcessingException e) {
+                                throw new RuntimeException(e);
+                            }
+                        })
+                );
     }
 
     private Flux<GateIOCoinTicker> getCoinTicker(List<Coin> coins) {

@@ -1,12 +1,17 @@
 package com.exchange.scanner.services.impl.api;
 
-import com.exchange.scanner.dto.response.exchangedata.coinsdata.CoinDataTicker;
+import com.exchange.scanner.dto.response.exchangedata.huobi.depth.HuobiCoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.responsedata.CoinDataTicker;
 import com.exchange.scanner.dto.response.exchangedata.huobi.exchangeinfo.HuobiSymbolData;
 import com.exchange.scanner.dto.response.exchangedata.huobi.ticker.HuobiTicker;
 import com.exchange.scanner.dto.response.exchangedata.huobi.ticker.HuobiTickerData;
+import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.impl.api.utils.CoinFactory;
-import com.exchange.scanner.services.impl.api.utils.WebClientBuilder;
+import com.exchange.scanner.services.utils.ApiExchangeUtils;
+import com.exchange.scanner.services.utils.CoinFactory;
+import com.exchange.scanner.services.utils.WebClientBuilder;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -17,6 +22,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -27,11 +33,20 @@ public class ApiHuobi implements ApiExchange {
     @Autowired
     private RestTemplate restTemplate;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
     private static final String NAME = "Huobi";
 
     public final static String BASE_ENDPOINT = "https://api.huobi.pro";
 
     private static final int TIMEOUT = 10000;
+
+    private static final int REQUEST_DELAY_DURATION = 100;
+
+    private static final int DEPTH_REQUEST_LIMIT = 20;
+
+    private static final String AGGREGATION_LEVEL_TYPE = "step0";
 
     private final WebClient webClient;
 
@@ -69,6 +84,48 @@ public class ApiHuobi implements ApiExchange {
                 .block();
 
         return Collections.singletonMap(NAME, coinDataTickers);
+    }
+
+    @Override
+    public Set<CoinDepth> getOrderBook(Set<String> coins) {
+        Flux<CoinDepth> response = getCoinDepth(coins);
+
+        return new HashSet<>(Objects.requireNonNull(response
+                .collectList()
+                .block()));
+    }
+
+
+    private Flux<CoinDepth> getCoinDepth(Set<String> coins) {
+        List<String> coinSymbols = coins.stream().map(coin -> coin.toLowerCase() + "usdt").toList();
+
+        return Flux.fromIterable(coinSymbols)
+                .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
+                .flatMap(coin -> webClient
+                        .get()
+                        .uri(uriBuilder -> uriBuilder.path("/market/depth")
+                                .queryParam("symbol", coin)
+//                                .queryParam("depth", DEPTH_REQUEST_LIMIT)
+                                .queryParam("type", AGGREGATION_LEVEL_TYPE)
+                                .build()
+                        )
+                        .retrieve()
+                        .bodyToFlux(String.class)
+                        .onErrorMap(throwable -> {
+                            log.error("Ошибка получения информации от " + NAME, throwable);
+                            return new RuntimeException("Ошибка получения информации от " + NAME, throwable);
+                        })
+                        .map(response -> {
+                            try {
+                                HuobiCoinDepth huobiCoinDepth = objectMapper.readValue(response, HuobiCoinDepth.class);
+                                huobiCoinDepth.setCoinName(coin.replaceAll("usdt", "").toUpperCase());
+
+                                return ApiExchangeUtils.getHuobiCoinDepth(huobiCoinDepth);
+                            } catch (JsonProcessingException e) {
+                                throw new RuntimeException(e);
+                            }
+                        })
+                );
     }
 
     private Flux<List<HuobiTickerData>> getCoinTicker(List<Coin> coins) {

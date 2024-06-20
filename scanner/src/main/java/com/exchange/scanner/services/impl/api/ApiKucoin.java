@@ -1,12 +1,17 @@
 package com.exchange.scanner.services.impl.api;
 
-import com.exchange.scanner.dto.response.exchangedata.coinsdata.CoinDataTicker;
+import com.exchange.scanner.dto.response.exchangedata.kucoin.depth.KucoinCoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.responsedata.CoinDataTicker;
 import com.exchange.scanner.dto.response.exchangedata.kucoin.exchangeinfo.KucoinSymbolData;
 import com.exchange.scanner.dto.response.exchangedata.kucoin.ticker.KucoinTicker;
 import com.exchange.scanner.dto.response.exchangedata.kucoin.ticker.KucoinTickerCoinData;
+import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.impl.api.utils.CoinFactory;
-import com.exchange.scanner.services.impl.api.utils.WebClientBuilder;
+import com.exchange.scanner.services.utils.ApiExchangeUtils;
+import com.exchange.scanner.services.utils.CoinFactory;
+import com.exchange.scanner.services.utils.WebClientBuilder;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -27,11 +32,16 @@ public class ApiKucoin implements ApiExchange {
     @Autowired
     private RestTemplate restTemplate;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
     private static final String NAME = "Kucoin";
 
     public final static String BASE_ENDPOINT = "https://api.kucoin.com";
 
     private static final int TIMEOUT = 10000;
+
+    private static final int DEPTH_REQUEST_LIMIT = 20;
 
     private final WebClient webClient;
 
@@ -68,6 +78,45 @@ public class ApiKucoin implements ApiExchange {
                 .block();
 
         return Collections.singletonMap(NAME, coinDataTickers);
+    }
+
+    @Override
+    public Set<CoinDepth> getOrderBook(Set<String> coins) {
+        Flux<CoinDepth> response = getCoinDepth(coins);
+
+        return new HashSet<>(Objects.requireNonNull(response
+                .collectList()
+                .block()));
+    }
+
+
+    private Flux<CoinDepth> getCoinDepth(Set<String> coins) {
+        List<String> coinSymbols = coins.stream().map(coin -> coin + "-USDT").toList();
+
+        return Flux.fromIterable(coinSymbols)
+                .flatMap(coin -> webClient
+                        .get()
+                        .uri(uriBuilder -> uriBuilder.path("/api/v1/market/orderbook/level2_" + DEPTH_REQUEST_LIMIT)
+                                .queryParam("symbol", coin)
+                                .build()
+                        )
+                        .retrieve()
+                        .bodyToFlux(String.class)
+                        .onErrorMap(throwable -> {
+                            log.error("Ошибка получения информации от " + NAME, throwable);
+                            return new RuntimeException("Ошибка получения информации от " + NAME, throwable);
+                        })
+                        .map(response -> {
+                            try {
+                                KucoinCoinDepth kucoinCoinDepth = objectMapper.readValue(response, KucoinCoinDepth.class);
+                                kucoinCoinDepth.setCoinName(coin.replaceAll("-USDT", ""));
+
+                                return ApiExchangeUtils.getKucoinCoinDepth(kucoinCoinDepth);
+                            } catch (JsonProcessingException e) {
+                                throw new RuntimeException(e);
+                            }
+                        })
+                );
     }
 
     private Flux<List<KucoinTicker>> getCoinTicker(List<Coin> coins) {

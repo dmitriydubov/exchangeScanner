@@ -1,19 +1,19 @@
 package com.exchange.scanner.services.impl;
 
 import com.exchange.scanner.dto.response.SimpleResponse;
-import com.exchange.scanner.dto.response.exchangedata.ExchangeDataResponse;
-import com.exchange.scanner.dto.response.exchangedata.coinsdata.CoinDataTicker;
-import com.exchange.scanner.error.NoExchangesException;
-import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.model.Exchange;
-import com.exchange.scanner.model.UserMarketSettings;
+import com.exchange.scanner.dto.response.event.ArbitrageEvent;
+import com.exchange.scanner.dto.response.event.EventData;
+import com.exchange.scanner.model.*;
 import com.exchange.scanner.repositories.CoinRepository;
 import com.exchange.scanner.repositories.ExchangeRepository;
+import com.exchange.scanner.repositories.OrdersBookRepository;
 import com.exchange.scanner.repositories.UserMarketSettingsRepository;
 import com.exchange.scanner.security.model.User;
 import com.exchange.scanner.security.repository.UserRepository;
 import com.exchange.scanner.services.ApiExchangeAdapter;
 import com.exchange.scanner.services.AppService;
+import com.exchange.scanner.services.utils.AppServiceUtils;
+import com.exchange.scanner.services.utils.UserMarketSettingsBuilder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -23,20 +23,24 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 @Service
 @RequiredArgsConstructor
 public class AppServiceImpl implements AppService {
 
     private final ExchangeRepository exchangeRepository;
+
     private final UserMarketSettingsRepository userMarketSettingsRepository;
+
     private final UserRepository userRepository;
+
     private final ApiExchangeAdapter apiExchangeAdapter;
+
     private final CoinRepository coinRepository;
+
+    private final OrdersBookRepository ordersBookRepository;
+    
+    private static final int SCHEDULED_RATE_TIME_FOR_GET_ORDERS = 5000;
 
     @Override
     public Set<Exchange> getExchanges() {
@@ -44,66 +48,106 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    public ExchangeDataResponse getExchangeData(UserDetails userDetails) {
-        var user = userRepository.findByUsername("schliffen@mail.ru").orElseThrow(() -> new UsernameNotFoundException("Пользователь не зарегистрирован"));
+    @Transactional
+    public ArbitrageEvent getArbitrageOpportunities(UserDetails userDetails) {
+        var user = userRepository.findByUsername(userDetails.getUsername()).orElseThrow(() ->
+                new UsernameNotFoundException("Пользователь не зарегистрирован")
+        );
         UserMarketSettings userMarketSettings;
-        Optional<UserMarketSettings> optional = userMarketSettingsRepository.getByUserId(user);
+        Optional<UserMarketSettings> optional = userMarketSettingsRepository.getByUser(user);
         userMarketSettings = optional.orElseGet(() -> createUserMarketSettingsWithDefaults(user));
 
-        return null;
-    }
+        userMarketSettings.getCoins().forEach(coinName -> {
+            List<OrdersBook> ordersBooks = ordersBookRepository.findByCoinName(coinName);
+            Map<String, Set<Ask>> lowestBuyPrice = AppServiceUtils.getBuyPrices(ordersBooks);
+            Map<String, Set<Bid>> highestSellPrice = AppServiceUtils.getSellPrices(ordersBooks);
 
-    private UserMarketSettings createUserMarketSettingsWithDefaults(User user) {
-        List<String> exchangesNames = exchangeRepository.findAll().stream().map(Exchange::getName).toList();
-        var userMarketSettings = UserMarketSettings.builder()
-                .userId(user)
-                .coins(new ArrayList<>())
-                .marketsBuy(exchangesNames)
-                .marketsSell(exchangesNames)
-                .minVolume(10.0)
-                .maxVolume(1_000_000.0)
-                .profitSpread(0.0)
-                .percentSpread(0.0)
-                .build();
+            System.out.println("buy");
+            System.out.println(coinName);
+            lowestBuyPrice.forEach((ex, ask) -> {
+                System.out.println(ex);
+                ask.forEach(a -> System.out.println(a.getPrice() + " " + a.getVolume()));
+            });
 
-        return userMarketSettingsRepository.save(userMarketSettings);
+            System.out.println("sell");
+            System.out.println(coinName);
+            highestSellPrice.forEach((ex, bid) -> {
+                System.out.println(ex);
+                bid.forEach(b -> System.out.println(b.getPrice() + " " + b.getVolume()));
+            });
+
+//            lowestBuyPrice.forEach((exchangeForBuy, ask) -> {
+//                highestSellPrice.forEach((exchangeForSell, bid) -> {
+//                    if (!exchangeForBuy.equals(exchangeForSell)) {
+//                        BigDecimal bidPriceValue = new BigDecimal(bid.getPrice());
+//                        BigDecimal askPriceValue = new BigDecimal(ask.getPrice());
+//                        BigDecimal spread = bidPriceValue.subtract(askPriceValue);
+//                        if (spread.compareTo(new BigDecimal(0)) > 0) {
+//                            System.out.println("is spread for " + coinName + ". Exchange for buy: " + exchangeForBuy + ". Exchange for sell: " + exchangeForSell);
+//                            BigDecimal bidVolume = new BigDecimal(bid.getVolume());
+//                            BigDecimal askVolume = new BigDecimal(ask.getVolume());
+//                            BigDecimal tradeVolume = bidVolume.subtract(askVolume);
+//                            tradeVolume = tradeVolume.compareTo(new BigDecimal(0)) > 0 ?
+//                                    tradeVolume :
+//                                    bidVolume;
+//                            System.out.println("trade volume: " + tradeVolume);
+//                            BigDecimal fiatVolumeForBuy = tradeVolume.multiply(askPriceValue);
+//                            System.out.println("fiat volume for buy: " + fiatVolumeForBuy);
+//                            BigDecimal fiatVolumeForSell = tradeVolume.multiply(bidPriceValue);
+//                            System.out.println("fiat volume for sell: " + fiatVolumeForSell);
+//                            BigDecimal profit = fiatVolumeForSell.subtract(fiatVolumeForBuy);
+//                            System.out.println("///////////");
+//                            System.out.println("profit " + profit);
+//                            System.out.println("///////////");
+//                        }
+//                    }
+//                });
+//            });
+        });
+
+
+        ArbitrageEvent arbitrageEvent = new ArbitrageEvent();
+        List<EventData> eventData = new ArrayList<>();
+        arbitrageEvent.setEventData(eventData);
+        return new ArbitrageEvent();
     }
 
     @Override
+//    @Scheduled(fixedRate = 1000 * 60 * 60)
     public SimpleResponse refreshCoins() {
-        long start = System.currentTimeMillis();
-
-        Map<String, Set<Coin>> updatedCoinsMap = getCoinsAsync();
-
+        Map<String, Set<Coin>> updatedCoinsMap = AppServiceUtils.getCoinsAsync(exchangeRepository, apiExchangeAdapter);
         updateCoins(updatedCoinsMap);
-
-        long end = System.currentTimeMillis() - start;
-        System.out.println("время выполнения обновления валют: " + (end / 1000) + "s");
 
         return new SimpleResponse("Обновление списка валют успешно завершено");
     }
 
-    private Map<String, Set<Coin>> getCoinsAsync() {
-        List<Exchange> exchanges = exchangeRepository.findAll();
-        if (exchanges.isEmpty()) throw new NoExchangesException("Отсутствует список бирж для обновления монет");
-        Map<String, Set<Coin>> exchangeMap = new ConcurrentHashMap<>();
-        ExecutorService executorService = Executors.newFixedThreadPool(exchanges.size());
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-        exchanges.forEach(exchange -> {
-            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                Set<Coin> coins = apiExchangeAdapter.refreshExchangeCoins(exchange);
-                synchronized (exchangeMap) {
-                    exchangeMap.put(exchange.getName(), coins);
-                }
-            }, executorService);
-            futures.add(future);
-        });
+    @Override
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_ORDERS)
+    @Transactional
+    public void getOrderBooks() {
+        long start = System.currentTimeMillis();
+        List<OrdersBook> ordersBooks = AppServiceUtils.getOrderBooksAsync(
+                exchangeRepository,
+                apiExchangeAdapter,
+                userMarketSettingsRepository
+        );
 
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        executorService.shutdown();
-        return exchangeMap;
+        ordersBookRepository.deleteAllInBatch();
+        ordersBookRepository.saveAll(ordersBooks);
+
+        long end = System.currentTimeMillis() - start;
+//        System.out.println("Операция выполнена за " + end / 1000 + "s");
     }
 
+    @Transactional
+    private UserMarketSettings createUserMarketSettingsWithDefaults(User user) {
+        List<String> exchangesNames = exchangeRepository.findAll().stream().map(Exchange::getName).toList();
+        var userMarketSettings = UserMarketSettingsBuilder.getDefaultUserMarketSettings(user, exchangesNames);
+
+        return userMarketSettingsRepository.save(userMarketSettings);
+    }
+
+    @Transactional
     private void updateCoins(Map<String, Set<Coin>> coinsMap) {
         Set<Exchange> exchangesToUpdate = new HashSet<>();
         coinsMap.forEach((exchangeName, coins) -> {
@@ -113,64 +157,7 @@ public class AppServiceImpl implements AppService {
             exchangesToUpdate.add(exchange);
         });
 
-        saveExchangesAndCoins(exchangesToUpdate);
-    }
-
-    @Transactional
-    private void saveExchangesAndCoins(Set<Exchange> exchangesToUpdate) {
-        long start = System.currentTimeMillis();
         coinRepository.deleteAllInBatch();
         exchangeRepository.saveAll(exchangesToUpdate);
-        long end = System.currentTimeMillis() - start;
-        System.out.println("Время выполнения метода saveExchangesAndCoins равно: " + end / 1000 + "s");
-    }
-
-    @Override
-    @Scheduled(fixedRate = 10000)
-    public void checkArbitrageOpportunities() {
-
-        List<Exchange> exchanges = exchangeRepository.findAll();
-        Map<String, List<CoinDataTicker>> coinsMap = getCoinsPricesAsync(exchanges);
-
-        coinsMap.forEach((exchangeForBuy, coinsForBuy) ->
-            coinsMap.forEach((exchangeForSell, coinsForSell) -> {
-                if (!exchangeForBuy.equals(exchangeForSell)) {
-                    coinsForBuy.parallelStream().forEach(coinBuy ->
-                        coinsForSell.parallelStream()
-                            .filter(coinSell -> coinSell.getSymbol().equals(coinBuy.getSymbol()))
-                            .forEach(coinSell -> {
-                                BigDecimal buyPrice = new BigDecimal(coinBuy.getBid());
-                                BigDecimal sellPrice = new BigDecimal(coinSell.getAsk());
-                                BigDecimal spread = sellPrice.subtract(buyPrice);
-                                if (spread.compareTo(BigDecimal.ZERO) > 0) {
-                                    System.out.println("spread");
-                                }
-                            })
-                    );
-                }
-            })
-        );
-    }
-
-    private Map<String, List<CoinDataTicker>> getCoinsPricesAsync(List<Exchange> exchanges) {
-        Map<String, List<CoinDataTicker>> coinsMap = new ConcurrentHashMap<>();
-        ExecutorService executorService = Executors.newFixedThreadPool(exchanges.size());
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-
-        exchanges.forEach(buyExchange -> {
-            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                Set<Coin> coins = buyExchange.getCoins();
-                Map<String, List<CoinDataTicker>> coinPriceMap = apiExchangeAdapter
-                        .getCoinPrice(buyExchange.getName(), coins);
-                synchronized (coinsMap) {
-                    coinsMap.putAll(coinPriceMap);
-                }
-            }, executorService);
-            futures.add(future);
-        });
-
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-
-        return coinsMap;
     }
 }

@@ -16,9 +16,19 @@ spring:
   datasource:
     username: postgres
     password: postgres
-    url: jdbc:postgresql://localhost:5433/scannerdb
+    url: jdbc:postgresql://localhost:5432/scannerdb
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     open-in-view: false
+
+
+exchanges:
+  apiKeys:
+    gateIO:
+      key: 772206b7012c7e1032e2bcb6d206716d
+      secret: ac5066ea5bed73af02bd53ad998045d879e2a93c0ae4b33dd6c339d4057c6d02
+    MEXC:
+      key: mx0vglPGU3h0E9HsH9
+      secret: 9db3c31ec9ec4ff5bef23a4e4c73b8bd

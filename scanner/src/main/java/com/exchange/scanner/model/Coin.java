@@ -5,7 +5,6 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.HashSet;
-import java.util.Objects;
 import java.util.Set;
 
 @Entity
@@ -32,19 +31,4 @@ public class Coin {
 
     @ManyToMany(mappedBy = "coins", cascade = CascadeType.ALL)
     private Set<Exchange> exchanges = new HashSet<>();
-
-    @Override
-    @Transient
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        Coin coin = (Coin) o;
-        return Objects.equals(symbol, coin.symbol);
-    }
-
-    @Override
-    @Transient
-    public int hashCode() {
-        return Objects.hashCode(symbol);
-    }
 }

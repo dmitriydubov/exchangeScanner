@@ -1,6 +1,7 @@
 package com.exchange.scanner.services.impl.api;
 
-import com.exchange.scanner.dto.response.exchangedata.coinsdata.CoinDataTicker;
+import com.exchange.scanner.dto.response.exchangedata.responsedata.CoinDataTicker;
+import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Coin;
 
 import java.util.List;
@@ -11,4 +12,6 @@ public interface ApiExchange {
     Set<Coin> getAllCoins();
 
     Map<String, List<CoinDataTicker>> getCoinDataTicker(Set<Coin> coins);
+
+    Set<CoinDepth> getOrderBook(Set<String> coins);
 }
