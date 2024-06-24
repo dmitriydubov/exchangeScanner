@@ -49,14 +49,16 @@ export default class AppContent extends React.Component {
         });
     };
 
-    onRegister = (e, username, password, confirmPassword) => {
+    onRegister = (e, username, email, telegram, password, confirmPassword) => {
         e.preventDefault();
-
+        
         request(
             "POST", 
             "/api/v1/auth/sign-up", 
             {
-                username: username, 
+                username: username,
+                email: email,
+                telegram: telegram, 
                 password: password,
                 roles: ["ROLE_USER"]
             }
@@ -71,7 +73,7 @@ export default class AppContent extends React.Component {
     render() {
         return (
             <div className="container-xl">
-                <Buttons login={this.login} logout={this.logout}/>
+                <Buttons login={this.login} logout={this.logout} content={this.state.componentToShow}/>
                 {this.state.componentToShow === "welcome" && <WelcomeContent/>}
                 {this.state.componentToShow === "dashboard" && <Dashboard/>}
                 {this.state.componentToShow === "login" && <LoginForm onLogin={this.onLogin} onRegister={this.onRegister}/>}

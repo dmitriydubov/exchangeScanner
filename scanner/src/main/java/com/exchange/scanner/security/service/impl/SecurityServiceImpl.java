@@ -59,6 +59,8 @@ public class SecurityServiceImpl implements SecurityService {
     public RegisterResponse register(SignUpRequest signUpRequest) {
         var user = User.builder()
                 .username(signUpRequest.username())
+                .email(signUpRequest.email())
+                .telegram(signUpRequest.telegram())
                 .password(passwordEncoder.encode(signUpRequest.password()))
                 .regTime(new Date())
                 .roles(signUpRequest.roles())

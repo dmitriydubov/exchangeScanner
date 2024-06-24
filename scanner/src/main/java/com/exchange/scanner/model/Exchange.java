@@ -32,7 +32,7 @@ public class Exchange {
     @Column(name = "is_block_by_superuser")
     private Boolean isBlockBySuperuser = false;
 
-    @ManyToMany(fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @ManyToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
     @JoinTable(
             name = "exchanges_coins",
             joinColumns = @JoinColumn(name = "coin_id"),

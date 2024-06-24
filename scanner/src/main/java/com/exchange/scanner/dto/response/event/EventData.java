@@ -2,6 +2,8 @@ package com.exchange.scanner.dto.response.event;
 
 import lombok.*;
 
+import java.util.List;
+
 @Getter
 @Setter
 @NoArgsConstructor
@@ -19,7 +21,7 @@ public class EventData {
 
     private String fiatSpread;
 
-    private String coinSpread;
+    private String percentSpread;
 
     private String averagePriceForBuy;
 
@@ -48,4 +50,8 @@ public class EventData {
     private String transactionTime;
 
     private String transactionConfirmation;
+
+    private String margin;
+
+    private List<String> futures;
 }

@@ -17,7 +17,7 @@ public class AppUserDetails implements UserDetails {
         return user.getId();
     }
 
-    public String getEmail() {
+    public String getUserName() {
         return user.getUsername();
     }
 

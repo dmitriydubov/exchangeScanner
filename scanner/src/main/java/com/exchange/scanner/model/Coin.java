@@ -31,4 +31,8 @@ public class Coin {
 
     @ManyToMany(mappedBy = "coins", cascade = CascadeType.ALL)
     private Set<Exchange> exchanges = new HashSet<>();
+
+    @Transient
+    @ManyToMany(mappedBy = "coin", cascade = CascadeType.ALL)
+    private Set<OrdersBook> ordersBooks = new HashSet<>();
 }

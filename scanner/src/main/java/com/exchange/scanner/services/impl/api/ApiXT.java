@@ -45,7 +45,7 @@ public class ApiXT implements ApiExchange {
 
     private static final int REQUEST_DELAY_DURATION = 20;
 
-    private static final int DEPTH_REQUEST_LIMIT = 20;
+    private static final int DEPTH_REQUEST_LIMIT = 15;
 
     private final WebClient webClient;
 
@@ -112,9 +112,9 @@ public class ApiXT implements ApiExchange {
                         )
                         .retrieve()
                         .bodyToFlux(String.class)
-                        .onErrorMap(throwable -> {
-                            log.error("Ошибка получения информации от " + NAME, throwable);
-                            return new RuntimeException("Ошибка получения информации от " + NAME, throwable);
+                        .onErrorResume(throwable -> {
+                            log.error("Ошибка получения информации от " + NAME + ". Причина: {}", throwable.getLocalizedMessage());
+                            return Flux.empty();
                         })
                         .map(response -> {
                             try {

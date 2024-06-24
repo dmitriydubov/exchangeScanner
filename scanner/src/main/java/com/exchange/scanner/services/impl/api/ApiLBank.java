@@ -109,9 +109,9 @@ public class ApiLBank implements ApiExchange {
                                 .build())
                         .retrieve()
                         .bodyToFlux(String.class)
-                        .onErrorMap(throwable -> {
-                            log.error("Ошибка получения информации от " + NAME, throwable);
-                            return new RuntimeException("Ошибка получения информации от " + NAME, throwable);
+                        .onErrorResume(throwable -> {
+                            log.error("Ошибка получения информации от " + NAME + ". Причина: {}", throwable.getLocalizedMessage());
+                            return Flux.empty();
                         })
                         .map(response -> {
                             try {

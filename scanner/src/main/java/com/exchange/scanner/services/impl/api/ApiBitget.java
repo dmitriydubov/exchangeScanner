@@ -11,7 +11,6 @@ import com.exchange.scanner.services.utils.ApiExchangeUtils;
 import com.exchange.scanner.services.utils.CoinFactory;
 import com.exchange.scanner.services.utils.WebClientBuilder;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -107,9 +106,9 @@ public class ApiBitget implements ApiExchange {
                         )
                         .retrieve()
                         .bodyToFlux(String.class)
-                        .onErrorMap(throwable -> {
-                            log.error("Ошибка получения информации от " + NAME + ". Причина: {}", throwable.getCause().getMessage(), throwable);
-                            return new RuntimeException("Ошибка получения информации от " + NAME, throwable);
+                        .onErrorResume(throwable -> {
+//                            log.error("Ошибка получения информации от " + NAME + ". Причина: {}", throwable.getLocalizedMessage());
+                            return Flux.empty();
                         })
                         .map(response -> {
                             try {

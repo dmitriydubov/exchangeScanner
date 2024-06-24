@@ -15,18 +15,21 @@ import com.exchange.scanner.services.AppService;
 import com.exchange.scanner.services.utils.AppServiceUtils;
 import com.exchange.scanner.services.utils.UserMarketSettingsBuilder;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class AppServiceImpl implements AppService {
+    private static final Logger log = LoggerFactory.getLogger(AppServiceImpl.class);
 
     private final ExchangeRepository exchangeRepository;
 
@@ -43,82 +46,53 @@ public class AppServiceImpl implements AppService {
     private static final int SCHEDULED_RATE_TIME_FOR_GET_ORDERS = 5000;
 
     @Override
-    public Set<Exchange> getExchanges() {
-        return new HashSet<>(exchangeRepository.findAll());
+    @Transactional
+    public Set<String> getExchanges() {
+        return exchangeRepository.findAll().stream().map(Exchange::getName).collect(Collectors.toSet());
     }
 
     @Override
     @Transactional
-    public ArbitrageEvent getArbitrageOpportunities(UserDetails userDetails) {
+    public List<ArbitrageEvent> getArbitrageOpportunities(UserDetails userDetails) {
+        if (userDetails == null) {
+            return new ArrayList<>();
+        }
+
         var user = userRepository.findByUsername(userDetails.getUsername()).orElseThrow(() ->
                 new UsernameNotFoundException("Пользователь не зарегистрирован")
         );
+
         UserMarketSettings userMarketSettings;
         Optional<UserMarketSettings> optional = userMarketSettingsRepository.getByUser(user);
         userMarketSettings = optional.orElseGet(() -> createUserMarketSettingsWithDefaults(user));
 
-        userMarketSettings.getCoins().forEach(coinName -> {
-            List<OrdersBook> ordersBooks = ordersBookRepository.findByCoinName(coinName);
-            Map<String, Set<Ask>> lowestBuyPrice = AppServiceUtils.getBuyPrices(ordersBooks);
-            Map<String, Set<Bid>> highestSellPrice = AppServiceUtils.getSellPrices(ordersBooks);
+        List<ArbitrageEvent> arbitrageEvents = new ArrayList<>();
+        Map<String, List<ArbitrageOpportunity>> arbitrageOpportunities = AppServiceUtils
+                .checkExchangesForArbitrageOpportunities(userMarketSettings, ordersBookRepository);
 
-            System.out.println("buy");
-            System.out.println(coinName);
-            lowestBuyPrice.forEach((ex, ask) -> {
-                System.out.println(ex);
-                ask.forEach(a -> System.out.println(a.getPrice() + " " + a.getVolume()));
-            });
+        arbitrageOpportunities.forEach((coinName, arbitrageOpportunitiesList) -> {
 
-            System.out.println("sell");
-            System.out.println(coinName);
-            highestSellPrice.forEach((ex, bid) -> {
-                System.out.println(ex);
-                bid.forEach(b -> System.out.println(b.getPrice() + " " + b.getVolume()));
-            });
+            ArbitrageEvent arbitrageEvent = new ArbitrageEvent();
+            List<EventData> eventDataList = AppServiceUtils.getEventDataFromArbitrageOpportunities(arbitrageOpportunitiesList, userMarketSettings);
+            arbitrageEvent.setEventData(eventDataList);
 
-//            lowestBuyPrice.forEach((exchangeForBuy, ask) -> {
-//                highestSellPrice.forEach((exchangeForSell, bid) -> {
-//                    if (!exchangeForBuy.equals(exchangeForSell)) {
-//                        BigDecimal bidPriceValue = new BigDecimal(bid.getPrice());
-//                        BigDecimal askPriceValue = new BigDecimal(ask.getPrice());
-//                        BigDecimal spread = bidPriceValue.subtract(askPriceValue);
-//                        if (spread.compareTo(new BigDecimal(0)) > 0) {
-//                            System.out.println("is spread for " + coinName + ". Exchange for buy: " + exchangeForBuy + ". Exchange for sell: " + exchangeForSell);
-//                            BigDecimal bidVolume = new BigDecimal(bid.getVolume());
-//                            BigDecimal askVolume = new BigDecimal(ask.getVolume());
-//                            BigDecimal tradeVolume = bidVolume.subtract(askVolume);
-//                            tradeVolume = tradeVolume.compareTo(new BigDecimal(0)) > 0 ?
-//                                    tradeVolume :
-//                                    bidVolume;
-//                            System.out.println("trade volume: " + tradeVolume);
-//                            BigDecimal fiatVolumeForBuy = tradeVolume.multiply(askPriceValue);
-//                            System.out.println("fiat volume for buy: " + fiatVolumeForBuy);
-//                            BigDecimal fiatVolumeForSell = tradeVolume.multiply(bidPriceValue);
-//                            System.out.println("fiat volume for sell: " + fiatVolumeForSell);
-//                            BigDecimal profit = fiatVolumeForSell.subtract(fiatVolumeForBuy);
-//                            System.out.println("///////////");
-//                            System.out.println("profit " + profit);
-//                            System.out.println("///////////");
-//                        }
-//                    }
-//                });
-//            });
+            if (!arbitrageEvent.getEventData().isEmpty()) {
+                arbitrageEvent.setCoin(coinName);
+                arbitrageEvents.add(arbitrageEvent);
+            }
         });
 
 
-        ArbitrageEvent arbitrageEvent = new ArbitrageEvent();
-        List<EventData> eventData = new ArrayList<>();
-        arbitrageEvent.setEventData(eventData);
-        return new ArbitrageEvent();
+        return arbitrageEvents;
     }
 
     @Override
-//    @Scheduled(fixedRate = 1000 * 60 * 60)
-    public SimpleResponse refreshCoins() {
+//    @Scheduled(fixedRate = 1000 * 60)
+    public void refreshCoins() {
         Map<String, Set<Coin>> updatedCoinsMap = AppServiceUtils.getCoinsAsync(exchangeRepository, apiExchangeAdapter);
         updateCoins(updatedCoinsMap);
 
-        return new SimpleResponse("Обновление списка валют успешно завершено");
+        log.info("Обновление списка валют успешно завершено");
     }
 
     @Override
@@ -137,6 +111,7 @@ public class AppServiceImpl implements AppService {
 
         long end = System.currentTimeMillis() - start;
 //        System.out.println("Операция выполнена за " + end / 1000 + "s");
+//        log.info("Обновление стаканов цен успешно завершено");
     }
 
     @Transactional

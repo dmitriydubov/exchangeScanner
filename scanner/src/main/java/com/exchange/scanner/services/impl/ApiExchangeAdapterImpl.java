@@ -93,18 +93,18 @@ public class ApiExchangeAdapterImpl implements ApiExchangeAdapter {
         switch (exchange.getName()) {
             case "Binance" -> ordersBook.addAll(apiBinance.getOrderBook(coins));
             case "Gate.io" -> ordersBook.addAll(apiGateIO.getOrderBook(coins));
-//            case "MEXC" -> ordersBook.addAll(apiMEXC.getOrderBook(coins));
+            case "MEXC" -> ordersBook.addAll(apiMEXC.getOrderBook(coins));
             case "Bybit" -> ordersBook.addAll(apiBybit.getOrderBook(coins));
-//            case "Kucoin" ->  ordersBook.addAll(apiKucoin.getOrderBook(coins));
+            case "Kucoin" ->  ordersBook.addAll(apiKucoin.getOrderBook(coins));
             case "Bitget" -> ordersBook.addAll(apiBitget.getOrderBook(coins));
-//            case "Huobi" -> ordersBook.addAll(apiHuobi.getOrderBook(coins));
+            case "Huobi" -> ordersBook.addAll(apiHuobi.getOrderBook(coins));
 //            case "Poloniex" -> ordersBook.addAll(apiPoloniex.getOrderBook(coins)); // доработать
 //            case "OKX" -> ordersBook.addAll(apiOKX.getOrderBook(coins));
 //            case "Bitmart" -> ordersBook.addAll(apiBitmart.getOrderBook(coins));
 //            case "LBank" -> ordersBook.addAll(apiLBank.getOrderBook(coins));
 //            case "CoinEx" -> ordersBook.addAll(apiCoinEx.getOrderBook(coins));
 //            case "CoinW" -> ordersBook.addAll(apiCoinW.getOrderBook(coins));
-//            case "XT" -> ordersBook.addAll(apiXT.getOrderBook(coins));
+            case "XT" -> ordersBook.addAll(apiXT.getOrderBook(coins));
 //            case "Probit" -> ordersBook.addAll(apiProbit.getOrderBook(coins));
 //            case "BingX" -> ordersBook.addAll(apiBingX.getOrderBook(coins));
         }

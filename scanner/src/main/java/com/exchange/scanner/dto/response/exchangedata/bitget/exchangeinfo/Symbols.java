@@ -8,4 +8,6 @@ import lombok.Setter;
 public class Symbols {
 
     private String coin;
+
+    private String transfer;
 }

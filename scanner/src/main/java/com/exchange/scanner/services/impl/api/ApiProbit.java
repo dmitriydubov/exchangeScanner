@@ -131,9 +131,9 @@ public class ApiProbit implements ApiExchange {
                 )
                 .retrieve()
                 .bodyToFlux(ProbitTicker.class)
-                .onErrorMap(throwable -> {
-                    log.error("Ошибка получения информации от " + NAME, throwable);
-                    return new RuntimeException("Ошибка получения информации от " + NAME, throwable);
+                .onErrorResume(throwable -> {
+                    log.error("Ошибка получения информации от " + NAME + ". Причина: {}", throwable.getLocalizedMessage());
+                    return Flux.empty();
                 })
                 .flatMapIterable(ProbitTicker::getData)
                 .filter(ticker -> coinsSymbols.contains(ticker.getMarketId()) && isNotEmptyValues(ticker))

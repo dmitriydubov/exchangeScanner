@@ -103,9 +103,9 @@ public class ApiCoinW implements ApiExchange {
                 )
                 .retrieve()
                 .bodyToFlux(CoinWSymbol.class)
-                .onErrorMap(throwable -> {
-                    log.error("Ошибка получения информации от " + NAME, throwable);
-                    return new RuntimeException("Ошибка получения номеров символов от " + NAME, throwable);
+                .onErrorResume(throwable -> {
+                    log.error("Ошибка получения информации от " + NAME + ". Причина: {}", throwable.getLocalizedMessage());
+                    return Flux.empty();
                 })
                 .map(response -> Collections.singletonMap(
                         coin, ApiExchangeUtils.getCoinWSymbolNumber(response.getData().getSymbol(), coin))

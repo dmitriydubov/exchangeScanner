@@ -22,8 +22,10 @@ public class Bid implements Comparable<Bid> {
     @JoinColumn(name = "orders_book_id", nullable = false)
     private OrdersBook ordersBook;
 
+    @Column(precision = 46, scale = 5)
     private BigDecimal price;
 
+    @Column(precision = 46, scale = 5)
     private BigDecimal volume;
 
     @Override

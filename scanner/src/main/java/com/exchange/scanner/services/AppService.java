@@ -5,15 +5,16 @@ import com.exchange.scanner.dto.response.event.ArbitrageEvent;
 import com.exchange.scanner.model.Exchange;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.util.List;
 import java.util.Set;
 
 public interface AppService {
 
-    Set<Exchange> getExchanges();
+    Set<String> getExchanges();
 
-    ArbitrageEvent getArbitrageOpportunities(UserDetails userDetails);
+    List<ArbitrageEvent> getArbitrageOpportunities(UserDetails userDetails);
 
-    SimpleResponse refreshCoins();
+    void refreshCoins();
 
     void getOrderBooks();
 }

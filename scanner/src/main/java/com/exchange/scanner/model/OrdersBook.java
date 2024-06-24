@@ -3,6 +3,8 @@ package com.exchange.scanner.model;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -18,7 +20,8 @@ public class OrdersBook {
     @Column(nullable = false)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
+    @OnDelete(action = OnDeleteAction.CASCADE)
     @JoinColumn(name = "coin_id", nullable = false, referencedColumnName = "id")
     private Coin coin;
 
