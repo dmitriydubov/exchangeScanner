@@ -1,18 +1,24 @@
 package com.exchange.scanner.services.impl.api;
 
+import com.exchange.scanner.dto.response.exchangedata.poloniex.chains.PoloniexChain;
 import com.exchange.scanner.dto.response.exchangedata.poloniex.depth.PoloniexCoinDepth;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.CoinDataTicker;
 import com.exchange.scanner.dto.response.exchangedata.poloniex.exchangeinfo.PoloniexSymbolData;
-import com.exchange.scanner.dto.response.exchangedata.poloniex.exchangeinfo.Symbols;
-import com.exchange.scanner.dto.response.exchangedata.poloniex.ticker.PoloniexTicker;
+import com.exchange.scanner.dto.response.exchangedata.poloniex.tickervolume.PoloniexVolumeTicker;
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
+import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.services.utils.ApiExchangeUtils;
+import com.exchange.scanner.services.utils.CoinFactory;
 import com.exchange.scanner.services.utils.WebClientBuilder;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import com.poloniex.api.client.model.OrderBook;
+import com.poloniex.api.client.rest.PoloRestClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -20,7 +26,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Duration;
 import java.util.*;
@@ -35,6 +43,12 @@ public class ApiPoloniex implements ApiExchange {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Value("${exchanges.apiKeys.Poloniex.key}")
+    private String key;
+
+    @Value("${exchanges.apiKeys.Poloniex.secret}")
+    private String secret;
 
     private static final String NAME = "Poloniex";
 
@@ -55,7 +69,7 @@ public class ApiPoloniex implements ApiExchange {
     @Override
     public Set<Coin> getAllCoins() {
 
-        String url = BASE_ENDPOINT + "/currencies";
+        String url = BASE_ENDPOINT + "/markets";
 
         ResponseEntity<PoloniexSymbolData[]> responseEntity = restTemplate.getForEntity(url, PoloniexSymbolData[].class);
         HttpStatusCode statusCode = responseEntity.getStatusCode();
@@ -65,112 +79,133 @@ public class ApiPoloniex implements ApiExchange {
             throw new RuntimeException("Ошибка получения данных от Poloniex, код: " + statusCode);
         }
 
-        return Arrays.stream(responseEntity.getBody()).filter(data -> {
-            Symbols symbolSettings = data.getCurrencies().values().stream().reduce((symbols, symbols2) -> symbols).orElseThrow(() -> new RuntimeException("Ошибка получения данных с Poloniex"));
-            return !symbolSettings.getDeListed() &&
-                    symbolSettings.getTradingState().equals("NORMAL") &&
-                    symbolSettings.getWalletDepositState().equals("ENABLED") &&
-                    symbolSettings.getWalletWithdrawalState().equals("ENABLED");
-        }).map(data -> {
-            String coinName = data.getCurrencies().keySet().stream().reduce((key1, key2) -> key1).get();
-            Coin coin = new Coin();
-            coin.setName(coinName);
-            coin.setSymbol(coinName);
-            return coin;
-        }).collect(Collectors.toSet());
+        return Arrays.stream(responseEntity.getBody())
+                .filter(symbol -> symbol.getQuoteCurrencyName().equals("USDT") && symbol.getState().equals("NORMAL"))
+                .map(symbol -> CoinFactory.getCoin(symbol.getBaseCurrencyName()))
+                .collect(Collectors.toSet());
     }
 
     @Override
-    public Map<String, List<CoinDataTicker>> getCoinDataTicker(Set<Coin> coins) {
-        Flux<PoloniexTicker> response = getCoinTicker(new ArrayList<>(coins));
+    public Set<Coin> getCoinChain(Set<Coin> coins) {
+        Set<Coin> coinsWithChains = new HashSet<>();
 
-        List<CoinDataTicker> coinDataTickers = response
-                .map(ApiPoloniex::getCoinDataTickerDTO)
-                .collectList()
-                .block();
+        coins.forEach(coin -> {
+            Map<String, PoloniexChain> response = getChains(coin).block();
 
-        return Collections.singletonMap(NAME, coinDataTickers);
+            if (response != null) {
+                Set<Chain> chains = new HashSet<>();
+                response.forEach((coinKey, responseValue) -> {
+                    Chain chain = new Chain();
+                    chain.setName(responseValue.getBlockchain());
+                    chain.setCommission(new BigDecimal(responseValue.getWithdrawalFee()));
+                    chains.add(chain);
+                });
+                coin.setChains(chains);
+                coinsWithChains.add(coin);
+            }
+
+            try {
+                Thread.sleep(REQUEST_DELAY_DURATION);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
+            }
+        });
+
+        return coinsWithChains;
+    }
+
+    private Mono<Map<String, PoloniexChain>> getChains(Coin coin) {
+        return webClient
+                .get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/currencies/{currency}")
+                        .build(coin.getName())
+                )
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                            log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
+                            return Mono.empty();
+                        })
+                )
+                .bodyToMono(new ParameterizedTypeReference<Map<String, PoloniexChain>>() {});
     }
 
     @Override
-    public Set<CoinDepth> getOrderBook(Set<String> coins) {
-        Flux<CoinDepth> response = getCoinDepth(coins);
+    public Set<Coin> getTradingFee(Set<Coin> coins) {
+        PoloRestClient poloniexApiClient = new PoloRestClient(BASE_ENDPOINT, key, secret);
 
-        return new HashSet<>(Objects.requireNonNull(response
-                .collectList()
-                .block()));
+        Set<Coin> coinsWithFees = new HashSet<>();
+
+        coins.forEach(coin -> {
+            coin.setTakerFee(new BigDecimal(poloniexApiClient.getFeeInfo().getTakerRate()));
+            coinsWithFees.add(coin);
+        });
+
+        return coinsWithFees;
     }
 
+    @Override
+    public Set<Coin> getCoinVolume24h(Set<Coin> coins) {
+        Set<Coin> coinsWithVolume24h = new HashSet<>();
 
-    private Flux<CoinDepth> getCoinDepth(Set<String> coins) {
-        List<String> coinSymbols = coins.stream().map(coin -> coin + "_USDT").toList();
+        coins.forEach(coin -> {
+            PoloniexVolumeTicker response = getCoinTicker(coin).block();
+            if (response != null) {
+                coin.setVolume24h(new BigDecimal(response.getAmount()));
+                coinsWithVolume24h.add(coin);
+            }
 
-        return Flux.fromIterable(coinSymbols)
-                .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
-                .flatMap(coin -> webClient
-                        .get()
-                        .uri(uriBuilder -> {
-                             URI uri = uriBuilder.path("markets/{symbol}/orderBook")
-                                    .queryParam("limit", DEPTH_REQUEST_LIMIT)
-                                    .build(coin);
-                             System.out.println("URI " + BASE_ENDPOINT + uri.getPath());
-                             return uri;
-                        })
-                        .retrieve()
-                        .bodyToFlux(String.class)
-                        .onErrorResume(throwable -> {
-                            log.error("Ошибка получения информации от " + NAME + ". Причина: {}", throwable.getLocalizedMessage());
-                            return Flux.empty();
-                        })
-                        .map(response -> {
-                            System.out.println(response);
-                            try {
-                                PoloniexCoinDepth poloniexCoinDepth = objectMapper.readValue(response, PoloniexCoinDepth.class);
-                                poloniexCoinDepth.setCoinName(coin.replaceAll("_USDT", ""));
+            try {
+                Thread.sleep(REQUEST_DELAY_DURATION);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
+            }
+        });
 
-                                return ApiExchangeUtils.getPoloniexCoinDepth(poloniexCoinDepth);
-                            } catch (JsonProcessingException e) {
-                                throw new RuntimeException(e);
-                            }
-                        })
-                );
+        return coinsWithVolume24h;
     }
 
-    private Flux<PoloniexTicker> getCoinTicker(List<Coin> coins) {
-        List<String> coinsSymbols = coins.stream()
-                .map(coin -> coin.getSymbol() + "_USDT")
-                .toList();
+    private Mono<PoloniexVolumeTicker> getCoinTicker(Coin coin) {
+        String symbol = coin.getName() + "_USDT";
 
         return webClient
                 .get()
                 .uri(uriBuilder -> uriBuilder
-                        .path("markets/ticker24h")
-                        .build()
+                        .path("/markets/{symbol}/ticker24h")
+                        .build(symbol)
                 )
                 .retrieve()
-                .bodyToFlux(PoloniexTicker.class)
-                .onErrorMap(throwable -> {
-                    log.error("Ошибка получения информации от " + NAME, throwable);
-                    return new RuntimeException("Ошибка получения информации от " + NAME, throwable);
-                })
-                .filter(ticker -> coinsSymbols.contains(ticker.getSymbol()) && isNotEmptyValues(ticker));
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                            log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                            return Mono.empty();
+                        })
+                )
+                .bodyToMono(PoloniexVolumeTicker.class);
     }
 
-    private static CoinDataTicker getCoinDataTickerDTO(PoloniexTicker ticker) {
-        return new CoinDataTicker(
-                ticker.getSymbol().replaceAll("_", ""),
-                ticker.getAmount(),
-                ticker.getBid(),
-                ticker.getAsk()
-        );
-    }
+    @Override
+    public Set<CoinDepth> getOrderBook(Set<String> coins) {
+        PoloRestClient poloRestClient = new PoloRestClient(BASE_ENDPOINT);
+        Set<CoinDepth> coinDepths = new HashSet<>();
+        coins.forEach(coin -> {
+            OrderBook response = poloRestClient.getOrderBook(coin + "_USDT", "0.01", DEPTH_REQUEST_LIMIT);
+            PoloniexCoinDepth poloniexCoinDepth = new PoloniexCoinDepth();
+            poloniexCoinDepth.setCoinName(coin);
+            poloniexCoinDepth.setAsks(response.getAsks());
+            poloniexCoinDepth.setBids(response.getBids());
+            CoinDepth coinDepth = ApiExchangeUtils.getPoloniexCoinDepth(poloniexCoinDepth);
+            coinDepths.add(coinDepth);
+            try {
+                Thread.sleep(REQUEST_DELAY_DURATION);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
+            }
+        });
 
-    private static boolean isNotEmptyValues(PoloniexTicker ticker) {
-        return ticker.getBid() != null &&
-                ticker.getAsk() != null &&
-                ticker.getAmount() != null &&
-                !ticker.getBid().isEmpty() &&
-                !ticker.getAsk().isEmpty() &&
-                !ticker.getAmount().isEmpty();
+        return coinDepths;
     }
 }

@@ -109,7 +109,7 @@ export default class Dashboard extends React.Component {
                                     </td>
                                     <td>{deal.eventData[0].exchangeForBuy} <br /> {deal.eventData[0].exchangeForSell}</td>
                                     <td>${deal.eventData[0].fiatVolume} <br /> {deal.eventData[0].coinVolume}</td>
-                                    <td>${deal.eventData[0].fiatSpread} <br /> {deal.eventData[0].percentSpread}</td>
+                                    <td>${deal.eventData[0].fiatSpread} <br /> {deal.eventData[0].coinSpread}</td>
                                     <td>{deal.eventData[0].averagePriceForBuy} <br /> {deal.eventData[0].averagePriceForSell}</td>
                                     <td>{deal.eventData[0].priceRangeForBuy} <br /> {deal.eventData[0].priceRangeForSell}</td>
                                     <td>{deal.eventData[0].volume24ExchangeForBuy} <br /> {deal.eventData[0].volume24ExchangeForSell}</td>
@@ -138,7 +138,7 @@ export default class Dashboard extends React.Component {
                                         <td>
                                             ${event.fiatSpread} 
                                             <br />  
-                                            {event.percentSpread}
+                                            {event.coinSpread}
                                         </td>
                                         <td>
                                             {event.averagePriceForBuy} 

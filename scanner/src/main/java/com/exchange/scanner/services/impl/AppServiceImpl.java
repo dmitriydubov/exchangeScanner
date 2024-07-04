@@ -1,13 +1,9 @@
 package com.exchange.scanner.services.impl;
 
-import com.exchange.scanner.dto.response.SimpleResponse;
 import com.exchange.scanner.dto.response.event.ArbitrageEvent;
 import com.exchange.scanner.dto.response.event.EventData;
 import com.exchange.scanner.model.*;
-import com.exchange.scanner.repositories.CoinRepository;
-import com.exchange.scanner.repositories.ExchangeRepository;
-import com.exchange.scanner.repositories.OrdersBookRepository;
-import com.exchange.scanner.repositories.UserMarketSettingsRepository;
+import com.exchange.scanner.repositories.*;
 import com.exchange.scanner.security.model.User;
 import com.exchange.scanner.security.repository.UserRepository;
 import com.exchange.scanner.services.ApiExchangeAdapter;
@@ -24,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Service
@@ -42,64 +39,135 @@ public class AppServiceImpl implements AppService {
     private final CoinRepository coinRepository;
 
     private final OrdersBookRepository ordersBookRepository;
-    
+
+    private final ChainRepository chainRepository;
+
+    private static final int SCHEDULED_RATE_TIME_FOR_REFRESH_COINS = 1000 * 60 * 60;
+
+    private static final int SCHEDULED_RATE_TIME_FOR_GET_CHAINS = 1000 * 60 * 60;
+
+    private static final int SCHEDULED_RATE_TIME_FOR_GET_TRADING_FEE = 1000 * 60 * 60;
+
+    private static final int SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H = 1000 * 60 * 60;
+
     private static final int SCHEDULED_RATE_TIME_FOR_GET_ORDERS = 5000;
 
     @Override
     @Transactional
-    public Set<String> getExchanges() {
-        return exchangeRepository.findAll().stream().map(Exchange::getName).collect(Collectors.toSet());
+    public CompletableFuture<Set<String>> getExchanges() {
+        return CompletableFuture.supplyAsync(() -> {
+            return exchangeRepository.findAll().stream().map(Exchange::getName).collect(Collectors.toSet());
+        });
     }
 
     @Override
     @Transactional
-    public List<ArbitrageEvent> getArbitrageOpportunities(UserDetails userDetails) {
-        if (userDetails == null) {
-            return new ArrayList<>();
-        }
-
-        var user = userRepository.findByUsername(userDetails.getUsername()).orElseThrow(() ->
-                new UsernameNotFoundException("Пользователь не зарегистрирован")
-        );
-
-        UserMarketSettings userMarketSettings;
-        Optional<UserMarketSettings> optional = userMarketSettingsRepository.getByUser(user);
-        userMarketSettings = optional.orElseGet(() -> createUserMarketSettingsWithDefaults(user));
-
-        List<ArbitrageEvent> arbitrageEvents = new ArrayList<>();
-        Map<String, List<ArbitrageOpportunity>> arbitrageOpportunities = AppServiceUtils
-                .checkExchangesForArbitrageOpportunities(userMarketSettings, ordersBookRepository);
-
-        arbitrageOpportunities.forEach((coinName, arbitrageOpportunitiesList) -> {
-
-            ArbitrageEvent arbitrageEvent = new ArbitrageEvent();
-            List<EventData> eventDataList = AppServiceUtils.getEventDataFromArbitrageOpportunities(arbitrageOpportunitiesList, userMarketSettings);
-            arbitrageEvent.setEventData(eventDataList);
-
-            if (!arbitrageEvent.getEventData().isEmpty()) {
-                arbitrageEvent.setCoin(coinName);
-                arbitrageEvents.add(arbitrageEvent);
+    public CompletableFuture<List<ArbitrageEvent>> getArbitrageOpportunities(UserDetails userDetails) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (userDetails == null) {
+                return new ArrayList<>();
             }
+
+            var user = userRepository.findByUsername(userDetails.getUsername()).orElseThrow(() ->
+                    new UsernameNotFoundException("Пользователь не зарегистрирован")
+            );
+
+            UserMarketSettings userMarketSettings;
+            Optional<UserMarketSettings> optional = userMarketSettingsRepository.getByUser(user);
+            userMarketSettings = optional.orElseGet(() -> createUserMarketSettingsWithDefaults(user));
+
+            List<ArbitrageEvent> arbitrageEvents = new ArrayList<>();
+            Map<String, List<ArbitrageOpportunity>> arbitrageOpportunities = AppServiceUtils
+                    .checkExchangesForArbitrageOpportunities(userMarketSettings, ordersBookRepository);
+
+            arbitrageOpportunities.forEach((coinName, arbitrageOpportunitiesList) -> {
+
+                ArbitrageEvent arbitrageEvent = new ArbitrageEvent();
+                List<EventData> eventDataList = AppServiceUtils.getEventDataFromArbitrageOpportunities(arbitrageOpportunitiesList, userMarketSettings);
+                arbitrageEvent.setEventData(eventDataList);
+
+                if (!arbitrageEvent.getEventData().isEmpty()) {
+                    arbitrageEvent.setCoin(coinName);
+                    arbitrageEvents.add(arbitrageEvent);
+                }
+            });
+
+
+            return arbitrageEvents;
         });
-
-
-        return arbitrageEvents;
     }
 
     @Override
-//    @Scheduled(fixedRate = 1000 * 60)
+//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_REFRESH_COINS)
     public void refreshCoins() {
-        Map<String, Set<Coin>> updatedCoinsMap = AppServiceUtils.getCoinsAsync(exchangeRepository, apiExchangeAdapter);
-        updateCoins(updatedCoinsMap);
+        log.info("{} приступил к выполнению задачи refreshCoins", Thread.currentThread().getName());
+        Map<String, Set<Coin>> coins = AppServiceUtils.getCoinsAsync(exchangeRepository, apiExchangeAdapter);
+        if (!coins.isEmpty()) {
+            updateCoins(coins);
+        } else {
+            log.error("Ошибка обновления списка валют. В базе данных нет списка бирж.");
+        }
 
         log.info("Обновление списка валют успешно завершено");
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_ORDERS)
+//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_CHAINS)
+    @Transactional
+    public void getCoinsChains() {
+        log.info("{} приступил к выполнению задачи getCoinsChains", Thread.currentThread().getName());
+        Map<String, Set<Coin>> coinsMap = AppServiceUtils.getCoinsChainInfoAsync(apiExchangeAdapter, exchangeRepository, userMarketSettingsRepository);
+        coinsMap.forEach((exchange, coins) -> {
+            System.out.println(exchange);
+            coins.forEach(coin -> {
+                System.out.println(coin.getName());
+                coin.getChains().forEach(ch -> {
+                    System.out.println(ch.getName() + " " + ch.getCommission());
+                });
+            });
+            coinRepository.saveAll(coins);
+        });
+        log.info("Обновление списка сетей успешно завершено");
+    }
+
+    @Override
+//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_TRADING_FEE)
+    @Transactional
+    public void getTradingFee() {
+        log.info("{} приступил к выполнению задачи getTradingFee", Thread.currentThread().getName());
+
+        Map<String, Set<Coin>> coinsMap = AppServiceUtils.getTradingFeeAsync(apiExchangeAdapter, exchangeRepository, userMarketSettingsRepository);
+        coinsMap.forEach((exchange, coins) -> {
+            System.out.println("Exchange: " + exchange);
+            coins.forEach(coin -> {
+                System.out.println(coin.getName());
+                System.out.println(coin.getTakerFee());
+            });
+            coinRepository.saveAll(coins);
+        });
+
+        log.info("Обновление торговых комиссий успешно завершено");
+    }
+
+    @Override
+//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H)
+    @Transactional
+    public void getVolume24h() {
+        log.info("{} приступил к выполнению задачи getVolume24h", Thread.currentThread().getName());
+
+        Map<String, Set<Coin>> coinsMap = AppServiceUtils.getVolume24hAsync(apiExchangeAdapter, exchangeRepository, userMarketSettingsRepository);
+
+        coinsMap.forEach((exchange, coins) -> {
+            coinRepository.saveAll(coins);
+        });
+
+        log.info("Обновление суточного торгового объёма успешно завершено");
+    }
+
+    @Override
+//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_ORDERS)
     @Transactional
     public void getOrderBooks() {
-        long start = System.currentTimeMillis();
         List<OrdersBook> ordersBooks = AppServiceUtils.getOrderBooksAsync(
                 exchangeRepository,
                 apiExchangeAdapter,
@@ -108,14 +176,10 @@ public class AppServiceImpl implements AppService {
 
         ordersBookRepository.deleteAllInBatch();
         ordersBookRepository.saveAll(ordersBooks);
-
-        long end = System.currentTimeMillis() - start;
-//        System.out.println("Операция выполнена за " + end / 1000 + "s");
-//        log.info("Обновление стаканов цен успешно завершено");
     }
 
     @Transactional
-    private UserMarketSettings createUserMarketSettingsWithDefaults(User user) {
+    protected UserMarketSettings createUserMarketSettingsWithDefaults(User user) {
         List<String> exchangesNames = exchangeRepository.findAll().stream().map(Exchange::getName).toList();
         var userMarketSettings = UserMarketSettingsBuilder.getDefaultUserMarketSettings(user, exchangesNames);
 
@@ -123,7 +187,7 @@ public class AppServiceImpl implements AppService {
     }
 
     @Transactional
-    private void updateCoins(Map<String, Set<Coin>> coinsMap) {
+    protected void updateCoins(Map<String, Set<Coin>> coinsMap) {
         Set<Exchange> exchangesToUpdate = new HashSet<>();
         coinsMap.forEach((exchangeName, coins) -> {
             Exchange exchange = exchangeRepository.findByName(exchangeName);

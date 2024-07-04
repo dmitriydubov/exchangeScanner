@@ -1,10 +1,9 @@
 package com.exchange.scanner.services.impl.api;
 
 import com.exchange.scanner.dto.response.exchangedata.okx.depth.OKXCoinDepth;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.CoinDataTicker;
 import com.exchange.scanner.dto.response.exchangedata.okx.exchangeinfo.OKXSymbolData;
-import com.exchange.scanner.dto.response.exchangedata.okx.ticker.OKXDataTicker;
-import com.exchange.scanner.dto.response.exchangedata.okx.ticker.OKXTicker;
+import com.exchange.scanner.dto.response.exchangedata.okx.tickervolume.OKXDataVolumeTicker;
+import com.exchange.scanner.dto.response.exchangedata.okx.tickervolume.OKXVolumeTicker;
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.services.utils.ApiExchangeUtils;
@@ -21,7 +20,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -66,22 +67,66 @@ public class ApiOKX implements ApiExchange {
         }
 
         return responseEntity.getBody().getData().stream()
-                .filter(symbol -> symbol.getState().equals("live"))
+                .filter(symbol -> symbol.getQuoteCcy().equals("USDT") && symbol.getState().equals("live"))
                 .map(symbol -> CoinFactory.getCoin(symbol.getBaseCcy()))
                 .collect(Collectors.toSet());
     }
 
     @Override
-    public Map<String, List<CoinDataTicker>> getCoinDataTicker(Set<Coin> coins) {
-        Flux<OKXDataTicker> response = getCoinTicker(new ArrayList<>(coins))
-                .flatMapIterable(result -> result);
+    public Set<Coin> getCoinChain(Set<Coin> coins) {
+        return Set.of();
+    }
 
-        List<CoinDataTicker> coinDataTickers = response
-                .map(ApiOKX::getCoinDataTickerDTO)
-                .collectList()
-                .block();
+    @Override
+    public Set<Coin> getTradingFee(Set<Coin> coins) {
+        return Set.of();
+    }
 
-        return Collections.singletonMap(NAME, coinDataTickers);
+    @Override
+    public Set<Coin> getCoinVolume24h(Set<Coin> coins) {
+        Set<Coin> coinsWithVolume24h = new HashSet<>();
+
+        coins.forEach(coin -> {
+            OKXVolumeTicker response = getCoinTickerVolume(coin).block();
+            if (response != null) {
+                OKXDataVolumeTicker volumeTicker = response.getData().stream()
+                        .filter(dataResponse -> dataResponse.getInstType().equals("SPOT"))
+                        .findFirst().orElse(null);
+                if (volumeTicker != null) {
+                    coin.setVolume24h(new BigDecimal(volumeTicker.getVolCcy24h()));
+                    coinsWithVolume24h.add(coin);
+                }
+            }
+
+            try {
+                Thread.sleep(REQUEST_DELAY_DURATION);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
+            }
+        });
+
+        return coinsWithVolume24h;
+    }
+
+    private Mono<OKXVolumeTicker> getCoinTickerVolume(Coin coin) {
+        String symbol = coin.getName() + "-USDT";
+
+        return webClient
+                .get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/v5/market/ticker")
+                        .queryParam("instId", symbol)
+                        .build()
+                )
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                            log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                            return Mono.empty();
+                        })
+                )
+                .bodyToMono(OKXVolumeTicker.class);
     }
 
     @Override
@@ -92,7 +137,6 @@ public class ApiOKX implements ApiExchange {
                 .collectList()
                 .block()));
     }
-
 
     private Flux<CoinDepth> getCoinDepth(Set<String> coins) {
         List<String> coinSymbols = coins.stream().map(coin -> coin + "-USDT").toList();
@@ -106,11 +150,14 @@ public class ApiOKX implements ApiExchange {
                                     .queryParam("sz", DEPTH_REQUEST_LIMIT)
                                     .build())
                         .retrieve()
+                        .onStatus(
+                                status -> status.is4xxClientError() || status.is5xxServerError(),
+                                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                                    log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
+                                    return Mono.empty();
+                                })
+                        )
                         .bodyToFlux(String.class)
-                        .onErrorResume(throwable -> {
-                            log.error("Ошибка получения информации от " + NAME + ". Причина: {}", throwable.getLocalizedMessage());
-                            return Flux.empty();
-                        })
                         .map(response -> {
                             try {
                                 OKXCoinDepth okxCoinDepth = objectMapper.readValue(response, OKXCoinDepth.class);
@@ -122,47 +169,5 @@ public class ApiOKX implements ApiExchange {
                             }
                         })
                 );
-    }
-
-    private Flux<List<OKXDataTicker>> getCoinTicker(List<Coin> coins) {
-        List<String> coinsSymbols = coins.stream()
-                .map(coin -> coin.getSymbol() + "-USDT")
-                .toList();
-
-        return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/api/v5/market/tickers")
-                        .queryParam("instType", "SPOT")
-                        .build()
-                )
-                .retrieve()
-                .bodyToFlux(OKXTicker.class)
-                .onErrorMap(throwable -> {
-                    log.error("Ошибка получения информации от " + NAME, throwable);
-                    return new RuntimeException("Ошибка получения информации от " + NAME, throwable);
-                })
-                .flatMapIterable(OKXTicker::getData)
-                .filter(ticker -> coinsSymbols.contains(ticker.getInstId()) && isNotEmptyValues(ticker))
-                .collectList()
-                .flux();
-    }
-
-    private static CoinDataTicker getCoinDataTickerDTO(OKXDataTicker ticker) {
-        return new CoinDataTicker(
-                ticker.getInstId().replaceAll("-", ""),
-                ticker.getVol24h(),
-                ticker.getBidPx(),
-                ticker.getAskPx()
-        );
-    }
-
-    private static boolean isNotEmptyValues(OKXDataTicker ticker) {
-        return ticker.getBidPx() != null &&
-                ticker.getAskPx() != null &&
-                ticker.getVol24h() != null &&
-                !ticker.getBidPx().isEmpty() &&
-                !ticker.getAskPx().isEmpty() &&
-                !ticker.getVol24h().isEmpty();
     }
 }

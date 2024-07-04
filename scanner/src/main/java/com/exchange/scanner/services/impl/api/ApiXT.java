@@ -1,11 +1,9 @@
 package com.exchange.scanner.services.impl.api;
 
-import com.exchange.scanner.dto.response.exchangedata.responsedata.CoinDataTicker;
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.xt.depth.XTCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.xt.exchangeinfo.XTSymbolData;
-import com.exchange.scanner.dto.response.exchangedata.xt.ticker.XTTicker;
-import com.exchange.scanner.dto.response.exchangedata.xt.ticker.XTTickerResult;
+import com.exchange.scanner.dto.response.exchangedata.xt.tickervolume.XTVolumeTicker;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.services.utils.ApiExchangeUtils;
 import com.exchange.scanner.services.utils.CoinFactory;
@@ -22,7 +20,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -67,7 +67,11 @@ public class ApiXT implements ApiExchange {
         }
 
         return responseEntity.getBody().getResult().getSymbols().stream()
-                .filter(symbol -> symbol.getTradingEnabled() && symbol.getState().equals("ONLINE"))
+                .filter(symbol ->
+                        symbol.getQuoteCurrency().equals("usdt") &&
+                        symbol.getTradingEnabled() &&
+                        symbol.getState().equals("ONLINE")
+                )
                 .map(symbol -> {
                     String coinName = symbol.getBaseCurrency().toUpperCase();
                     return CoinFactory.getCoin(coinName);
@@ -76,16 +80,57 @@ public class ApiXT implements ApiExchange {
     }
 
     @Override
-    public Map<String, List<CoinDataTicker>> getCoinDataTicker(Set<Coin> coins) {
-        Flux<XTTickerResult> response = getCoinTicker(new ArrayList<>(coins))
-                .flatMapIterable(result -> result);
+    public Set<Coin> getCoinChain(Set<Coin> coins) {
+        return Set.of();
+    }
 
-        List<CoinDataTicker> coinDataTickers = response
-                .map(ApiXT::getCoinDataTickerDTO)
-                .collectList()
-                .block();
+    @Override
+    public Set<Coin> getTradingFee(Set<Coin> coins) {
+        return Set.of();
+    }
 
-        return Collections.singletonMap(NAME, coinDataTickers);
+    @Override
+    public Set<Coin> getCoinVolume24h(Set<Coin> coins) {
+        Set<Coin> coinsWithVolume24h = new HashSet<>();
+
+        XTVolumeTicker response = getCoinTickerVolume(new ArrayList<>(coins)).blockLast();
+
+        if (response == null) return  coinsWithVolume24h;
+        coins.forEach(coin -> {
+            response.getResult().stream()
+                .filter(responseData -> responseData.getS().endsWith("_usdt"))
+                .forEach(responseData -> {
+                    if (coin.getName().equals(responseData.getS().replaceAll("_usdt", "").toUpperCase())) {
+                        coin.setVolume24h(new BigDecimal(responseData.getV()));
+                        coinsWithVolume24h.add(coin);
+                    }
+                });
+        });
+
+        return coinsWithVolume24h;
+    }
+
+    private Flux<XTVolumeTicker> getCoinTickerVolume(List<Coin> coins) {
+        int maxSymbolPerRequest = 100;
+        List<List<Coin>> partitions = ListUtils.partition(coins, maxSymbolPerRequest);
+
+        return Flux.fromIterable(partitions)
+                .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
+                .flatMap(partition -> webClient
+                        .get()
+                        .uri(uriBuilder -> uriBuilder.path("/v4/public/ticker")
+                                .queryParam("symbols", generateParameters(partition))
+                                .build()
+                        )
+                        .retrieve()
+                        .onStatus(
+                                status -> status.is4xxClientError() || status.is5xxServerError(),
+                                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                                    log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                                    return Mono.empty();
+                                })
+                        )
+                        .bodyToFlux(XTVolumeTicker.class));
     }
 
     @Override
@@ -96,7 +141,6 @@ public class ApiXT implements ApiExchange {
                 .collectList()
                 .block()));
     }
-
 
     private Flux<CoinDepth> getCoinDepth(Set<String> coins) {
         List<String> coinSymbols = coins.stream().map(coin -> coin.toLowerCase() + "_usdt").toList();
@@ -111,11 +155,14 @@ public class ApiXT implements ApiExchange {
                                 .build()
                         )
                         .retrieve()
+                        .onStatus(
+                                status -> status.is4xxClientError() || status.is5xxServerError(),
+                                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                                    log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
+                                    return Mono.empty();
+                                })
+                        )
                         .bodyToFlux(String.class)
-                        .onErrorResume(throwable -> {
-                            log.error("Ошибка получения информации от " + NAME + ". Причина: {}", throwable.getLocalizedMessage());
-                            return Flux.empty();
-                        })
                         .map(response -> {
                             try {
                                 XTCoinDepth xtCoinDepth = objectMapper.readValue(response, XTCoinDepth.class);
@@ -129,38 +176,6 @@ public class ApiXT implements ApiExchange {
                 );
     }
 
-    private Flux<List<XTTickerResult>> getCoinTicker(List<Coin> coins) {
-        int maxSymbolPerRequest = 100;
-        List<List<Coin>> partitions = ListUtils.partition(coins, maxSymbolPerRequest);
-
-        return Flux.fromIterable(partitions)
-                .flatMap(partition -> webClient
-                        .get()
-                        .uri(uriBuilder -> uriBuilder.path("/v4/public/ticker")
-                                .queryParam("symbols", generateParameters(partition))
-                                .build()
-                        )
-                        .retrieve()
-                        .bodyToFlux(XTTicker.class))
-                .onErrorMap(throwable -> {
-                    log.error("Ошибка получения информации от " + NAME, throwable);
-                    return new RuntimeException("Ошибка получения информации от " + NAME, throwable);
-                })
-                .flatMapIterable(XTTicker::getResult)
-                .filter(ApiXT::isNotEmptyValue)
-                .collectList()
-                .flux();
-    }
-
-    private static CoinDataTicker getCoinDataTickerDTO(XTTickerResult ticker) {
-        return new CoinDataTicker(
-                ticker.getS().toUpperCase().replaceAll("_", ""),
-                ticker.getV(),
-                ticker.getBp(),
-                ticker.getAp()
-        );
-    }
-
     private static String generateParameters(List<Coin> coins) {
         String parameters;
         StringBuilder sb = new StringBuilder();
@@ -171,14 +186,5 @@ public class ApiXT implements ApiExchange {
         parameters = sb.toString();
 
         return parameters;
-    }
-
-    private static boolean isNotEmptyValue(XTTickerResult result) {
-        return result.getBp() != null &&
-                result.getAp() != null &&
-                result.getV() != null &&
-                !result.getBp().isEmpty() &&
-                !result.getAp().isEmpty() &&
-                !result.getV().isEmpty();
     }
 }

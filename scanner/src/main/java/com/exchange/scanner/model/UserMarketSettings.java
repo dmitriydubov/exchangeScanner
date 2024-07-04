@@ -36,7 +36,7 @@ public class UserMarketSettings {
     @Column(name = "percent_spread", nullable = false)
     private Double percentSpread;
 
-    @ElementCollection(fetch = FetchType.LAZY)
+    @ElementCollection(fetch = FetchType.EAGER)
     private List<String> coins;
 
     @ElementCollection(fetch = FetchType.LAZY)

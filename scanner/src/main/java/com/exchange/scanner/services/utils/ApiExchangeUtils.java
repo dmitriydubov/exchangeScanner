@@ -19,11 +19,112 @@ import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.Coi
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepthAsk;
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepthBid;
 import com.exchange.scanner.dto.response.exchangedata.xt.depth.XTCoinDepth;
-
+import lombok.extern.slf4j.Slf4j;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import javax.xml.bind.DatatypeConverter;
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 public class ApiExchangeUtils {
+
+    public static String generateGateIOSignature(String secret, String data) {
+        String algorithm = "HmacSHA512";
+
+        try {
+            Mac sha512Hmac = Mac.getInstance(algorithm);
+            SecretKeySpec secretKey = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), algorithm);
+            sha512Hmac.init(secretKey);
+            byte[] hash = sha512Hmac.doFinal(data.getBytes(StandardCharsets.UTF_8));
+            return DatatypeConverter.printHexBinary(hash).toLowerCase();
+        } catch (NoSuchAlgorithmException | InvalidKeyException ex) {
+            log.error("Ошибка генерации подписи запроса для Gate.io. Причина: {}", ex.getLocalizedMessage());
+            return "";
+        }
+    }
+
+    public static String hashSHA512(String input) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-512");
+            byte[] digest = md.digest(input.getBytes(StandardCharsets.UTF_8));
+            return DatatypeConverter.printHexBinary(digest).toLowerCase();
+        } catch (NoSuchAlgorithmException ex) {
+            log.error("Ошибка в методе hashSHA512. Причина: {}", ex.getLocalizedMessage());
+            return "";
+        }
+    }
+
+    public static String generateMexcSignature(Map<String, String> params, String secretKey) {
+        params.put("timestamp", String.valueOf(System.currentTimeMillis()));
+        params.put("recvWindow", "5000");
+
+        String queryString = params.entrySet().stream()
+                .map(entry -> entry.getKey() + "=" + entry.getValue())
+                .collect(Collectors.joining("&"));
+
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKeySpec = new SecretKeySpec(secretKey.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+            mac.init(secretKeySpec);
+            byte[] hash = mac.doFinal(queryString.getBytes(StandardCharsets.UTF_8));
+
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+
+            return hexString.toString();
+        } catch (NoSuchAlgorithmException | InvalidKeyException ex) {
+            log.error("Ошибка генерации подписи запроса для Mexc. Причина: {}", ex.getLocalizedMessage());
+            return "";
+        }
+    }
+
+    public static String generateKucoinSignature(String secretKey, String strToSign) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKeySpec = new SecretKeySpec(secretKey.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+            mac.init(secretKeySpec);
+            byte[] hash = mac.doFinal(strToSign.getBytes(StandardCharsets.UTF_8));
+
+            return Base64.getEncoder().encodeToString(hash);
+        } catch (NoSuchAlgorithmException | InvalidKeyException ex) {
+            log.error("Ошибка генерации подписи запроса для Kucoin. Причина: {}", ex.getLocalizedMessage());
+            return "";
+        }
+    }
+
+    public static String generateKucoinPassphrase(String secretKey, String passphrase) {
+        return generateKucoinSignature(secretKey, passphrase);
+    }
+
+    public static String generateBybitSignature(String stringToSign, String secret) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKeySpec = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+            mac.init(secretKeySpec);
+            byte[] hash = mac.doFinal(stringToSign.getBytes(StandardCharsets.UTF_8));
+
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+
+            return hexString.toString();
+        } catch (NoSuchAlgorithmException | InvalidKeyException ex) {
+            log.error("Ошибка генерации подписи запроса для Bybit. Причина: {}", ex.getLocalizedMessage());
+            return "";
+        }
+    }
 
     public static CoinDepth getBinanceCoinDepth(BinanceCoinDepth depth) {
 
@@ -205,25 +306,27 @@ public class ApiExchangeUtils {
         coinDepth.setCoinName(depth.getCoinName());
 
         Set<CoinDepthBid> coinDepthBids = new HashSet<>();
-        for (int i = 0; i < depth.getBids().size() / 2; i++) {
+
+        int checkBidOrdersSum = 0;
+        for (int i = 0; i < depth.getBids().size(); i++) {
             CoinDepthBid coinDepthBid = new CoinDepthBid();
-            if (i % 2 == 0) {
-                coinDepthBid.setPrice(depth.getBids().get(i));
-            } else {
-                coinDepthBid.setVolume(depth.getBids().get(i));
-            }
+            coinDepthBid.setPrice(depth.getBids().get(i));
+            coinDepthBid.setVolume(depth.getBids().get(i + 1));
+            checkBidOrdersSum += 2;
             coinDepthBids.add(coinDepthBid);
+            if (checkBidOrdersSum == depth.getBids().size()) break;
         }
 
         Set<CoinDepthAsk> coinDepthAsks =new HashSet<>();
-        for (int i = 0; i < depth.getAsks().size() / 2; i++) {
+
+        int checkAskOrdersSum = 0;
+        for (int i = 0; i < depth.getAsks().size(); i++) {
             CoinDepthAsk coinDepthAsk = new CoinDepthAsk();
-            if (i % 2 == 0) {
-                coinDepthAsk.setPrice(depth.getBids().get(i));
-            } else {
-                coinDepthAsk.setVolume(depth.getBids().get(i));
-            }
+            coinDepthAsk.setPrice(depth.getAsks().get(i));
+            coinDepthAsk.setVolume(depth.getAsks().get(i + 1));
+            checkAskOrdersSum += 2;
             coinDepthAsks.add(coinDepthAsk);
+            if (checkAskOrdersSum == depth.getAsks().size()) break;
         }
 
         coinDepth.setCoinDepthBids(coinDepthBids);
@@ -320,7 +423,7 @@ public class ApiExchangeUtils {
             return coinDepthBid;
         }).collect(Collectors.toSet());
 
-        Set<CoinDepthAsk> coinDepthAsks = depth.getData().getDepth().getBids().stream().map(value -> {
+        Set<CoinDepthAsk> coinDepthAsks = depth.getData().getDepth().getAsks().stream().map(value -> {
             CoinDepthAsk coinDepthAsk = new CoinDepthAsk();
             coinDepthAsk.setPrice(value.get(0));
             coinDepthAsk.setVolume(value.get(1));
@@ -387,14 +490,14 @@ public class ApiExchangeUtils {
         CoinDepth coinDepth = new CoinDepth();
         coinDepth.setCoinName(depth.getCoinName());
 
-        Set<CoinDepthBid> coinDepthBids = depth.getData().stream().filter(data -> data.getSide().equals("buy")).map(value -> {
+        Set<CoinDepthBid> coinDepthBids = depth.getData().stream().filter(data -> data.getSide().equals("sell")).map(value -> {
             CoinDepthBid coinDepthBid = new CoinDepthBid();
             coinDepthBid.setPrice(value.getPrice());
             coinDepthBid.setVolume(value.getQuantity());
             return coinDepthBid;
         }).collect(Collectors.toSet());
 
-        Set<CoinDepthAsk> coinDepthAsks = depth.getData().stream().filter(data -> data.getSide().equals("sell")).map(value -> {
+        Set<CoinDepthAsk> coinDepthAsks = depth.getData().stream().filter(data -> data.getSide().equals("buy")).map(value -> {
             CoinDepthAsk coinDepthAsk = new CoinDepthAsk();
             coinDepthAsk.setPrice(value.getPrice());
             coinDepthAsk.setVolume(value.getQuantity());

@@ -9,5 +9,7 @@ public class Symbols {
 
     private String baseCoin;
 
+    private String quoteCoin;
+
     private String showStatus;
 }

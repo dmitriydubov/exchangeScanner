@@ -9,5 +9,7 @@ public class Symbols {
 
     private String baseCcy;
 
+    private String quoteCcy;
+
     private String state;
 }

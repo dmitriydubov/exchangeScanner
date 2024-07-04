@@ -7,7 +7,9 @@ import lombok.Setter;
 @Setter
 public class Symbols {
 
-    private String coin;
+    private String baseCoin;
 
-    private String transfer;
+    private String quoteCoin;
+
+    private String status;
 }

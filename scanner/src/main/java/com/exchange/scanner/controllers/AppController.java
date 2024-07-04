@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 
 @RestController
 @RequiredArgsConstructor
@@ -20,12 +21,12 @@ public class AppController {
     private final AppService appService;
 
     @GetMapping("/get-exchanges")
-    public ResponseEntity<Set<String>> exchanges() {
-        return ResponseEntity.ok(appService.getExchanges());
+    public ResponseEntity<Set<String>> exchanges() throws ExecutionException, InterruptedException {
+        return ResponseEntity.ok(appService.getExchanges().get());
     }
 
     @GetMapping("/refresh-data")
-    public ResponseEntity<List<ArbitrageEvent>> refreshData(@AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(appService.getArbitrageOpportunities(userDetails));
+    public ResponseEntity<List<ArbitrageEvent>> refreshData(@AuthenticationPrincipal UserDetails userDetails) throws ExecutionException, InterruptedException {
+        return ResponseEntity.ok(appService.getArbitrageOpportunities(userDetails).get());
     }
 }

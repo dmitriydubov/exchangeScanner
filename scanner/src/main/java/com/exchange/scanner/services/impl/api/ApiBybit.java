@@ -1,11 +1,12 @@
 package com.exchange.scanner.services.impl.api;
 
+import com.exchange.scanner.dto.response.exchangedata.bybit.chains.BybitChainsResponse;
 import com.exchange.scanner.dto.response.exchangedata.bybit.depth.BybitCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.bybit.exchangeinfo.BybitSymbolData;
-import com.exchange.scanner.dto.response.exchangedata.bybit.ticker.BybitCoinTicker;
-import com.exchange.scanner.dto.response.exchangedata.bybit.ticker.BybitCoinTickerList;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.CoinDataTicker;
+import com.exchange.scanner.dto.response.exchangedata.bybit.tickervolume.BybitCoinTickerVolume;
+import com.exchange.scanner.dto.response.exchangedata.bybit.tradingfee.BybitTradingFeeResponse;
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
+import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.services.utils.ApiExchangeUtils;
 import com.exchange.scanner.services.utils.CoinFactory;
@@ -14,6 +15,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -21,14 +23,23 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
+import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 @Slf4j
 public class ApiBybit implements ApiExchange {
+
+    @Value("${exchanges.apiKeys.Bybit.key}")
+    private String key;
+
+    @Value("${exchanges.apiKeys.Bybit.secret}")
+    private String secret;
 
     @Autowired
     private RestTemplate restTemplate;
@@ -67,22 +78,161 @@ public class ApiBybit implements ApiExchange {
 
         return responseEntity.getBody()
                 .getResult().getList()
-                .stream().filter(symbol -> symbol.getShowStatus().equals("1"))
+                .stream().filter(symbol -> symbol.getShowStatus().equals("1") && symbol.getQuoteCoin().equals("USDT"))
                 .map(symbol -> CoinFactory.getCoin(symbol.getBaseCoin()))
                 .collect(Collectors.toSet());
     }
 
     @Override
-    public Map<String, List<CoinDataTicker>> getCoinDataTicker(Set<Coin> coins) {
-        Flux<BybitCoinTickerList> response = getCoinTicker(new ArrayList<>(coins))
-                .flatMapIterable(result -> result);
+    public Set<Coin> getCoinChain(Set<Coin> coins) {
+        Set<Coin> coinsWithChains = new HashSet<>();
 
-        List<CoinDataTicker> coinDataTickers = response
-                .map(ApiBybit::getCoinDataTickerDTO)
-                .collectList()
-                .block();
+        coins.forEach(coin -> {
+            BybitChainsResponse response = getChains(coin).block();
 
-        return Collections.singletonMap(NAME, coinDataTickers);
+            if (response != null) {
+                Set<Chain> chains = new HashSet<>();
+                response.getResult().getRows().getFirst().getChains().forEach(chainResponse -> {
+                    Chain chain = new Chain();
+                    chain.setName(chainResponse.getChain().toUpperCase());
+                    chain.setCommission(new BigDecimal(chainResponse.getWithdrawFee()));
+                    chains.add(chain);
+                });
+                coin.setChains(chains);
+                coinsWithChains.add(coin);
+            }
+
+            try {
+                Thread.sleep(REQUEST_DELAY_DURATION);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
+            }
+        });
+
+        return coinsWithChains;
+    }
+
+    private Mono<BybitChainsResponse> getChains(Coin coin) {
+        String timestamp = Long.toString(ZonedDateTime.now().toInstant().toEpochMilli());
+        String recv = "5000";
+        String paramStr = "coin=" + coin.getName();
+        String stringToSign = timestamp + key + recv + paramStr;
+        String sign = ApiExchangeUtils.generateBybitSignature(stringToSign, secret);
+
+        return webClient
+                .get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/v5/asset/coin/query-info")
+                        .queryParam("coin", coin.getName())
+                        .build()
+                )
+                .header("X-BAPI-SIGN", sign)
+                .header("X-BAPI-API-KEY", key)
+                .header("X-BAPI-TIMESTAMP", timestamp)
+                .header("X-BAPI-RECV-WINDOW", recv)
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                            log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
+                            return Mono.empty();
+                        })
+                )
+                .bodyToMono(BybitChainsResponse.class);
+    }
+
+    @Override
+    public Set<Coin> getTradingFee(Set<Coin> coins) {
+        Set<Coin> coinsWithTradingFee = new HashSet<>();
+
+        coins.forEach(coin -> {
+            BybitTradingFeeResponse response = getFee(coin).block();
+            if (response != null) {
+                coin.setTakerFee(new BigDecimal(response.getResult().getList().getFirst().getTakerFeeRate()));
+                coinsWithTradingFee.add(coin);
+            }
+
+            try {
+                Thread.sleep(REQUEST_DELAY_DURATION);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
+            }
+        });
+
+        return coinsWithTradingFee;
+    }
+
+    private Mono<BybitTradingFeeResponse> getFee(Coin coin) {
+        String symbol = coin.getName() + "USDT";
+        String timestamp = Long.toString(ZonedDateTime.now().toInstant().toEpochMilli());
+        String recv = "5000";
+        String paramStr = "category=spot" + "&" + "symbol=" + symbol;
+        String stringToSign = timestamp + key + recv + paramStr;
+        String sign = ApiExchangeUtils.generateBybitSignature(stringToSign, secret);
+
+        return webClient
+                .get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/v5/account/fee-rate")
+                        .queryParam("category", "spot")
+                        .queryParam("symbol", symbol)
+                        .build()
+                )
+                .header("X-BAPI-SIGN", sign)
+                .header("X-BAPI-API-KEY", key)
+                .header("X-BAPI-TIMESTAMP", timestamp)
+                .header("X-BAPI-RECV-WINDOW", recv)
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                            log.error("Ошибка получения торговой комиссии от " + NAME + ". Для торговой пары {}. Причина: {}", symbol, errorBody);
+                            return Mono.empty();
+                        })
+                )
+                .bodyToMono(BybitTradingFeeResponse.class);
+    }
+
+    @Override
+    public Set<Coin> getCoinVolume24h(Set<Coin> coins) {
+        Set<Coin> coinsWithVolume24h = new HashSet<>();
+
+        coins.forEach(coin -> {
+            BybitCoinTickerVolume response = getCoinTickerVolume(coin).block();
+            if (response != null) {
+                coin.setVolume24h(new BigDecimal(response.getResult().getQv()));
+                coinsWithVolume24h.add(coin);
+            }
+
+            try {
+                Thread.sleep(REQUEST_DELAY_DURATION);
+            } catch (InterruptedException ex) {
+                throw  new RuntimeException();
+            }
+        });
+
+        return coinsWithVolume24h;
+    }
+
+    private Mono<BybitCoinTickerVolume> getCoinTickerVolume(Coin coin) {
+        String symbol = coin.getName() + "USDT";
+
+        return webClient
+                .get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/spot/v3/public/quote/ticker/24hr")
+                        .queryParam("symbol", symbol)
+                        .build()
+                )
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                            log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                            return Mono.empty();
+                        })
+                )
+                .bodyToMono(BybitCoinTickerVolume.class);
     }
 
     @Override
@@ -93,7 +243,6 @@ public class ApiBybit implements ApiExchange {
                 .collectList()
                 .block()));
     }
-
 
     private Flux<CoinDepth> getCoinDepth(Set<String> coins) {
         List<String> coinSymbols = coins.stream().map(coin -> coin + "USDT").toList();
@@ -108,11 +257,14 @@ public class ApiBybit implements ApiExchange {
                                 .build()
                         )
                         .retrieve()
+                        .onStatus(
+                                status -> status.is4xxClientError() || status.is5xxServerError(),
+                                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                                    log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
+                                    return Mono.empty();
+                                })
+                        )
                         .bodyToFlux(String.class)
-                        .onErrorResume(throwable -> {
-                            log.error("Ошибка получения информации от " + NAME + ". Причина: {}", throwable.getLocalizedMessage());
-                            return Flux.empty();
-                        })
                         .map(response -> {
                             try {
                                 BybitCoinDepth bybitCoinDepth = objectMapper.readValue(response, BybitCoinDepth.class);
@@ -124,46 +276,5 @@ public class ApiBybit implements ApiExchange {
                             }
                         })
                 );
-    }
-
-    private Flux<List<BybitCoinTickerList>> getCoinTicker(List<Coin> coins) {
-        List<String> coinsSymbols = coins.stream()
-                .map(coin -> coin.getSymbol() + "USDT")
-                .toList();
-
-        return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/spot/v3/public/quote/ticker/24hr")
-                        .build()
-                )
-                .retrieve()
-                .bodyToFlux(BybitCoinTicker.class)
-                .onErrorMap(throwable -> {
-                    log.error("Ошибка получения информации от " + NAME, throwable);
-                    return new RuntimeException("Ошибка получения информации от " + NAME, throwable);
-                })
-                .flatMapIterable(ticker -> ticker.getResult().getList())
-                .filter(result -> coinsSymbols.contains(result.getS()) && isNotEmptyValues(result))
-                .collectList()
-                .flux();
-    }
-
-    private static CoinDataTicker getCoinDataTickerDTO(BybitCoinTickerList tickerList) {
-        return new CoinDataTicker(
-                tickerList.getS(),
-                tickerList.getV(),
-                tickerList.getBp(),
-                tickerList.getAp()
-        );
-    }
-
-    private static boolean isNotEmptyValues(BybitCoinTickerList result) {
-        return result.getBp() != null &&
-                result.getAp() != null &&
-                result.getV() != null &&
-                !result.getBp().isEmpty() &&
-                !result.getAp().isEmpty() &&
-                !result.getV().isEmpty();
     }
 }

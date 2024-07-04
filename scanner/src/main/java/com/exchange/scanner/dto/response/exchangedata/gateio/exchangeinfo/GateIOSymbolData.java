@@ -8,17 +8,10 @@ import lombok.Setter;
 @Setter
 public class GateIOSymbolData {
 
-    private String currency;
+    private String base;
 
-    @JsonProperty("delisted")
-    private Boolean deListed;
+    private String quote;
 
-    @JsonProperty("trade_disabled")
-    private Boolean tradeDisabled;
-
-    @JsonProperty("withdraw_disabled")
-    private Boolean withdrawDisabled;
-
-    @JsonProperty("deposit_disabled")
-    private Boolean depositDisabled;
+    @JsonProperty("trade_status")
+    private String tradeStatus;
 }

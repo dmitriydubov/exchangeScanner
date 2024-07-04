@@ -1,11 +1,10 @@
 package com.exchange.scanner.services.impl.api;
 
 import com.exchange.scanner.dto.response.exchangedata.coinw.depth.CoinWCoinDepth;
-import com.exchange.scanner.dto.response.exchangedata.coinw.symbol.CoinWSymbol;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.CoinDataTicker;
 import com.exchange.scanner.dto.response.exchangedata.coinw.exchangeinfo.CoinWSymbolData;
-import com.exchange.scanner.dto.response.exchangedata.coinw.ticker.CoinWTicker;
-import com.exchange.scanner.dto.response.exchangedata.coinw.ticker.CoinWTickerData;
+import com.exchange.scanner.dto.response.exchangedata.coinw.symbol.CoinWSymbol;
+import com.exchange.scanner.dto.response.exchangedata.coinw.tickervolume.CoinWVolumeTicker;
+import com.exchange.scanner.dto.response.exchangedata.coinw.tickervolume.CoinWVolumeTickerData;
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.services.utils.ApiExchangeUtils;
@@ -21,10 +20,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.*;
-import java.util.stream.Collectors;
+import java.util.stream.Collectors;;
 
 @Service
 @Slf4j
@@ -53,7 +54,7 @@ public class ApiCoinW implements ApiExchange {
     @Override
     public Set<Coin> getAllCoins() {
 
-        String url = BASE_ENDPOINT + "/appApi.html?action=currencys";
+        String url = BASE_ENDPOINT + "/appApi.html?action=symbols";
 
         ResponseEntity<CoinWSymbolData> responseEntity = restTemplate.getForEntity(url, CoinWSymbolData.class);
         HttpStatusCode statusCode = responseEntity.getStatusCode();
@@ -63,23 +64,64 @@ public class ApiCoinW implements ApiExchange {
             throw new RuntimeException("Ошибка получения данных от CoinW, код: " + statusCode);
         }
 
-        return responseEntity.getBody().getData().getSymbols().values().stream()
-                .filter(symbol -> !symbol.getRecharge().equals("0") && !symbol.getWithDraw().equals("0"))
-                .map(symbol -> CoinFactory.getCoin(symbol.getShortName()))
+        return responseEntity.getBody().getData().stream()
+                .filter(symbol -> symbol.getBaseCurrency().equals("USDT") && symbol.getFStatus() == 1)
+                .map(symbol -> CoinFactory.getCoin(symbol.getQuoteCurrency()))
                 .collect(Collectors.toSet());
     }
 
     @Override
-    public Map<String, List<CoinDataTicker>> getCoinDataTicker(Set<Coin> coins) {
-        Flux<CoinWTickerData> response = getCoinTicker(new ArrayList<>(coins))
-                .flatMapIterable(result -> result);
+    public Set<Coin> getCoinChain(Set<Coin> coins) {
+        return Set.of();
+    }
 
-        List<CoinDataTicker> coinDataTickers = response
-                .map(ApiCoinW::getCoinDataTickerDTO)
-                .collectList()
-                .block();
+    @Override
+    public Set<Coin> getTradingFee(Set<Coin> coins) {
+        return Set.of();
+    }
 
-        return Collections.singletonMap(NAME, coinDataTickers);
+    @Override
+    public Set<Coin> getCoinVolume24h(Set<Coin> coins) {
+        Set<Coin> coinsWithVolume24h = new HashSet<>();
+
+        CoinWVolumeTicker response = getCoinTickerVolume().block();
+
+        if (response == null) return coinsWithVolume24h;
+
+        List<CoinWVolumeTickerData> dataList = response.getData().stream()
+                .filter(responseData -> responseData.getBaseCurrency().equals("USDT"))
+                .toList();
+
+        coins.forEach(coin -> {
+            dataList.forEach(responseData -> {
+                if (coin.getName().equals(responseData.getQuoteCurrency())) {
+                    coin.setVolume24h(new BigDecimal(responseData.getTotal24()));
+                    coinsWithVolume24h.add(coin);
+                }
+            });
+        });
+
+        return coinsWithVolume24h;
+    }
+
+    private Mono<CoinWVolumeTicker> getCoinTickerVolume() {
+
+        return webClient
+                .get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/appApi.html")
+                        .queryParam("action", "symbols")
+                        .build()
+                )
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                            log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                            return Mono.empty();
+                        })
+                )
+                .bodyToMono(CoinWVolumeTicker.class);
     }
 
     @Override
@@ -102,11 +144,14 @@ public class ApiCoinW implements ApiExchange {
                         .build()
                 )
                 .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                            log.error("Ошибка получения идентификатора монеты от " + NAME + ". Причина: {}", errorBody);
+                            return Mono.empty();
+                        })
+                )
                 .bodyToFlux(CoinWSymbol.class)
-                .onErrorResume(throwable -> {
-                    log.error("Ошибка получения информации от " + NAME + ". Причина: {}", throwable.getLocalizedMessage());
-                    return Flux.empty();
-                })
                 .map(response -> Collections.singletonMap(
                         coin, ApiExchangeUtils.getCoinWSymbolNumber(response.getData().getSymbol(), coin))
                 )
@@ -130,57 +175,17 @@ public class ApiCoinW implements ApiExchange {
                         .build()
                 )
                 .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                            log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
+                            return Mono.empty();
+                        })
+                )
                 .bodyToFlux(CoinWCoinDepth.class)
-                .onErrorMap(throwable -> {
-                    log.error("Ошибка получения информации от " + NAME, throwable);
-                    return new RuntimeException("Ошибка получения информации от " + NAME, throwable);
-                })
                 .map(response -> {
                     response.setCoinName(coin.replaceAll("/USDT", ""));
                     return ApiExchangeUtils.getCoinWCoinDepth(response);
                 });
-    }
-
-    private Flux<List<CoinWTickerData>> getCoinTicker(List<Coin> coins) {
-        List<String> coinsSymbols = coins.stream()
-                .map(Coin::getSymbol)
-                .toList();
-
-        return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/appApi.html")
-                        .queryParam("action", "symbols")
-                        .build()
-                )
-                .retrieve()
-                .bodyToFlux(CoinWTicker.class)
-                .onErrorMap(throwable -> {
-                    log.error("Ошибка получения информации от" + NAME, throwable);
-                    return new RuntimeException("Ошибка получения информации от" + NAME, throwable);
-                })
-                .flatMapIterable(CoinWTicker::getData)
-                .filter(ticker -> coinsSymbols.contains(ticker.getQuoteCurrency()) &&
-                        ticker.getFStatus() == 1 &&
-                        isNotEmptyValues(ticker)
-                )
-                .collectList()
-                .flux();
-    }
-
-    private static CoinDataTicker getCoinDataTickerDTO(CoinWTickerData ticker) {
-        return new CoinDataTicker(
-                ticker.getQuoteCurrency() + ticker.getBaseCurrency(),
-                ticker.getTotal24(),
-                ticker.getLatestDealPrice(),
-                ticker.getLatestDealPrice()
-        );
-    }
-
-    private static boolean isNotEmptyValues(CoinWTickerData ticker) {
-        return ticker.getLatestDealPrice() != null &&
-                ticker.getTotal24() != null &&
-                !ticker.getLatestDealPrice().isEmpty() &&
-                !ticker.getTotal24().isEmpty();
     }
 }

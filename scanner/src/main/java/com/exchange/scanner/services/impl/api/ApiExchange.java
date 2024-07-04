@@ -11,7 +11,11 @@ import java.util.Set;
 public interface ApiExchange {
     Set<Coin> getAllCoins();
 
-    Map<String, List<CoinDataTicker>> getCoinDataTicker(Set<Coin> coins);
+    Set<Coin> getCoinVolume24h(Set<Coin> coins);
 
     Set<CoinDepth> getOrderBook(Set<String> coins);
+
+    Set<Coin> getCoinChain(Set<Coin> coins);
+
+    Set<Coin> getTradingFee(Set<Coin> coins);
 }

@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.BatchSize;
+import org.hibernate.annotations.processing.SQL;
 
 import java.util.HashSet;
 import java.util.Objects;
@@ -35,8 +36,8 @@ public class Exchange {
     @ManyToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
     @JoinTable(
             name = "exchanges_coins",
-            joinColumns = @JoinColumn(name = "coin_id"),
-            inverseJoinColumns = @JoinColumn(name = "exchange_id")
+            joinColumns = @JoinColumn(name = "exchange_id"),
+            inverseJoinColumns = @JoinColumn(name = "coin_id")
     )
     @BatchSize(size = 1000)
     private Set<Coin> coins = new HashSet<>();

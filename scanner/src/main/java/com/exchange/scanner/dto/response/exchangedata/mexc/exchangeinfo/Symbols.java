@@ -9,4 +9,5 @@ public class Symbols {
 
     private String status;
     private String baseAsset;
+    private String quoteAsset;
 }

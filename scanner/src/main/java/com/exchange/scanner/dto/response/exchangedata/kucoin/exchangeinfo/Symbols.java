@@ -7,5 +7,9 @@ import lombok.Setter;
 @Setter
 public class Symbols {
 
-    private String currency;
+    private String baseCurrency;
+
+    private String quoteCurrency;
+
+    private Boolean enableTrading;
 }

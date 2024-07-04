@@ -22,13 +22,33 @@ spring:
       ddl-auto: update
     show-sql: false
     open-in-view: false
+    defer-datasource-initialization: true
+  sql:
+    init:
+      mode: always
 
-
+#Api ключи бирж необходимо заменить на свои
 exchanges:
   apiKeys:
+    #Api ключ Gate.io с истекающим сроком
     gateIO:
       key: 772206b7012c7e1032e2bcb6d206716d
       secret: ac5066ea5bed73af02bd53ad998045d879e2a93c0ae4b33dd6c339d4057c6d02
     MEXC:
       key: mx0vglPGU3h0E9HsH9
       secret: 9db3c31ec9ec4ff5bef23a4e4c73b8bd
+    Kucoin:
+      key: 6682ea71c3ea0f0001512c6c
+      secret: 79d4417f-f6ae-43e5-a07f-77ce2555a2ce
+      passphrase: passphrase
+    #Api ключ Bybit с истекающим сроком
+    Bybit:
+      key: jF9vCKenFLZVvoUnIM
+      secret: YXzD07o4fFFQqaSafzFWGnoZ0fdoGCuoO2qD
+    #Api ключ Huobi с истекающим сроком
+    Huobi:
+      key: 822a8341-e3fa1297-bgbfh5tv3f-8e510
+      secret: 4fe780a3-fe999617-6cac79b9-9c040
+    Poloniex:
+      key: F7GHAMP0-7N2BC4PM-DKG7XJKG-4MUTCIL2
+      secret: 511c555da114daf6d0353f802df31b6f817eeb28fa4765c1f5c557d46c70f15882bdf2a55e86de0284bf0e175e550d5c66d66d357933442ff48cdd7f33fd1448

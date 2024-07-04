@@ -10,5 +10,5 @@ import java.util.List;
 @Setter
 public class Currencies {
 
-    private List<Symbols> currencies;
+    private List<Symbols> symbols;
 }

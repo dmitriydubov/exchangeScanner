@@ -24,4 +24,10 @@ public class ArbitrageOpportunity {
     private String averagePriceForBuy;
 
     private String averagePriceForSell;
+
+    private String exchangeForBuyVolume24h;
+
+    private String exchangeForSellVolume24h;
+
+    private TradingData tradingData;
 }

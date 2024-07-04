@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -28,6 +29,20 @@ public class Coin {
 
     @Column(name = "is_block_by_superuser")
     private Boolean isBlockBySuperuser = false;
+
+    @Column(name = "taker_fee", nullable = false, precision = 38, scale = 3)
+    private BigDecimal takerFee = new BigDecimal(0);
+
+    @Column(name = "volume24h", nullable = false, precision = 38)
+    private BigDecimal volume24h = new BigDecimal(0);
+
+    @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @JoinTable(
+            name = "chain_coins",
+            joinColumns = @JoinColumn(name = "coin_id"),
+            inverseJoinColumns = @JoinColumn(name = "chain_id")
+    )
+    private Set<Chain> chains = new HashSet<>();
 
     @ManyToMany(mappedBy = "coins", cascade = CascadeType.ALL)
     private Set<Exchange> exchanges = new HashSet<>();

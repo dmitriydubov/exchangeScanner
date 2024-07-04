@@ -9,6 +9,8 @@ public class Symbols {
 
     private String baseCurrency;
 
+    private String quoteCurrency;
+
     private String state;
 
     private Boolean tradingEnabled;

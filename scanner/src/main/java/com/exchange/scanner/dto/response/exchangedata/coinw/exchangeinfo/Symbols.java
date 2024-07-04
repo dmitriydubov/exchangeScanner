@@ -1,5 +1,6 @@
 package com.exchange.scanner.dto.response.exchangedata.coinw.exchangeinfo;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -7,9 +8,12 @@ import lombok.Setter;
 @Setter
 public class Symbols {
 
-    private String shortName;
+    @JsonProperty("base-currency")
+    private String baseCurrency;
 
-    private String withDraw;
+    @JsonProperty("quote-currency")
+    private String quoteCurrency;
 
-    private String recharge;
+    @JsonProperty("fStatus")
+    private Integer fStatus;
 }

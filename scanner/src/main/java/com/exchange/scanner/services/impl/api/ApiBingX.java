@@ -1,9 +1,7 @@
 package com.exchange.scanner.services.impl.api;
 
 import com.exchange.scanner.dto.response.exchangedata.bingx.depth.BingXCoinDepth;
-import com.exchange.scanner.dto.response.exchangedata.bingx.ticker.BingXTicker;
-import com.exchange.scanner.dto.response.exchangedata.bingx.ticker.BingXTickerData;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.CoinDataTicker;
+import com.exchange.scanner.dto.response.exchangedata.bingx.tickervolume.BingXVolumeTicker;
 import com.exchange.scanner.dto.response.exchangedata.bingx.exchangeinfo.BingXSymbolData;
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Coin;
@@ -22,8 +20,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.util.*;
@@ -74,7 +74,7 @@ public class ApiBingX implements ApiExchange {
         try {
             BingXSymbolData data = objectMapper.readValue(responseEntity.getBody(), BingXSymbolData.class);
             return data.getData().getSymbols().stream()
-                    .filter(symbol -> symbol.getStatus() == 1)
+                    .filter(symbol -> symbol.getSymbol().endsWith("-USDT") && symbol.getStatus() == 1)
                     .map(symbol -> {
                         String coinName = CoinFactory.refactorToStandardCoinName(symbol.getSymbol(), "-");
                         return CoinFactory.getCoin(coinName);
@@ -87,16 +87,57 @@ public class ApiBingX implements ApiExchange {
     }
 
     @Override
-    public Map<String, List<CoinDataTicker>> getCoinDataTicker(Set<Coin> coins) {
-        Flux<BingXTickerData> response = getCoinTicker(new ArrayList<>(coins))
-                .flatMapIterable(result -> result);
+    public Set<Coin> getCoinChain(Set<Coin> coins) {
+        return Set.of();
+    }
 
-        List<CoinDataTicker> coinDataTickers = response
-                .map(ApiBingX::getCoinDataTickerDTO)
-                .collectList()
-                .block();
+    @Override
+    public Set<Coin> getTradingFee(Set<Coin> coins) {
+        return Set.of();
+    }
 
-        return Collections.singletonMap(NAME, coinDataTickers);
+    @Override
+    public Set<Coin> getCoinVolume24h(Set<Coin> coins) {
+        Set<Coin> coinsWithVolume24h = new HashSet<>();
+
+        coins.forEach(coin -> {
+            BingXVolumeTicker response = getCoinTickerVolume(coin).block();
+
+            if (response != null) {
+                coin.setVolume24h(new BigDecimal(response.getData().getFirst().getQuoteVolume()));
+                coinsWithVolume24h.add(coin);
+            }
+
+            try {
+                Thread.sleep(REQUEST_DELAY_DURATION);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
+            }
+        });
+
+        return coinsWithVolume24h;
+    }
+
+    private Mono<BingXVolumeTicker> getCoinTickerVolume(Coin coin) {
+        String symbol = coin.getName() + "-USDT";
+
+        return webClient
+                .get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/openApi/spot/v1/ticker/24hr")
+                        .queryParam("symbol", symbol)
+                        .queryParam("timestamp", new Timestamp(System.currentTimeMillis()).getTime())
+                        .build()
+                )
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                            log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                            return Mono.empty();
+                        })
+                )
+                .bodyToMono(BingXVolumeTicker.class);
     }
 
     @Override
@@ -107,7 +148,6 @@ public class ApiBingX implements ApiExchange {
                 .collectList()
                 .block()));
     }
-
 
     private Flux<CoinDepth> getCoinDepth(Set<String> coins) {
         List<String> coinSymbols = coins.stream().map(coin -> coin + "_USDT").toList();
@@ -123,11 +163,14 @@ public class ApiBingX implements ApiExchange {
                                 .build()
                         )
                         .retrieve()
+                        .onStatus(
+                                status -> status.is4xxClientError() || status.is5xxServerError(),
+                                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                                    log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
+                                    return Mono.empty();
+                                })
+                        )
                         .bodyToFlux(String.class)
-                        .onErrorResume(throwable -> {
-                            log.error("Ошибка получения информации от " + NAME + ". Причина: {}", throwable.getLocalizedMessage());
-                            return Flux.empty();
-                        })
                         .map(response -> {
                             try {
                                 BingXCoinDepth bingXCoinDepth = objectMapper.readValue(response, BingXCoinDepth.class);
@@ -139,47 +182,5 @@ public class ApiBingX implements ApiExchange {
                             }
                         })
                 );
-    }
-
-    private Flux<List<BingXTickerData>> getCoinTicker(List<Coin> coins) {
-        List<String> coinsSymbols = coins.stream()
-                .map(coin -> coin.getSymbol() + "-USDT")
-                .toList();
-
-        return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/openApi/spot/v1/ticker/24hr")
-                        .queryParam("timestamp", new Timestamp(System.currentTimeMillis()).getTime())
-                        .build()
-                )
-                .retrieve()
-                .bodyToFlux(BingXTicker.class)
-                .onErrorMap(throwable -> {
-                    log.error("Ошибка получения информации от " + NAME, throwable);
-                    return new RuntimeException("Ошибка получения информации от " + NAME, throwable);
-                })
-                .flatMapIterable(BingXTicker::getData)
-                .filter(ticker -> coinsSymbols.contains(ticker.getSymbol()) && isNotEmptyValues(ticker))
-                .collectList()
-                .flux();
-    }
-
-    private static CoinDataTicker getCoinDataTickerDTO(BingXTickerData ticker) {
-        return new CoinDataTicker(
-                ticker.getSymbol().replaceAll("-", ""),
-                ticker.getVolume(),
-                ticker.getBidPrice(),
-                ticker.getAskPrice()
-        );
-    }
-
-    private static boolean isNotEmptyValues(BingXTickerData ticker) {
-        return ticker.getBidPrice() != null &&
-                ticker.getAskPrice() != null &&
-                ticker.getVolume() != null &&
-                !ticker.getBidPrice().isEmpty() &&
-                !ticker.getAskPrice().isEmpty() &&
-                !ticker.getVolume().isEmpty();
     }
 }

@@ -7,8 +7,9 @@ import lombok.Setter;
 @Setter
 public class Symbols {
 
-    private String tags;
-    private String dn;
-    private Boolean de;
-    private Boolean wed;
+    private String bcdn;
+
+    private String qcdn;
+
+    private Boolean te;
 }

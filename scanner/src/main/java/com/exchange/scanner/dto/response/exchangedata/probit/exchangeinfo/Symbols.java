@@ -8,14 +8,11 @@ import lombok.Setter;
 @Setter
 public class Symbols {
 
-    private String id;
+    @JsonProperty("base_currency_id")
+    private String baseCurrencyId;
 
-    @JsonProperty("deposit_suspended")
-    private Boolean depositSuspended;
+    @JsonProperty("quote_currency_id")
+    private String quoteCurrencyId;
 
-    @JsonProperty("withdrawal_suspended")
-    private Boolean withdrawalSuspended;
-
-    @JsonProperty("show_in_ui")
-    private Boolean showInUI;
+    private Boolean closed;
 }

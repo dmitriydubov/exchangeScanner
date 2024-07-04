@@ -21,7 +21,7 @@ public class EventData {
 
     private String fiatSpread;
 
-    private String percentSpread;
+    private String coinSpread;
 
     private String averagePriceForBuy;
 

@@ -10,4 +10,7 @@ public class Symbols {
 
     @JsonProperty("base_ccy")
     private String baseCcy;
+
+    @JsonProperty("quote_ccy")
+    private String quoteCcy;
 }

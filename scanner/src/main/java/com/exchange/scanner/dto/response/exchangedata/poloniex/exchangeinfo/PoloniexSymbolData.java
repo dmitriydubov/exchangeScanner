@@ -1,19 +1,15 @@
 package com.exchange.scanner.dto.response.exchangedata.poloniex.exchangeinfo;
 
-import com.fasterxml.jackson.annotation.JsonAnySetter;
 import lombok.Getter;
-
-import java.util.HashMap;
-import java.util.Map;
+import lombok.Setter;
 
 @Getter
+@Setter
 public class PoloniexSymbolData {
 
-    private Map<String, Symbols> currencies = new HashMap<>();
+    private String baseCurrencyName;
 
-    @JsonAnySetter
-    public void addCurrency(String key, Symbols value) {
-        currencies.put(key, value);
-    }
+    private String quoteCurrencyName;
 
+    private String state;
 }

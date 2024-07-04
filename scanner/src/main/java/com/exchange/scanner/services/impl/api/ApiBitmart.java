@@ -2,9 +2,7 @@ package com.exchange.scanner.services.impl.api;
 
 import com.exchange.scanner.dto.response.exchangedata.bitmart.depth.BitmartCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.bitmart.exchangeinfo.BitmartSymbolData;
-import com.exchange.scanner.dto.response.exchangedata.bitmart.ticker.BitmartTicker;
-import com.exchange.scanner.dto.response.exchangedata.bitmart.ticker.BitmartTickerData;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.CoinDataTicker;
+import com.exchange.scanner.dto.response.exchangedata.bitmart.tickervolume.BitmartVolumeTicker;
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.services.utils.ApiExchangeUtils;
@@ -23,6 +21,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -56,7 +55,7 @@ public class ApiBitmart implements ApiExchange {
     @Override
     public Set<Coin> getAllCoins() {
 
-        String url = BASE_ENDPOINT + "/spot/v1/currencies";
+        String url = BASE_ENDPOINT + "/spot/v1/symbols/details";
 
         ResponseEntity<BitmartSymbolData> responseEntity = restTemplate.getForEntity(url, BitmartSymbolData.class);
         HttpStatusCode statusCode = responseEntity.getStatusCode();
@@ -66,23 +65,62 @@ public class ApiBitmart implements ApiExchange {
             throw new RuntimeException("Ошибка получения данных от Bitmart, код: " + statusCode);
         }
 
-        return responseEntity.getBody().getData().getCurrencies().stream()
-                .filter(symbol -> symbol.getDepositEnabled() && symbol.getWithdrawEnabled())
-                .map(symbol -> CoinFactory.getCoin(symbol.getId()))
+        return responseEntity.getBody().getData().getSymbols().stream()
+                .filter(symbol -> symbol.getQuoteCurrency().equals("USDT") && symbol.getTradeStatus().equals("trading"))
+                .map(symbol -> CoinFactory.getCoin(symbol.getBaseCurrency()))
                 .collect(Collectors.toSet());
     }
 
     @Override
-    public Map<String, List<CoinDataTicker>> getCoinDataTicker(Set<Coin> coins) {
-        Flux<BitmartTickerData> response = getCoinTicker(new ArrayList<>(coins))
-                .flatMapIterable(result -> result);
+    public Set<Coin> getCoinChain(Set<Coin> coins) {
+        return Set.of();
+    }
 
-        List<CoinDataTicker> coinDataTickers = response
-                .map(ApiBitmart::getCoinDataTickerDTO)
-                .collectList()
-                .block();
+    @Override
+    public Set<Coin> getTradingFee(Set<Coin> coins) {
+        return Set.of();
+    }
 
-        return Collections.singletonMap(NAME, coinDataTickers);
+    @Override
+    public Set<Coin> getCoinVolume24h(Set<Coin> coins) {
+        Set<Coin> coinsWithVolume24h = new HashSet<>();
+
+        coins.forEach(coin -> {
+            BitmartVolumeTicker response = getCoinTickerVolume(coin).block();
+
+            if (response != null) {
+                coin.setVolume24h(new BigDecimal(response.getData().getQv24h()));
+                coinsWithVolume24h.add(coin);
+            }
+
+            try {
+                Thread.sleep(REQUEST_DELAY_DURATION);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
+            }
+        });
+
+        return coinsWithVolume24h;
+    }
+
+    public Mono<BitmartVolumeTicker> getCoinTickerVolume(Coin coin) {
+        String symbol = coin.getSymbol() + "_USDT";
+
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/spot/quotation/v3/ticker")
+                        .queryParam("symbol", symbol)
+                        .build()
+                )
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                            log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                            return Mono.empty();
+                        })
+                )
+                .bodyToMono(BitmartVolumeTicker.class);
     }
 
     @Override
@@ -93,7 +131,6 @@ public class ApiBitmart implements ApiExchange {
                 .collectList()
                 .block()));
     }
-
 
     private Flux<CoinDepth> getCoinDepth(Set<String> coins) {
         List<String> coinSymbols = coins.stream().map(coin -> coin + "_USDT").toList();
@@ -107,11 +144,14 @@ public class ApiBitmart implements ApiExchange {
                                 .queryParam("limit", DEPTH_REQUEST_LIMIT)
                                 .build())
                         .retrieve()
+                        .onStatus(
+                                status -> status.is4xxClientError() || status.is5xxServerError(),
+                                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                                    log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
+                                    return Mono.empty();
+                                })
+                        )
                         .bodyToFlux(String.class)
-                        .onErrorResume(throwable -> {
-                            log.error("Ошибка получения информации от " + NAME + ". Причина: {}", throwable.getLocalizedMessage());
-                            return Flux.empty();
-                        })
                         .map(response -> {
                             try {
                                 BitmartCoinDepth bitmartCoinDepth = objectMapper.readValue(response, BitmartCoinDepth.class);
@@ -122,55 +162,5 @@ public class ApiBitmart implements ApiExchange {
                             }
                         })
                 );
-    }
-
-    public Flux<List<BitmartTickerData>> getCoinTicker(List<Coin> coins) {
-        List<String> coinsSymbols = coins.stream()
-                .map(coin -> coin.getSymbol() + "_USDT")
-                .toList();
-
-        return webClient.get()
-                .uri("/spot/quotation/v3/tickers")
-                .retrieve()
-                .bodyToMono(BitmartTicker.class)
-                .onErrorMap(throwable -> {
-                    log.error("Ошибка получения информации от " + NAME, throwable);
-                    return new RuntimeException("Ошибка получения информации от " + NAME, throwable);
-                })
-                .flatMap(response -> {
-                    List<List<Object>> rawData = response.getData();
-                    List<BitmartTickerData> tickerData = new ArrayList<>();
-                    for (List<Object> dataLine : rawData) {
-                        BitmartTickerData ticker = new BitmartTickerData();
-                        ticker.setSymbol((String) dataLine.get(0));
-                        ticker.setQv24h((String) dataLine.get(3));
-                        ticker.setBidPx((String) dataLine.get(8));
-                        ticker.setAskPx((String) dataLine.get(10));
-                        tickerData.add(ticker);
-                    }
-                    return Mono.just(tickerData);
-                })
-                .flatMapIterable(ticker -> ticker)
-                .filter(ticker -> coinsSymbols.contains(ticker.getSymbol()) && isNotEmptyValues(ticker))
-                .collectList()
-                .flux();
-    }
-
-    private static CoinDataTicker getCoinDataTickerDTO(BitmartTickerData ticker) {
-        return new CoinDataTicker(
-                ticker.getSymbol().replaceAll("_", ""),
-                ticker.getQv24h(),
-                ticker.getBidPx(),
-                ticker.getAskPx()
-        );
-    }
-
-    private static boolean isNotEmptyValues(BitmartTickerData ticker) {
-        return ticker.getBidPx() != null &&
-                ticker.getAskPx() != null &&
-                ticker.getQv24h() != null &&
-                !ticker.getBidPx().isEmpty() &&
-                !ticker.getAskPx().isEmpty() &&
-                !ticker.getQv24h().isEmpty();
     }
 }

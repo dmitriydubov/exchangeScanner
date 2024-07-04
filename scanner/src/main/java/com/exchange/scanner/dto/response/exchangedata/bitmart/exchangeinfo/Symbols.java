@@ -8,11 +8,12 @@ import lombok.Setter;
 @Setter
 public class Symbols {
 
-    private String id;
+    @JsonProperty("base_currency")
+    private String baseCurrency;
 
-    @JsonProperty("withdraw_enabled")
-    private Boolean withdrawEnabled;
+    @JsonProperty("quote_currency")
+    private String quoteCurrency;
 
-    @JsonProperty("deposit_enabled")
-    private Boolean depositEnabled;
+    @JsonProperty("trade_status")
+    private String tradeStatus;
 }

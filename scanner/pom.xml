@@ -73,7 +73,18 @@
 			<artifactId>jackson-databind</artifactId>
 			<version>2.15.3</version>
 		</dependency>
-		<!-- Test -->
+		<!--SDK бирж. Jar файлы исходного кода каждой из библиотек добавлены в локальный репозиторий.-->
+		<dependency>
+			<groupId>com.huobi</groupId>
+			<artifactId>huobi-client</artifactId>
+			<version>2.0.3</version>
+		</dependency>
+		<dependency>
+			<groupId>com.poloniex</groupId>
+			<artifactId>polo-sdk</artifactId>
+			<version>1.0.0</version>
+		</dependency>
+<!--		 Test -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
@@ -85,6 +96,17 @@
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
+	<repositories>
+		<repository>
+			<id>central</id>
+			<name>Central Repository</name>
+			<url>https://repo1.maven.org/maven2</url>
+			<layout>default</layout>
+			<snapshots>
+				<enabled>false</enabled>
+			</snapshots>
+		</repository>
+	</repositories>
 	<build>
 		<plugins>
 			<plugin>
