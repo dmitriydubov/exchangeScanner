@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.BatchSize;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 import org.hibernate.annotations.processing.SQL;
 
 import java.util.HashSet;
@@ -33,27 +35,13 @@ public class Exchange {
     @Column(name = "is_block_by_superuser")
     private Boolean isBlockBySuperuser = false;
 
-    @ManyToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
+    @ManyToMany(fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     @JoinTable(
             name = "exchanges_coins",
             joinColumns = @JoinColumn(name = "exchange_id"),
             inverseJoinColumns = @JoinColumn(name = "coin_id")
     )
+    @OnDelete(action = OnDeleteAction.CASCADE)
     @BatchSize(size = 1000)
     private Set<Coin> coins = new HashSet<>();
-
-    @Override
-    @Transient
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        Exchange exchange = (Exchange) o;
-        return Objects.equals(name, exchange.name);
-    }
-
-    @Override
-    @Transient
-    public int hashCode() {
-        return Objects.hashCode(name);
-    }
 }

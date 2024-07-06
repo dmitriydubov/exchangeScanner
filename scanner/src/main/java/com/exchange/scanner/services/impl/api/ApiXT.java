@@ -1,23 +1,21 @@
 package com.exchange.scanner.services.impl.api;
 
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.xt.chains.XTChainResponse;
+import com.exchange.scanner.dto.response.exchangedata.xt.chains.XTChainResult;
 import com.exchange.scanner.dto.response.exchangedata.xt.depth.XTCoinDepth;
-import com.exchange.scanner.dto.response.exchangedata.xt.exchangeinfo.XTSymbolData;
+import com.exchange.scanner.dto.response.exchangedata.xt.coins.XTCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.xt.tickervolume.XTVolumeTicker;
+import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.ApiExchangeUtils;
 import com.exchange.scanner.services.utils.CoinFactory;
 import com.exchange.scanner.services.utils.ListUtils;
 import com.exchange.scanner.services.utils.WebClientBuilder;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.exchange.scanner.services.utils.XT.XTCoinDepthBuilder;
+import com.exchange.scanner.services.utils.XT.XTSignatureBuilder;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
-import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -31,11 +29,11 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ApiXT implements ApiExchange {
 
-    @Autowired
-    private RestTemplate restTemplate;
+    @Value("${exchanges.apiKeys.XT.key}")
+    private String key;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    @Value("${exchanges.apiKeys.XT.secret}")
+    private String secret;
 
     private static final String NAME = "XT";
 
@@ -55,38 +53,121 @@ public class ApiXT implements ApiExchange {
 
     @Override
     public Set<Coin> getAllCoins() {
+        Set<Coin> coins = new HashSet<>();
 
-        String url = BASE_ENDPOINT + "/v4/public/symbol";
+        XTCurrencyResponse response = getCurrencies().block();
 
-        ResponseEntity<XTSymbolData> responseEntity = restTemplate.getForEntity(url, XTSymbolData.class);
-        HttpStatusCode statusCode = responseEntity.getStatusCode();
+        if (response == null) return coins;
 
-        if (statusCode != HttpStatus.OK || responseEntity.getBody() == null) {
-            log.error("Ошибка получения данных от XT, код: {}", statusCode);
-            throw new RuntimeException("Ошибка получения данных от XT, код: " + statusCode);
-        }
-
-        return responseEntity.getBody().getResult().getSymbols().stream()
+        coins = response.getResult().getSymbols().stream()
                 .filter(symbol ->
                         symbol.getQuoteCurrency().equals("usdt") &&
-                        symbol.getTradingEnabled() &&
-                        symbol.getState().equals("ONLINE")
+                                symbol.getTradingEnabled() &&
+                                symbol.getState().equals("ONLINE")
                 )
                 .map(symbol -> {
                     String coinName = symbol.getBaseCurrency().toUpperCase();
                     return CoinFactory.getCoin(coinName);
                 })
                 .collect(Collectors.toSet());
+
+        return coins;
+    }
+
+    private Mono<XTCurrencyResponse> getCurrencies() {
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/v4/public/symbol")
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения списка валют. Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(XTCurrencyResponse.class);
     }
 
     @Override
     public Set<Coin> getCoinChain(Set<Coin> coins) {
-        return Set.of();
+        Set<Coin> coinsWithChains = new HashSet<>();
+
+        XTChainResponse response = getChains().block();
+
+        if (response == null) return coinsWithChains;
+
+        Set<String> coinsNames = coins.stream()
+                .map(Coin::getName)
+                .collect(Collectors.toSet());
+
+        coinsNames.forEach(System.out::println);
+        List<XTChainResult> xtChainResultListFiltered = response.getResult().stream()
+                .filter(result -> coinsNames.contains(result.getCurrency().toUpperCase()))
+                .toList();
+
+        coins.forEach(coin -> {
+            Set<Chain> chains = new HashSet<>();
+
+            xtChainResultListFiltered.forEach(result -> {
+                if (coin.getName().equals(result.getCurrency().toUpperCase())) {
+                    result.getSupportChains().stream()
+                        .filter(chainResponse -> chainResponse.getDepositEnabled() && chainResponse.getWithdrawEnabled())
+                        .forEach(chainResponse -> {
+                            Chain chain = new Chain();
+                            chain.setName(chainResponse.getChain());
+                            chain.setCommission(new BigDecimal(chainResponse.getWithdrawFeeAmount()));
+                            chains.add(chain);
+                        });
+                }
+            });
+            coin.setChains(chains);
+            coinsWithChains.add(coin);
+        });
+
+
+        return coinsWithChains;
+    }
+
+    private Mono<XTChainResponse> getChains() {
+        String requestPath = "/v4/public/wallet/support/currency";
+        TreeMap<String, String> params = new TreeMap<>();
+        XTSignatureBuilder signatureBuilder = new XTSignatureBuilder(key, secret, params);
+        signatureBuilder.createSignature("GET", requestPath);
+
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path(requestPath)
+                    .build()
+            )
+            .headers(httpHeaders -> {
+                signatureBuilder.getHeaders().forEach(httpHeaders::add);
+            })
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(XTChainResponse.class);
     }
 
     @Override
     public Set<Coin> getTradingFee(Set<Coin> coins) {
-        return Set.of();
+        Set<Coin> coinsFee = new HashSet<>();
+
+        coins.forEach(coin -> {
+            coin.setTakerFee(BigDecimal.ZERO);
+            coinsFee.add(coin);
+        });
+
+        return coinsFee;
     }
 
     @Override
@@ -115,71 +196,71 @@ public class ApiXT implements ApiExchange {
         List<List<Coin>> partitions = ListUtils.partition(coins, maxSymbolPerRequest);
 
         return Flux.fromIterable(partitions)
-                .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
-                .flatMap(partition -> webClient
-                        .get()
-                        .uri(uriBuilder -> uriBuilder.path("/v4/public/ticker")
-                                .queryParam("symbols", generateParameters(partition))
-                                .build()
-                        )
-                        .retrieve()
-                        .onStatus(
-                                status -> status.is4xxClientError() || status.is5xxServerError(),
-                                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                                    log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
-                                    return Mono.empty();
-                                })
-                        )
-                        .bodyToFlux(XTVolumeTicker.class));
+            .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
+            .flatMap(partition -> webClient
+                .get()
+                .uri(uriBuilder -> uriBuilder.path("/v4/public/ticker")
+                        .queryParam("symbols", generateParameters(partition))
+                        .build()
+                )
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                            log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                            return Mono.empty();
+                        })
+                )
+                .bodyToFlux(XTVolumeTicker.class));
     }
 
     @Override
     public Set<CoinDepth> getOrderBook(Set<String> coins) {
-        Flux<CoinDepth> response = getCoinDepth(coins);
+        Set<CoinDepth> coinDepthSet = new HashSet<>();
 
-        return new HashSet<>(Objects.requireNonNull(response
-                .collectList()
-                .block()));
+        coins.forEach(coin -> {
+            XTCoinDepth response = getCoinDepth(coin).block();
+
+            if (response != null) {
+                CoinDepth coinDepth = XTCoinDepthBuilder.getCoinDepth(coin, response.getResult());
+                coinDepthSet.add(coinDepth);
+            }
+
+            try {
+                Thread.sleep(REQUEST_DELAY_DURATION);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
+            }
+        });
+
+        return coinDepthSet;
     }
 
-    private Flux<CoinDepth> getCoinDepth(Set<String> coins) {
-        List<String> coinSymbols = coins.stream().map(coin -> coin.toLowerCase() + "_usdt").toList();
+    private Mono<XTCoinDepth> getCoinDepth(String coinName) {
+        String symbol = coinName.toLowerCase() + "_usdt";
 
-        return Flux.fromIterable(coinSymbols)
-                .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
-                .flatMap(coin -> webClient
-                        .get()
-                        .uri(uriBuilder -> uriBuilder.path("/v4/public/depth")
-                                .queryParam("symbol", coin)
-                                .queryParam("limit", DEPTH_REQUEST_LIMIT)
-                                .build()
-                        )
-                        .retrieve()
-                        .onStatus(
-                                status -> status.is4xxClientError() || status.is5xxServerError(),
-                                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                                    log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
-                                    return Mono.empty();
-                                })
-                        )
-                        .bodyToFlux(String.class)
-                        .map(response -> {
-                            try {
-                                XTCoinDepth xtCoinDepth = objectMapper.readValue(response, XTCoinDepth.class);
-                                xtCoinDepth.setCoinName(coin.replaceAll("_usdt", "").toUpperCase());
-
-                                return ApiExchangeUtils.getXTCoinDepth(xtCoinDepth);
-                            } catch (JsonProcessingException e) {
-                                throw new RuntimeException(e);
-                            }
-                        })
-                );
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder.path("/v4/public/depth")
+                    .queryParam("symbol", symbol)
+                    .queryParam("limit", DEPTH_REQUEST_LIMIT)
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(XTCoinDepth.class);
     }
 
     private static String generateParameters(List<Coin> coins) {
         String parameters;
         StringBuilder sb = new StringBuilder();
-        coins.forEach(coin -> sb.append(coin.getSymbol().toLowerCase())
+        coins.forEach(coin -> sb.append(coin.getName().toLowerCase())
                 .append("_usdt")
                 .append(","));
         sb.deleteCharAt(sb.length() - 1);

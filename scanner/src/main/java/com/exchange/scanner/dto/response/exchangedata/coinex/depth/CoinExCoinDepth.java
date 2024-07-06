@@ -1,6 +1,5 @@
 package com.exchange.scanner.dto.response.exchangedata.coinex.depth;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -8,11 +7,5 @@ import lombok.Setter;
 @Setter
 public class CoinExCoinDepth {
 
-    @JsonIgnore
-    private Integer code;
-
-    private Data data;
-
-    @JsonIgnore
-    private String message;
+    private CoinExDepthData data;
 }

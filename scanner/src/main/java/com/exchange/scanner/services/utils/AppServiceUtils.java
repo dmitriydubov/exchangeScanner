@@ -7,6 +7,8 @@ import com.exchange.scanner.repositories.ExchangeRepository;
 import com.exchange.scanner.repositories.OrdersBookRepository;
 import com.exchange.scanner.repositories.UserMarketSettingsRepository;
 import com.exchange.scanner.services.ApiExchangeAdapter;
+import com.exchange.scanner.services.utils.ordersbook.OrdersBookUtils;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -163,8 +165,12 @@ public class AppServiceUtils {
                 Set<String> filteredCoinsNames = AppServiceUtils.getFilteredCoinsNames(exchange, usersCoinsNames);
                 Set<CoinDepth> coinDepth = apiExchangeAdapter.getOrderBook(exchange, filteredCoinsNames);
                 coinDepth.forEach(depth -> {
-                    OrdersBook ordersBook = AppServiceUtils.createOrderBook(exchange, depth);
-                    ordersBooks.add(ordersBook);
+                    synchronized (ordersBooks) {
+                        OrdersBook ordersBook = OrdersBookUtils.createOrderBook(exchange, depth);
+                        if (ordersBook != null) {
+                            ordersBooks.add(ordersBook);
+                        }
+                    }
                 });
             },executorService);
             futures.add(future);
@@ -194,42 +200,6 @@ public class AppServiceUtils {
                 .collect(Collectors.toSet());
     }
 
-    public static OrdersBook createOrderBook(Exchange exchange, CoinDepth depth) {
-        OrdersBook ordersBook = new OrdersBook();
-        ordersBook.setExchange(exchange);
-        ordersBook.setCoin(
-                exchange.getCoins().stream()
-                        .filter(coin -> coin.getName().equals(depth.getCoinName()))
-                        .findFirst().orElseThrow(() -> new RuntimeException("Ошибка в методе getOrderBooks. Монеты нет в списке монет биржи"))
-        );
-
-        List<Bid> bids = depth.getCoinDepthBids().stream()
-                .map(depthBid -> {
-                    Bid bid = new Bid();
-                    bid.setOrdersBook(ordersBook);
-                    bid.setPrice(new BigDecimal(depthBid.getPrice()));
-                    bid.setVolume(new BigDecimal(depthBid.getVolume()));
-                    return bid;
-                })
-                .toList();
-
-        List<Ask> asks = depth.getCoinDepthAsks().stream()
-                .map(depthAsk -> {
-                    Ask ask = new Ask();
-                    ask.setOrdersBook(ordersBook);
-                    ask.setPrice(new BigDecimal(depthAsk.getPrice()));
-                    ask.setVolume(new BigDecimal(depthAsk.getVolume()));
-                    return ask;
-                })
-                .toList();
-
-        ordersBook.setBids(bids);
-        ordersBook.setAsks(asks);
-
-        return ordersBook;
-    }
-
-    @Transactional
     public static Map<String, List<ArbitrageOpportunity>> checkExchangesForArbitrageOpportunities(
             UserMarketSettings userMarketSettings,
             OrdersBookRepository ordersBookRepository
@@ -312,7 +282,6 @@ public class AppServiceUtils {
                 ));
     }
 
-    @Transactional
     private static TradingData getChainData(Bid bid, Ask ask) {
         Coin coinAsk = ask.getOrdersBook().getCoin();
         Coin coinBid = bid.getOrdersBook().getCoin();

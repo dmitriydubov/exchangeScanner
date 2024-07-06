@@ -5,23 +5,17 @@ import com.exchange.scanner.dto.response.exchangedata.probit.chains.ProbitChainD
 import com.exchange.scanner.dto.response.exchangedata.probit.depth.ProbitCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.probit.tradingfee.FeeData;
 import com.exchange.scanner.dto.response.exchangedata.probit.tradingfee.ProbitTradingFeeResponse;
-import com.exchange.scanner.dto.response.exchangedata.probit.exchangeinfo.ProbitSymbolData;
+import com.exchange.scanner.dto.response.exchangedata.probit.coins.ProbitCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.probit.tickervolume.ProbitTickerVolume;
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.ApiExchangeUtils;
 import com.exchange.scanner.services.utils.CoinFactory;
 import com.exchange.scanner.services.utils.ListUtils;
+import com.exchange.scanner.services.utils.Probit.ProbitCoinDepthBuilder;
 import com.exchange.scanner.services.utils.WebClientBuilder;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -34,12 +28,6 @@ import java.util.stream.Collectors;
 @Service
 @Slf4j
 public class ApiProbit implements ApiExchange {
-
-    @Autowired
-    private RestTemplate restTemplate;
-
-    @Autowired
-    private ObjectMapper objectMapper;
 
     private static final String NAME = "Probit";
 
@@ -57,24 +45,38 @@ public class ApiProbit implements ApiExchange {
 
     @Override
     public Set<Coin> getAllCoins() {
+        Set<Coin> coins = new HashSet<>();
 
-        String url = BASE_ENDPOINT + "/market";
+        ProbitCurrencyResponse response = getCurrencies().block();
 
-        ResponseEntity<ProbitSymbolData> responseEntity = restTemplate.getForEntity(url, ProbitSymbolData.class);
-        HttpStatusCode statusCode = responseEntity.getStatusCode();
+        if (response == null) return coins;
 
-        if (statusCode != HttpStatus.OK || responseEntity.getBody() == null) {
-            log.error("Ошибка получения данных от Probit, код: {}", statusCode);
-            throw new RuntimeException("Ошибка получения данных от Probit, код: " + statusCode);
-        }
+        coins = response.getData().stream()
+            .filter(symbol ->
+                    symbol.getQuoteCurrencyId().equals("USDT") && !symbol.getClosed()
+            )
+            .map(symbol -> CoinFactory.getCoin(symbol.getBaseCurrencyId()))
+            .collect(Collectors.toSet());
 
-        return responseEntity.getBody().getData().stream()
-                .filter(symbol ->
-                        symbol.getQuoteCurrencyId().equals("USDT") &&
-                        !symbol.getClosed()
-                )
-                .map(symbol -> CoinFactory.getCoin(symbol.getBaseCurrencyId()))
-                .collect(Collectors.toSet());
+        return coins;
+    }
+
+    private Mono<ProbitCurrencyResponse> getCurrencies() {
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/market")
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения списка валют. Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(ProbitCurrencyResponse.class);
     }
 
     public Set<Coin> getCoinChain(Set<Coin> coins) {
@@ -111,20 +113,20 @@ public class ApiProbit implements ApiExchange {
 
     private Mono<ProbitChainData> getChainResponse() {
         return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/currency")
-                        .build()
-                )
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToMono(ProbitChainData.class);
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/currency")
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(ProbitChainData.class);
     }
 
     @Override
@@ -153,20 +155,20 @@ public class ApiProbit implements ApiExchange {
 
     private Mono<ProbitTradingFeeResponse> getFee() {
         return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/market")
-                        .build()
-                )
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения торговой комиссии от " + NAME + ". Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToMono(ProbitTradingFeeResponse.class);
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/market")
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(ProbitTradingFeeResponse.class);
     }
 
     @Override
@@ -194,66 +196,71 @@ public class ApiProbit implements ApiExchange {
         List<List<Coin>> partitions = ListUtils.partition(coins, 20);
 
         return Flux.fromIterable(partitions)
-                .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
-                .flatMap(partition -> webClient
-                        .get()
-                        .uri(uriBuilder -> uriBuilder
-                                .path("/ticker")
-                                .queryParam("market_ids", generateParameters(partition))
-                                .build()
-                        )
-                        .retrieve()
-                        .onStatus(
-                                status -> status.is4xxClientError() || status.is5xxServerError(),
-                                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                                    log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
-                                    return Mono.empty();
-                                })
-                        )
-                        .bodyToFlux(ProbitTickerVolume.class)
-                );
+            .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
+            .flatMap(partition -> webClient
+                .get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/ticker")
+                        .queryParam("market_ids", generateParameters(partition))
+                        .build()
+                )
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                            log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                            return Mono.empty();
+                        })
+                )
+                .bodyToFlux(ProbitTickerVolume.class)
+            );
     }
 
     @Override
     public Set<CoinDepth> getOrderBook(Set<String> coins) {
-        Flux<CoinDepth> response = getCoinDepth(coins);
+        Set<CoinDepth> coinDepthSet = new HashSet<>();
 
-        return new HashSet<>(Objects.requireNonNull(response
-                .collectList()
-                .block()));
+        coins.forEach(coin -> {
+            ProbitCoinDepth response = getCoinDepth(coin).block();
+
+            if (response != null) {
+                CoinDepth coinDepth = ProbitCoinDepthBuilder.getCoinDepth(coin, response.getData());
+                coinDepthSet.add(coinDepth);
+            }
+
+            try {
+                Thread.sleep(REQUEST_DELAY_DURATION);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
+            }
+        });
+
+        return coinDepthSet;
     }
 
-    private Flux<CoinDepth> getCoinDepth(Set<String> coins) {
-        List<String> coinSymbols = coins.stream().map(coin -> coin + "-USDT").toList();
-
-        return Flux.fromIterable(coinSymbols)
-                .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
-                .flatMap(coin -> webClient
-                        .get()
-                        .uri(uriBuilder -> uriBuilder.path("/order_book")
-                                .queryParam("market_id", coin)
-                                .build()
-                        )
-                        .retrieve()
-                        .onStatus(
-                                status -> status.is4xxClientError() || status.is5xxServerError(),
-                                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                                    log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
-                                    return Mono.empty();
-                                })
-                        )
-                        .bodyToFlux(ProbitCoinDepth.class)
-                        .map(response -> {
-                            response.setCoinName(coin.replaceAll("-USDT", ""));
-                            return ApiExchangeUtils.getProbitCoinDepth(response);
-                        })
-                );
+    private Mono<ProbitCoinDepth> getCoinDepth(String coinName) {
+        String symbol = coinName + "-USDT";
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder.path("/order_book")
+                    .queryParam("market_id", symbol)
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(ProbitCoinDepth.class);
     }
 
     private static String generateParameters(List<Coin> coins) {
         String parameters;
         StringBuilder sb = new StringBuilder();
-        coins.forEach(coin -> sb.append(coin.getSymbol()).append("-USDT").append(","));
+        coins.forEach(coin -> sb.append(coin.getName()).append("-USDT").append(","));
         sb.deleteCharAt(sb.length() - 1);
         parameters = sb.toString();
 

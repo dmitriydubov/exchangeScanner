@@ -52,3 +52,21 @@ exchanges:
     Poloniex:
       key: F7GHAMP0-7N2BC4PM-DKG7XJKG-4MUTCIL2
       secret: 511c555da114daf6d0353f802df31b6f817eeb28fa4765c1f5c557d46c70f15882bdf2a55e86de0284bf0e175e550d5c66d66d357933442ff48cdd7f33fd1448
+    OKX:
+      key: 4f817d5b-5ced-4b00-b5e3-d9c3bf7a0e70
+      secret: 03EC605D55CF9D8B7E405BD1AB258B43
+      passphrase: Passphrase1#
+    Bitmart:
+      key: 19396aef3a650f3995c5caad42935bcc681a0cff
+      secret: 708117f5f899122b305787f394897b5a88a4459c7e48d4e3dbf2e066144fa16c
+      memo: scanner
+    LBank:
+      key: 0a1b7b74-eb2f-4cce-8900-b6980ea40df7
+      secret: 009554932EFC398E2A63C9E8E1737852
+    #Api ключ Coinex с истекающим сроком
+    Coinex:
+      key: 7323B954D3EF4A61A86B1F1B843538D4
+      secret: B34DC3F4376AA64345CD0EC811391A599D2A60C01FF954EB
+    XT:
+      key: 21f4f1a6-7d48-4a08-b712-6993d4262bc5
+      secret: 10db7f81923dc256b4de9738de75626d1e436574

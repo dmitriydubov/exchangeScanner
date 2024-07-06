@@ -23,10 +23,10 @@ public class Ask implements Comparable<Ask> {
     @JoinColumn(name = "orders_book_id", nullable = false)
     private OrdersBook ordersBook;
 
-    @Column(precision = 46, scale = 5)
+    @Column(precision = 38, scale = 4)
     private BigDecimal price;
 
-    @Column(precision = 46, scale = 5)
+    @Column(precision = 38, scale = 4)
     private BigDecimal volume;
 
     @Override

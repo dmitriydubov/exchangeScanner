@@ -1,44 +1,31 @@
 package com.exchange.scanner.services.impl.api;
 
 import com.exchange.scanner.dto.response.exchangedata.gateio.chains.ChainDTO;
+import com.exchange.scanner.dto.response.exchangedata.gateio.coins.GateIoCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.gateio.depth.GateIOCoinDepth;
-import com.exchange.scanner.dto.response.exchangedata.gateio.exchangeinfo.GateIOSymbolData;
 import com.exchange.scanner.dto.response.exchangedata.gateio.volume24h.GateIOCoinTickerVolume;
 import com.exchange.scanner.dto.response.exchangedata.gateio.tradingfee.GateIOTradingFeeResponse;
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.ApiExchangeUtils;
 import com.exchange.scanner.services.utils.CoinFactory;
+import com.exchange.scanner.services.utils.GateIO.GateIOCoinDepthBuilder;
+import com.exchange.scanner.services.utils.GateIO.GateIOSignatureBuilder;
 import com.exchange.scanner.services.utils.WebClientBuilder;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 @Slf4j
 public class ApiGateIO implements ApiExchange {
-
-    @Autowired
-    private RestTemplate restTemplate;
-
-    @Autowired
-    private ObjectMapper objectMapper;
 
     @Value("${exchanges.apiKeys.gateIO.key}")
     private String key;
@@ -64,21 +51,34 @@ public class ApiGateIO implements ApiExchange {
 
     @Override
     public Set<Coin> getAllCoins() {
-
-        String url = BASE_ENDPOINT + "/spot/currency_pairs";
-
-        ResponseEntity<GateIOSymbolData[]> responseEntity = restTemplate.getForEntity(url, GateIOSymbolData[].class);
-        HttpStatusCode statusCode = responseEntity.getStatusCode();
-
-        if (statusCode != HttpStatus.OK || responseEntity.getBody() == null) {
-            log.error("Ошибка получения данных от Gate.io, код: {}", statusCode);
-            throw new RuntimeException("Ошибка получения данных от Gate.io, код: " + statusCode);
-        }
-
-        return Arrays.stream(responseEntity.getBody())
-                .filter(symbol -> symbol.getQuote().equals("USDT") && symbol.getTradeStatus().equals("tradable"))
-                .map(symbol -> CoinFactory.getCoin(symbol.getBase()))
+        Set<Coin> coins = new HashSet<>();
+        List<GateIoCurrencyResponse> response = getCurrencies().collectList().block();
+        if (response == null) return coins;
+        coins = response.stream()
+                .filter(currency -> currency.getQuote().equals("USDT") && currency.getTradeStatus().equals("tradable"))
+                .map(currency -> CoinFactory.getCoin(currency.getBase()))
                 .collect(Collectors.toSet());
+
+        return coins;
+    }
+
+    private Flux<GateIoCurrencyResponse> getCurrencies() {
+
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/spot/currency_pairs")
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения списка валют. Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToFlux(GateIoCurrencyResponse.class);
     }
 
     @Override
@@ -106,33 +106,33 @@ public class ApiGateIO implements ApiExchange {
     private Flux<Chain> getChains(Coin coin) {
         String endpoint = "/wallet/currency_chains";
         String requestUrl = BASE_ENDPOINT + endpoint + "?currency" + coin.getName();
-        String signature = ApiExchangeUtils.generateGateIOSignature(secret, requestUrl);
+        String signature =  GateIOSignatureBuilder.generateGateIOSignature(secret, requestUrl);
 
         return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path(endpoint)
-                        .queryParam("currency", coin.getName())
-                        .build()
-                )
-                .header("KEY", key)
-                .header("SIGN", signature)
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToFlux(ChainDTO.class)
-                .filter(chainDTO -> chainDTO.getIsDisabled() == 0 && chainDTO.getIsDepositDisabled() == 0 && chainDTO.getIsWithdrawDisabled() == 0)
-                .map(chainDTO -> {
-                    Chain chain = new Chain();
-                    chain.setName(chainDTO.getChain());
-                    chain.setCommission(new BigDecimal("0"));
-                    return chain;
-                });
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path(endpoint)
+                    .queryParam("currency", coin.getName())
+                    .build()
+            )
+            .header("KEY", key)
+            .header("SIGN", signature)
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToFlux(ChainDTO.class)
+            .filter(chainDTO -> chainDTO.getIsDisabled() == 0 && chainDTO.getIsDepositDisabled() == 0 && chainDTO.getIsWithdrawDisabled() == 0)
+            .map(chainDTO -> {
+                Chain chain = new Chain();
+                chain.setName(chainDTO.getChain());
+                chain.setCommission(new BigDecimal("0"));
+                return chain;
+            });
     }
 
     @Override
@@ -167,34 +167,34 @@ public class ApiGateIO implements ApiExchange {
         String method = "GET";
         String queryString = "currency_pair=" + symbol;
         String requestBody = "";
-        String payloadHash = ApiExchangeUtils.hashSHA512(requestBody);
+        String payloadHash = GateIOSignatureBuilder.hashSHA512(requestBody);
         String data = method.toUpperCase() + "\n" +
                 endpoint.trim() + "\n" +
                 queryString.trim() + "\n" +
                 payloadHash.trim() + "\n" +
                 timestamp.trim();
 
-        String signature = ApiExchangeUtils.generateGateIOSignature(secret.trim(), data.trim());
+        String signature = GateIOSignatureBuilder.generateGateIOSignature(secret.trim(), data.trim());
 
         return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/wallet/fee")
-                        .queryParam("currency_pair", symbol)
-                        .build()
-                )
-                .header("KEY", key)
-                .header("Timestamp", timestamp)
-                .header("SIGN", signature)
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения торговой комиссии от " + NAME + ". Для торговой пары {}. Причина: {}", symbol, errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToMono(GateIOTradingFeeResponse.class);
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/wallet/fee")
+                    .queryParam("currency_pair", symbol)
+                    .build()
+            )
+            .header("KEY", key)
+            .header("Timestamp", timestamp)
+            .header("SIGN", signature)
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Для торговой пары {}. Причина: {}", symbol, errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(GateIOTradingFeeResponse.class);
     }
 
     @Override
@@ -223,63 +223,63 @@ public class ApiGateIO implements ApiExchange {
         String symbol = coin.getName() + "_USDT";
 
         return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/spot/tickers")
-                        .queryParam("currency_pair", symbol)
-                        .build()
-                )
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToFlux(GateIOCoinTickerVolume.class);
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/spot/tickers")
+                    .queryParam("currency_pair", symbol)
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToFlux(GateIOCoinTickerVolume.class);
     }
 
     @Override
     public Set<CoinDepth> getOrderBook(Set<String> coins) {
-        Flux<CoinDepth> response = getCoinDepth(coins);
+        Set<CoinDepth> coinDepthSet = new HashSet<>();
+        coins.forEach(coin -> {
+            GateIOCoinDepth response = getCoinDepth(coin).block();
 
-        return new HashSet<>(Objects.requireNonNull(response
-                .collectList()
-                .block()));
+            if (response != null) {
+                CoinDepth coinDepth = GateIOCoinDepthBuilder.getCoinDepth(coin, response);
+                coinDepthSet.add(coinDepth);
+            }
+
+            try {
+                Thread.sleep(DEPTH_REQUEST_LIMIT);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
+            }
+        });
+
+        return coinDepthSet;
     }
 
-    private Flux<CoinDepth> getCoinDepth(Set<String> coins) {
-        List<String> coinSymbols = coins.stream().map(coin -> coin + "_USDT").toList();
+    private Mono<GateIOCoinDepth> getCoinDepth(String coinName) {
+        String symbol = coinName + "_USDT";
 
-        return Flux.fromIterable(coinSymbols)
-                .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
-                .flatMap(coin -> webClient
-                        .get()
-                        .uri(uriBuilder -> uriBuilder.path("/spot/order_book")
-                                .queryParam("currency_pair", coin)
-                                .queryParam("limit", DEPTH_REQUEST_LIMIT)
-                                .build()
-                        )
-                        .retrieve()
-                        .onStatus(
-                                status -> status.is4xxClientError() || status.is5xxServerError(),
-                                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                                    log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
-                                    return Mono.empty();
-                                })
-                        )
-                        .bodyToFlux(String.class)
-                        .map(response -> {
-                            try {
-                                GateIOCoinDepth gateIOCoinDepth = objectMapper.readValue(response, GateIOCoinDepth.class);
-                                gateIOCoinDepth.setCoinName(coin.replaceAll("_USDT", ""));
-
-                                return ApiExchangeUtils.getGateIOCoinDepth(gateIOCoinDepth);
-                            } catch (JsonProcessingException e) {
-                                throw new RuntimeException(e);
-                            }
-                        })
-                );
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/spot/order_book")
+                    .queryParam("currency_pair", symbol)
+                    .queryParam("limit", DEPTH_REQUEST_LIMIT)
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(GateIOCoinDepth.class);
     }
 }

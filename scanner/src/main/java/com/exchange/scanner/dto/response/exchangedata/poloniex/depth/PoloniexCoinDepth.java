@@ -11,18 +11,10 @@ import java.util.List;
 public class PoloniexCoinDepth {
 
     @JsonIgnore
-    private Long time;
-
-    @JsonIgnore
-    private String scale;
-
-    @JsonIgnore
     private String coinName;
 
     private List<String> asks;
 
     private List<String> bids;
 
-    @JsonIgnore
-    private Long ts;
 }

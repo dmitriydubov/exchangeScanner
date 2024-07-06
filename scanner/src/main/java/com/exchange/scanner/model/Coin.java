@@ -6,6 +6,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 
 @Entity
@@ -30,13 +31,13 @@ public class Coin {
     @Column(name = "is_block_by_superuser")
     private Boolean isBlockBySuperuser = false;
 
-    @Column(name = "taker_fee", nullable = false, precision = 38, scale = 3)
+    @Column(name = "taker_fee", nullable = false, precision = 38, scale = 4)
     private BigDecimal takerFee = new BigDecimal(0);
 
     @Column(name = "volume24h", nullable = false, precision = 38)
     private BigDecimal volume24h = new BigDecimal(0);
 
-    @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JoinTable(
             name = "chain_coins",
             joinColumns = @JoinColumn(name = "coin_id"),
@@ -48,6 +49,6 @@ public class Coin {
     private Set<Exchange> exchanges = new HashSet<>();
 
     @Transient
-    @ManyToMany(mappedBy = "coin", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "coin", cascade = CascadeType.ALL)
     private Set<OrdersBook> ordersBooks = new HashSet<>();
 }

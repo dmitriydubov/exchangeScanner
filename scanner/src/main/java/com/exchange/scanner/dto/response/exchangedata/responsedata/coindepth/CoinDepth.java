@@ -9,6 +9,8 @@ import java.util.Set;
 @Setter
 public class CoinDepth {
 
+    private Integer statusCode;
+
     private String coinName;
 
     private Set<CoinDepthBid> coinDepthBids;

@@ -173,7 +173,7 @@ public class ApiBinance implements ApiExchange {
         String parameters;
         StringBuilder sb = new StringBuilder();
         sb.append("[");
-        coins.forEach(coin -> sb.append("\"").append(coin.getSymbol()).append("USDT").append("\"").append(","));
+        coins.forEach(coin -> sb.append("\"").append(coin.getName()).append("USDT").append("\"").append(","));
         sb.deleteCharAt(sb.length() - 1);
         sb.append("]");
         parameters = sb.toString();

@@ -2,31 +2,23 @@ package com.exchange.scanner.services.impl.api;
 
 import com.exchange.scanner.dto.response.exchangedata.bybit.chains.BybitChainsResponse;
 import com.exchange.scanner.dto.response.exchangedata.bybit.depth.BybitCoinDepth;
-import com.exchange.scanner.dto.response.exchangedata.bybit.exchangeinfo.BybitSymbolData;
+import com.exchange.scanner.dto.response.exchangedata.bybit.coins.BybitCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.bybit.tickervolume.BybitCoinTickerVolume;
 import com.exchange.scanner.dto.response.exchangedata.bybit.tradingfee.BybitTradingFeeResponse;
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.ApiExchangeUtils;
+import com.exchange.scanner.services.utils.Bybit.BybitCoinDepthBuilder;
+import com.exchange.scanner.services.utils.Bybit.BybitSignatureBuilder;
 import com.exchange.scanner.services.utils.CoinFactory;
 import com.exchange.scanner.services.utils.WebClientBuilder;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -40,12 +32,6 @@ public class ApiBybit implements ApiExchange {
 
     @Value("${exchanges.apiKeys.Bybit.secret}")
     private String secret;
-
-    @Autowired
-    private RestTemplate restTemplate;
-
-    @Autowired
-    private ObjectMapper objectMapper;
 
     private static final String NAME = "Bybit";
 
@@ -65,22 +51,36 @@ public class ApiBybit implements ApiExchange {
 
     @Override
     public Set<Coin> getAllCoins() {
+        Set<Coin> coins = new HashSet<>();
 
-        String url = BASE_ENDPOINT + "/spot/v3/public/symbols";
+        BybitCurrencyResponse response = getCurrencies().block();
 
-        ResponseEntity<BybitSymbolData> responseEntity = restTemplate.getForEntity(url, BybitSymbolData.class);
-        HttpStatusCode statusCode = responseEntity.getStatusCode();
+        if (response == null) return coins;
 
-        if (statusCode != HttpStatus.OK || responseEntity.getBody() == null) {
-            log.error("Ошибка получения данных от Bybit, код: {}", statusCode);
-            throw new RuntimeException("Ошибка получения данных от Bybit, код: " + statusCode);
-        }
-
-        return responseEntity.getBody()
-                .getResult().getList()
-                .stream().filter(symbol -> symbol.getShowStatus().equals("1") && symbol.getQuoteCoin().equals("USDT"))
+        coins = response.getResult().getList().stream()
+                .filter(symbol -> symbol.getShowStatus().equals("1") && symbol.getQuoteCoin().equals("USDT"))
                 .map(symbol -> CoinFactory.getCoin(symbol.getBaseCoin()))
                 .collect(Collectors.toSet());
+
+        return coins;
+    }
+
+    private Mono<BybitCurrencyResponse> getCurrencies() {
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/spot/v3/public/symbols")
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения списка валют. Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(BybitCurrencyResponse.class);
     }
 
     @Override
@@ -117,28 +117,28 @@ public class ApiBybit implements ApiExchange {
         String recv = "5000";
         String paramStr = "coin=" + coin.getName();
         String stringToSign = timestamp + key + recv + paramStr;
-        String sign = ApiExchangeUtils.generateBybitSignature(stringToSign, secret);
+        String sign = BybitSignatureBuilder.generateBybitSignature(stringToSign, secret);
 
         return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/v5/asset/coin/query-info")
-                        .queryParam("coin", coin.getName())
-                        .build()
-                )
-                .header("X-BAPI-SIGN", sign)
-                .header("X-BAPI-API-KEY", key)
-                .header("X-BAPI-TIMESTAMP", timestamp)
-                .header("X-BAPI-RECV-WINDOW", recv)
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToMono(BybitChainsResponse.class);
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/v5/asset/coin/query-info")
+                    .queryParam("coin", coin.getName())
+                    .build()
+            )
+            .header("X-BAPI-SIGN", sign)
+            .header("X-BAPI-API-KEY", key)
+            .header("X-BAPI-TIMESTAMP", timestamp)
+            .header("X-BAPI-RECV-WINDOW", recv)
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(BybitChainsResponse.class);
     }
 
     @Override
@@ -168,29 +168,29 @@ public class ApiBybit implements ApiExchange {
         String recv = "5000";
         String paramStr = "category=spot" + "&" + "symbol=" + symbol;
         String stringToSign = timestamp + key + recv + paramStr;
-        String sign = ApiExchangeUtils.generateBybitSignature(stringToSign, secret);
+        String sign = BybitSignatureBuilder.generateBybitSignature(stringToSign, secret);
 
         return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/v5/account/fee-rate")
-                        .queryParam("category", "spot")
-                        .queryParam("symbol", symbol)
-                        .build()
-                )
-                .header("X-BAPI-SIGN", sign)
-                .header("X-BAPI-API-KEY", key)
-                .header("X-BAPI-TIMESTAMP", timestamp)
-                .header("X-BAPI-RECV-WINDOW", recv)
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения торговой комиссии от " + NAME + ". Для торговой пары {}. Причина: {}", symbol, errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToMono(BybitTradingFeeResponse.class);
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/v5/account/fee-rate")
+                    .queryParam("category", "spot")
+                    .queryParam("symbol", symbol)
+                    .build()
+            )
+            .header("X-BAPI-SIGN", sign)
+            .header("X-BAPI-API-KEY", key)
+            .header("X-BAPI-TIMESTAMP", timestamp)
+            .header("X-BAPI-RECV-WINDOW", recv)
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Для торговой пары {}. Причина: {}", symbol, errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(BybitTradingFeeResponse.class);
     }
 
     @Override
@@ -218,63 +218,63 @@ public class ApiBybit implements ApiExchange {
         String symbol = coin.getName() + "USDT";
 
         return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/spot/v3/public/quote/ticker/24hr")
-                        .queryParam("symbol", symbol)
-                        .build()
-                )
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToMono(BybitCoinTickerVolume.class);
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/spot/v3/public/quote/ticker/24hr")
+                    .queryParam("symbol", symbol)
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(BybitCoinTickerVolume.class);
     }
 
     @Override
     public Set<CoinDepth> getOrderBook(Set<String> coins) {
-        Flux<CoinDepth> response = getCoinDepth(coins);
+        Set<CoinDepth> coinDepthSet = new HashSet<>();
 
-        return new HashSet<>(Objects.requireNonNull(response
-                .collectList()
-                .block()));
+        coins.forEach(coin -> {
+            BybitCoinDepth response = getCoinDepth(coin).block();
+
+            if (response != null) {
+                CoinDepth coinDepth = BybitCoinDepthBuilder.getCoinDepth(coin, response.getResult());
+                coinDepthSet.add(coinDepth);
+            }
+
+            try {
+                Thread.sleep(REQUEST_DELAY_DURATION);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
+            }
+        });
+
+        return coinDepthSet;
     }
 
-    private Flux<CoinDepth> getCoinDepth(Set<String> coins) {
-        List<String> coinSymbols = coins.stream().map(coin -> coin + "USDT").toList();
+    private Mono<BybitCoinDepth> getCoinDepth(String coinName) {
+        String symbol = coinName + "USDT";
 
-        return Flux.fromIterable(coinSymbols)
-                .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
-                .flatMap(coin -> webClient
-                        .get()
-                        .uri(uriBuilder -> uriBuilder.path("/spot/v3/public/quote/depth")
-                                .queryParam("symbol", coin)
-                                .queryParam("limit", DEPTH_REQUEST_LIMIT)
-                                .build()
-                        )
-                        .retrieve()
-                        .onStatus(
-                                status -> status.is4xxClientError() || status.is5xxServerError(),
-                                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                                    log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
-                                    return Mono.empty();
-                                })
-                        )
-                        .bodyToFlux(String.class)
-                        .map(response -> {
-                            try {
-                                BybitCoinDepth bybitCoinDepth = objectMapper.readValue(response, BybitCoinDepth.class);
-                                bybitCoinDepth.setCoinName(coin.replaceAll("USDT", ""));
-
-                                return ApiExchangeUtils.getBybitCoinDepth(bybitCoinDepth);
-                            } catch (JsonProcessingException e) {
-                                throw new RuntimeException(e);
-                            }
-                        })
-                );
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder.path("/spot/v3/public/quote/depth")
+                    .queryParam("symbol", symbol)
+                    .queryParam("limit", DEPTH_REQUEST_LIMIT)
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(BybitCoinDepth.class);
     }
 }

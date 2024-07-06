@@ -2,47 +2,32 @@ package com.exchange.scanner.services.impl.api;
 
 import com.exchange.scanner.dto.response.exchangedata.poloniex.chains.PoloniexChain;
 import com.exchange.scanner.dto.response.exchangedata.poloniex.depth.PoloniexCoinDepth;
-import com.exchange.scanner.dto.response.exchangedata.poloniex.exchangeinfo.PoloniexSymbolData;
+import com.exchange.scanner.dto.response.exchangedata.poloniex.coins.PoloniexCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.poloniex.tickervolume.PoloniexVolumeTicker;
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.ApiExchangeUtils;
 import com.exchange.scanner.services.utils.CoinFactory;
+import com.exchange.scanner.services.utils.Poloniex.PoloniexCoinDepthBuilder;
 import com.exchange.scanner.services.utils.WebClientBuilder;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.poloniex.api.client.model.OrderBook;
 import com.poloniex.api.client.rest.PoloRestClient;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
-import java.net.URI;
-import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 @Slf4j
 public class ApiPoloniex implements ApiExchange {
-
-    @Autowired
-    private RestTemplate restTemplate;
-
-    @Autowired
-    private ObjectMapper objectMapper;
 
     @Value("${exchanges.apiKeys.Poloniex.key}")
     private String key;
@@ -68,21 +53,36 @@ public class ApiPoloniex implements ApiExchange {
 
     @Override
     public Set<Coin> getAllCoins() {
+        Set<Coin> coins = new HashSet<>();
 
-        String url = BASE_ENDPOINT + "/markets";
+        List<PoloniexCurrencyResponse> response = getCurrencies().collectList().block();
 
-        ResponseEntity<PoloniexSymbolData[]> responseEntity = restTemplate.getForEntity(url, PoloniexSymbolData[].class);
-        HttpStatusCode statusCode = responseEntity.getStatusCode();
+        if (response == null) return coins;
 
-        if (statusCode != HttpStatus.OK || responseEntity.getBody() == null) {
-            log.error("Ошибка получения данных от Poloniex, код: {}", statusCode);
-            throw new RuntimeException("Ошибка получения данных от Poloniex, код: " + statusCode);
-        }
-
-        return Arrays.stream(responseEntity.getBody())
+        coins = response.stream()
                 .filter(symbol -> symbol.getQuoteCurrencyName().equals("USDT") && symbol.getState().equals("NORMAL"))
                 .map(symbol -> CoinFactory.getCoin(symbol.getBaseCurrencyName()))
                 .collect(Collectors.toSet());
+
+        return coins;
+    }
+
+    private Flux<PoloniexCurrencyResponse> getCurrencies() {
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/markets")
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения списка валют. Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToFlux(PoloniexCurrencyResponse.class);
     }
 
     @Override
@@ -116,20 +116,20 @@ public class ApiPoloniex implements ApiExchange {
 
     private Mono<Map<String, PoloniexChain>> getChains(Coin coin) {
         return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/currencies/{currency}")
-                        .build(coin.getName())
-                )
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToMono(new ParameterizedTypeReference<Map<String, PoloniexChain>>() {});
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/currencies/{currency}")
+                    .build(coin.getName())
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(new ParameterizedTypeReference<Map<String, PoloniexChain>>() {});
     }
 
     @Override
@@ -171,20 +171,20 @@ public class ApiPoloniex implements ApiExchange {
         String symbol = coin.getName() + "_USDT";
 
         return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/markets/{symbol}/ticker24h")
-                        .build(symbol)
-                )
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToMono(PoloniexVolumeTicker.class);
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/markets/{symbol}/ticker24h")
+                    .build(symbol)
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(PoloniexVolumeTicker.class);
     }
 
     @Override
@@ -197,7 +197,7 @@ public class ApiPoloniex implements ApiExchange {
             poloniexCoinDepth.setCoinName(coin);
             poloniexCoinDepth.setAsks(response.getAsks());
             poloniexCoinDepth.setBids(response.getBids());
-            CoinDepth coinDepth = ApiExchangeUtils.getPoloniexCoinDepth(poloniexCoinDepth);
+            CoinDepth coinDepth = PoloniexCoinDepthBuilder.getPoloniexCoinDepth(poloniexCoinDepth);
             coinDepths.add(coinDepth);
             try {
                 Thread.sleep(REQUEST_DELAY_DURATION);

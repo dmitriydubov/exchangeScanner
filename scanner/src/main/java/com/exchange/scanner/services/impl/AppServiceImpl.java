@@ -50,7 +50,126 @@ public class AppServiceImpl implements AppService {
 
     private static final int SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H = 1000 * 60 * 60;
 
-    private static final int SCHEDULED_RATE_TIME_FOR_GET_ORDERS = 5000;
+    private static final int SCHEDULED_RATE_TIME_FOR_GET_ORDERS_BOOK = 20000;
+
+    @Override
+    @Transactional
+//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_REFRESH_COINS)
+    public void refreshCoins() {
+        long start = System.currentTimeMillis();
+        log.info("{} приступил к выполнению задачи refreshCoins", Thread.currentThread().getName());
+
+        Map<String, Set<Coin>> coins = AppServiceUtils.getCoinsAsync(exchangeRepository, apiExchangeAdapter);
+        if (!coins.isEmpty()) {
+            updateCoins(coins);
+        } else {
+            log.error("Ошибка обновления списка валют. В базе данных нет списка бирж.");
+        }
+
+        long end = System.currentTimeMillis() - start;
+        log.info("Обновление списка валют успешно завершено. Время выполения: {}s", end / 1000);
+    }
+
+    @Override
+//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_CHAINS)
+    @Transactional
+    public void getCoinsChains() {
+        log.info("{} приступил к выполнению задачи getCoinsChains", Thread.currentThread().getName());
+
+        Map<String, Set<Coin>> coinsMap = AppServiceUtils.getCoinsChainInfoAsync(apiExchangeAdapter, exchangeRepository, userMarketSettingsRepository);
+        coinsMap.forEach((exchange, coins) -> {
+            System.out.println("exchange: " + exchange);
+            coins.forEach(coin -> {
+                System.out.println("coin: " + coin.getName());
+                System.out.println("chains:");
+                coin.getChains().forEach(ch -> {
+                    System.out.println(ch.getName() + " " + ch.getCommission());
+                });
+            });
+            coinRepository.saveAll(coins);
+        });
+
+        log.info("Обновление списка сетей успешно завершено");
+    }
+
+    @Override
+//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_TRADING_FEE)
+    @Transactional
+    public void getTradingFee() {
+        log.info("{} приступил к выполнению задачи getTradingFee", Thread.currentThread().getName());
+
+        Map<String, Set<Coin>> coinsMap = AppServiceUtils.getTradingFeeAsync(apiExchangeAdapter, exchangeRepository, userMarketSettingsRepository);
+        coinsMap.forEach((exchange, coins) -> {
+            System.out.println("Exchange: " + exchange);
+            coins.forEach(coin -> {
+                System.out.println(coin.getName());
+                System.out.println(coin.getTakerFee());
+            });
+            coinRepository.saveAll(coins);
+        });
+
+        log.info("Обновление торговых комиссий успешно завершено");
+    }
+
+    @Override
+//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H)
+    @Transactional
+    public void getVolume24h() {
+        log.info("{} приступил к выполнению задачи getVolume24h", Thread.currentThread().getName());
+
+        Map<String, Set<Coin>> coinsMap = AppServiceUtils.getVolume24hAsync(apiExchangeAdapter, exchangeRepository, userMarketSettingsRepository);
+
+        coinsMap.forEach((exchange, coins) -> {
+            coinRepository.saveAll(coins);
+        });
+
+        log.info("Обновление суточного торгового объёма успешно завершено");
+    }
+
+    @Override
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_ORDERS_BOOK)
+    @Transactional
+    public void getOrderBooks() {
+        long start = System.currentTimeMillis();
+        log.info("{} приступил к выполнению задачи getOrderBooks", Thread.currentThread().getName());
+
+        List<OrdersBook> ordersBooks = AppServiceUtils.getOrderBooksAsync(
+                exchangeRepository,
+                apiExchangeAdapter,
+                userMarketSettingsRepository
+        );
+
+        ordersBookRepository.deleteAllInBatch();
+        ordersBookRepository.saveAll(ordersBooks);
+
+        long end = System.currentTimeMillis() - start;
+        log.info("Операция обновления стакана цен выполнена. Время выполнения: {}s", end / 1000);
+    }
+
+    @Transactional
+    protected void updateCoins(Map<String, Set<Coin>> coinsMap) {
+        Set<Exchange> exchangesToUpdate = new HashSet<>();
+        coinsMap.forEach((exchangeName, coins) -> {
+            Exchange exchange = exchangeRepository.findByName(exchangeName);
+            Set<Coin> coinsToDelete =  exchange.getCoins().stream()
+                    .filter(coin -> !coins.contains(coin))
+                    .collect(Collectors.toSet());
+            coinRepository.deleteAllInBatch(coinsToDelete);
+            exchange.getCoins().removeAll(coinsToDelete);
+            exchange.setCoins(coins);
+            exchangesToUpdate.add(exchange);
+        });
+
+        exchangeRepository.saveAll(exchangesToUpdate);
+    }
+
+    @Transactional
+    protected UserMarketSettings createUserMarketSettingsWithDefaults(User user) {
+        List<String> exchangesNames = exchangeRepository.findAll().stream().map(Exchange::getName).toList();
+        var userMarketSettings = UserMarketSettingsBuilder.getDefaultUserMarketSettings(user, exchangesNames);
+
+        return userMarketSettingsRepository.save(userMarketSettings);
+    }
 
     @Override
     @Transactional
@@ -95,108 +214,5 @@ public class AppServiceImpl implements AppService {
 
             return arbitrageEvents;
         });
-    }
-
-    @Override
-//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_REFRESH_COINS)
-    public void refreshCoins() {
-        log.info("{} приступил к выполнению задачи refreshCoins", Thread.currentThread().getName());
-        Map<String, Set<Coin>> coins = AppServiceUtils.getCoinsAsync(exchangeRepository, apiExchangeAdapter);
-        if (!coins.isEmpty()) {
-            updateCoins(coins);
-        } else {
-            log.error("Ошибка обновления списка валют. В базе данных нет списка бирж.");
-        }
-
-        log.info("Обновление списка валют успешно завершено");
-    }
-
-    @Override
-//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_CHAINS)
-    @Transactional
-    public void getCoinsChains() {
-        log.info("{} приступил к выполнению задачи getCoinsChains", Thread.currentThread().getName());
-        Map<String, Set<Coin>> coinsMap = AppServiceUtils.getCoinsChainInfoAsync(apiExchangeAdapter, exchangeRepository, userMarketSettingsRepository);
-        coinsMap.forEach((exchange, coins) -> {
-            System.out.println(exchange);
-            coins.forEach(coin -> {
-                System.out.println(coin.getName());
-                coin.getChains().forEach(ch -> {
-                    System.out.println(ch.getName() + " " + ch.getCommission());
-                });
-            });
-            coinRepository.saveAll(coins);
-        });
-        log.info("Обновление списка сетей успешно завершено");
-    }
-
-    @Override
-//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_TRADING_FEE)
-    @Transactional
-    public void getTradingFee() {
-        log.info("{} приступил к выполнению задачи getTradingFee", Thread.currentThread().getName());
-
-        Map<String, Set<Coin>> coinsMap = AppServiceUtils.getTradingFeeAsync(apiExchangeAdapter, exchangeRepository, userMarketSettingsRepository);
-        coinsMap.forEach((exchange, coins) -> {
-            System.out.println("Exchange: " + exchange);
-            coins.forEach(coin -> {
-                System.out.println(coin.getName());
-                System.out.println(coin.getTakerFee());
-            });
-            coinRepository.saveAll(coins);
-        });
-
-        log.info("Обновление торговых комиссий успешно завершено");
-    }
-
-    @Override
-//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H)
-    @Transactional
-    public void getVolume24h() {
-        log.info("{} приступил к выполнению задачи getVolume24h", Thread.currentThread().getName());
-
-        Map<String, Set<Coin>> coinsMap = AppServiceUtils.getVolume24hAsync(apiExchangeAdapter, exchangeRepository, userMarketSettingsRepository);
-
-        coinsMap.forEach((exchange, coins) -> {
-            coinRepository.saveAll(coins);
-        });
-
-        log.info("Обновление суточного торгового объёма успешно завершено");
-    }
-
-    @Override
-//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_ORDERS)
-    @Transactional
-    public void getOrderBooks() {
-        List<OrdersBook> ordersBooks = AppServiceUtils.getOrderBooksAsync(
-                exchangeRepository,
-                apiExchangeAdapter,
-                userMarketSettingsRepository
-        );
-
-        ordersBookRepository.deleteAllInBatch();
-        ordersBookRepository.saveAll(ordersBooks);
-    }
-
-    @Transactional
-    protected UserMarketSettings createUserMarketSettingsWithDefaults(User user) {
-        List<String> exchangesNames = exchangeRepository.findAll().stream().map(Exchange::getName).toList();
-        var userMarketSettings = UserMarketSettingsBuilder.getDefaultUserMarketSettings(user, exchangesNames);
-
-        return userMarketSettingsRepository.save(userMarketSettings);
-    }
-
-    @Transactional
-    protected void updateCoins(Map<String, Set<Coin>> coinsMap) {
-        Set<Exchange> exchangesToUpdate = new HashSet<>();
-        coinsMap.forEach((exchangeName, coins) -> {
-            Exchange exchange = exchangeRepository.findByName(exchangeName);
-            exchange.getCoins().clear();
-            exchange.setCoins(coins);
-            exchangesToUpdate.add(exchange);
-        });
-
-        coinRepository.deleteAllInBatch();
-        exchangeRepository.saveAll(exchangesToUpdate);
     }
 }
