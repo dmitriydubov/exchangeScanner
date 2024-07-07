@@ -1,0 +1,289 @@
+package com.exchange.scanner.services.impl.api;
+
+import com.exchange.scanner.dto.response.exchangedata.kucoin.chains.KucoinChainResponse;
+import com.exchange.scanner.dto.response.exchangedata.kucoin.depth.KucoinCoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.kucoin.tradingfee.KucoinTradingFeeResponse;
+import com.exchange.scanner.dto.response.exchangedata.kucoin.coins.KucoinCurrencyResponse;
+import com.exchange.scanner.dto.response.exchangedata.kucoin.tickervolume.KucoinTickerVolumeResponse;
+import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
+import com.exchange.scanner.model.Chain;
+import com.exchange.scanner.model.Coin;
+import com.exchange.scanner.services.utils.AppUtils.CoinFactory;
+import com.exchange.scanner.services.utils.Kucoin.KucoinCoinDepthBuilder;
+import com.exchange.scanner.services.utils.Kucoin.KucoinSignatureBuilder;
+import com.exchange.scanner.services.utils.AppUtils.ListUtils;
+import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
+import java.math.BigDecimal;
+import java.time.Duration;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Service
+@Slf4j
+public class ApiKucoin implements ApiExchange {
+
+    @Value("${exchanges.apiKeys.Kucoin.key}")
+    private String key;
+
+    @Value("${exchanges.apiKeys.Kucoin.secret}")
+    private String secret;
+
+    @Value("${exchanges.apiKeys.Kucoin.passphrase}")
+    private String passphrase;
+
+    private static final String NAME = "Kucoin";
+
+    public final static String BASE_ENDPOINT = "https://api.kucoin.com";
+
+    private static final int TIMEOUT = 10000;
+
+    private static final int REQUEST_DELAY_DURATION = 200;
+
+    private static final int DEPTH_REQUEST_LIMIT = 20;
+
+    private final WebClient webClient;
+
+    public ApiKucoin() {
+        this.webClient = WebClientBuilder.buildWebClient(BASE_ENDPOINT, TIMEOUT);
+    }
+
+    @Override
+    public Set<Coin> getAllCoins() {
+        Set<Coin> coins = new HashSet<>();
+        KucoinCurrencyResponse response = getCurrencies().block();
+
+        if (response == null) return coins;
+
+        coins = response.getData().stream()
+                .filter(currency -> currency.getQuoteCurrency().equals("USDT") && currency.getEnableTrading())
+                .map(currency -> CoinFactory.getCoin(currency.getBaseCurrency()))
+                .collect(Collectors.toSet());
+
+        return coins;
+    }
+
+    private Mono<KucoinCurrencyResponse> getCurrencies() {
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/api/v2/symbols")
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения списка валют. Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(KucoinCurrencyResponse.class);
+    }
+
+    @Override
+    public Set<Coin> getCoinChain(Set<Coin> coins) {
+        Set<Coin> coinsWithChains = new HashSet<>();
+        coins.forEach(coin -> {
+            List<List<Chain>> response = getChain(coin).collectList().block();
+            if (response != null) {
+                Set<Chain> chains = new HashSet<>();
+                response.forEach(chains::addAll);
+                coin.setChains(chains);
+                coinsWithChains.add(coin);
+            } else {
+                log.error("При попытке получения списка сетей получен пустой ответ от {}", NAME);
+            }
+        });
+
+        return coinsWithChains;
+    }
+
+    private Flux<List<Chain>> getChain(Coin coin) {
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/api/v3/currencies/{currency}")
+                    .build(coin.getName())
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToFlux(KucoinChainResponse.class)
+            .map(response -> response.getData().getChains().stream()
+                    .filter(chainDto -> chainDto.getIsDepositEnabled() && chainDto.getIsWithdrawEnabled())
+                    .map(dto -> {
+                       String chainName = dto.getChainName();
+                       if (dto.getChainName().equals("Lightning Network")) {
+                           chainName = "LIGHTNING";
+                       }
+                       Chain chain = new Chain();
+                       chain.setName(chainName);
+                       chain.setCommission(new BigDecimal(dto.getWithdrawalMinFee()));
+                       return chain;
+                    })
+                    .toList()
+            );
+    }
+
+    @Override
+    public Set<Coin> getTradingFee(Set<Coin> coins) {
+        Set<Coin> coinsWithFees = new HashSet<>();
+        KucoinTradingFeeResponse response = getFee(coins).blockLast();
+
+        if (response == null) return coinsWithFees;
+
+        coins.forEach(coin -> {
+            response.getData().forEach(responseFee -> {
+                if (coin.getName().equals(responseFee.getSymbol().replaceAll("-USDT", ""))) {
+                    coin.setTakerFee(new BigDecimal(responseFee.getTakerFeeRate()));
+                    coinsWithFees.add(coin);
+                }
+            });
+        });
+
+        return coinsWithFees;
+    }
+
+    private Flux<KucoinTradingFeeResponse> getFee(Set<Coin> coins) {
+        int maxSymbolsSizePerRequest = 10;
+        List<Coin> coinList = new ArrayList<>(coins);
+        List<List<Coin>> partitions = ListUtils.partition(coinList, maxSymbolsSizePerRequest);
+        String endpoint = "/api/v1/trade-fees";
+
+        return Flux.fromIterable(partitions)
+            .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
+            .flatMap(partition -> {
+                String timestamp = String.valueOf(System.currentTimeMillis());
+                String strToSign = timestamp + "GET" + endpoint + "?symbols=" + generateParameters(partition);
+                String signature = KucoinSignatureBuilder.generateKucoinSignature(secret, strToSign);
+                String encodedPassphrase = KucoinSignatureBuilder.generateKucoinPassphrase(secret, passphrase);
+                return webClient
+                        .get()
+                        .uri(uriBuilder -> uriBuilder
+                                .path(endpoint)
+                                .queryParam("symbols", generateParameters(partition))
+                                .build()
+                        )
+                        .header("KC-API-KEY", key)
+                        .header("KC-API-SIGN", signature)
+                        .header("KC-API-TIMESTAMP", timestamp)
+                        .header("KC-API-PASSPHRASE", encodedPassphrase)
+                        .header("KC-API-KEY-VERSION", "3")
+                        .retrieve()
+                        .onStatus(
+                                status -> status.is4xxClientError() || status.is5xxServerError(),
+                                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                                    log.error("Ошибка получения торговых комиссии от " + NAME + ". Причина: {}", errorBody);
+                                    return Mono.empty();
+                                })
+                        )
+                        .bodyToFlux(KucoinTradingFeeResponse.class);
+            });
+    }
+
+    @Override
+    public Set<Coin> getCoinVolume24h(Set<Coin> coins) {
+        Set<Coin> coinsWithVolume24h = new HashSet<>();
+
+        coins.forEach(coin -> {
+            KucoinTickerVolumeResponse response = getCoinTickerVolume(coin).block();
+            if (response != null) {
+                coin.setVolume24h(new BigDecimal(response.getData().getVolValue()));
+                coinsWithVolume24h.add(coin);
+            }
+
+            try {
+                Thread.sleep(REQUEST_DELAY_DURATION);
+            } catch (InterruptedException ex) {
+                throw  new RuntimeException();
+            }
+        });
+
+        return coinsWithVolume24h;
+    }
+
+    private Mono<KucoinTickerVolumeResponse> getCoinTickerVolume(Coin coin) {
+        String symbol = coin.getName() + "-USDT";
+
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/api/v1/market/stats")
+                    .queryParam("symbol", symbol)
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(KucoinTickerVolumeResponse.class);
+    }
+
+    @Override
+    public Set<CoinDepth> getOrderBook(Set<String> coins) {
+        Set<CoinDepth> coinDepthSet = new HashSet<>();
+
+        coins.forEach(coin -> {
+            KucoinCoinDepth response = getCoinDepth(coin).block();
+
+            if (response != null) {
+                CoinDepth coinDepth = KucoinCoinDepthBuilder.getCoinDepth(coin, response.getData());
+                coinDepthSet.add(coinDepth);
+            }
+
+            try {
+                Thread.sleep(DEPTH_REQUEST_LIMIT);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
+            }
+        });
+
+        return coinDepthSet;
+    }
+
+    private Mono<KucoinCoinDepth> getCoinDepth(String coinName) {
+        String symbol = coinName + "-USDT";
+
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder.path("/api/v1/market/orderbook/level2_" + DEPTH_REQUEST_LIMIT)
+                    .queryParam("symbol", symbol)
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(KucoinCoinDepth.class);
+    }
+
+    private static String generateParameters(List<Coin> coins) {
+        String parameters;
+        StringBuilder sb = new StringBuilder();
+        coins.forEach(coin -> sb.append(coin.getName()).append("-USDT").append(","));
+        sb.deleteCharAt(sb.length() - 1);
+        parameters = sb.toString();
+
+        return parameters;
+    }
+}

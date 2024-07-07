@@ -1,0 +1,16 @@
+insert into exchanges (id, name, location, description) values (1, 'Binance', 'CN', NULL) ON CONFLICT DO NOTHING;
+insert into exchanges (id, name, location, description) values (2, 'Gate.io', 'CN', NULL) ON CONFLICT DO NOTHING;
+insert into exchanges (id, name, location, description) values (3, 'MEXC', 'SG', NULL) ON CONFLICT DO NOTHING;
+insert into exchanges (id, name, location, description) values (4, 'Bybit', 'AE', NULL) ON CONFLICT DO NOTHING;
+insert into exchanges (id, name, location, description) values (5, 'Kucoin', 'SC', NULL) ON CONFLICT DO NOTHING;
+insert into exchanges (id, name, location, description) values (6, 'Bitget', 'SC', NULL) ON CONFLICT DO NOTHING;
+insert into exchanges (id, name, location, description) values (7, 'Huobi', 'SC', NULL) ON CONFLICT DO NOTHING;
+insert into exchanges (id, name, location, description) values (8, 'Poloniex', 'US', NULL) ON CONFLICT DO NOTHING;
+insert into exchanges (id, name, location, description) values (9, 'OKX', 'CN', NULL) ON CONFLICT DO NOTHING;
+insert into exchanges (id, name, location, description) values (10, 'Bitmart', 'KY', NULL) ON CONFLICT DO NOTHING;
+insert into exchanges (id, name, location, description) values (11, 'LBank', 'HK', NULL) ON CONFLICT DO NOTHING;
+insert into exchanges (id, name, location, description) values (12, 'CoinEx', 'CN', NULL) ON CONFLICT DO NOTHING;
+insert into exchanges (id, name, location, description) values (13, 'CoinW', 'AE', NULL) ON CONFLICT DO NOTHING;
+insert into exchanges (id, name, location, description) values (14, 'XT', 'SC', NULL) ON CONFLICT DO NOTHING;
+insert into exchanges (id, name, location, description) values (15, 'Probit', 'SC', NULL) ON CONFLICT DO NOTHING;
+insert into exchanges (id, name, location, description) values (16, 'BingX', 'HK', NULL) ON CONFLICT DO NOTHING;

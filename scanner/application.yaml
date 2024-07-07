@@ -1,0 +1,75 @@
+server:
+  port: 8080
+
+jwt:
+  secret: 86dc1443b4e0c83dcda17c4e4635c16517bac495e5cb7675eefcb650222fc70e7f697b5d5c75992ff9e2c4ecc5092121e3990e8abdf3879337c8195a27f986cfc1390319cb67dcc24f88e643e78a999e8d2b6fa8a9dde995ebf5b122ca999b3f673dddf4a00f20e73c23e90f8c19f4ca34655ff4e507ed2fe4af4f6f93b36a2c97866540409af95227d8a20ee302ed050a15a061105d8df94bbe04921624fe07d859272c69394fecaa00e4f76784b25e33ebd6afd9a24b7e80e8dc3932e3c67cc5d2e6107359f63fd0abf9387484eac455905b84d8d0307e93cc16bdb3338ff8fb5fd043f5d365139f7c9533a60039248ebf1024cdbf64bab78bd90838f007d3
+  lifetime: 360m
+  refreshTokenLifetime: 720m
+
+spring:
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  application:
+    name: scanner
+  datasource:
+    username: postgres
+    password: postgres
+    url: jdbc:postgresql://localhost:5432/scannerdb
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    open-in-view: false
+    defer-datasource-initialization: true
+  sql:
+    init:
+      mode: always
+
+#Api ключи бирж необходимо заменить на свои
+exchanges:
+  apiKeys:
+    #Api ключ Gate.io с истекающим сроком
+    GateIO:
+      key: 772206b7012c7e1032e2bcb6d206716d
+      secret: ac5066ea5bed73af02bd53ad998045d879e2a93c0ae4b33dd6c339d4057c6d02
+    MEXC:
+      key: mx0vglPGU3h0E9HsH9
+      secret: 9db3c31ec9ec4ff5bef23a4e4c73b8bd
+    Kucoin:
+      key: 6682ea71c3ea0f0001512c6c
+      secret: 79d4417f-f6ae-43e5-a07f-77ce2555a2ce
+      passphrase: passphrase
+    #Api ключ Bybit с истекающим сроком
+    Bybit:
+      key: jF9vCKenFLZVvoUnIM
+      secret: YXzD07o4fFFQqaSafzFWGnoZ0fdoGCuoO2qD
+    #Api ключ Huobi с истекающим сроком
+    Huobi:
+      key: 822a8341-e3fa1297-bgbfh5tv3f-8e510
+      secret: 4fe780a3-fe999617-6cac79b9-9c040
+    Poloniex:
+      key: F7GHAMP0-7N2BC4PM-DKG7XJKG-4MUTCIL2
+      secret: 511c555da114daf6d0353f802df31b6f817eeb28fa4765c1f5c557d46c70f15882bdf2a55e86de0284bf0e175e550d5c66d66d357933442ff48cdd7f33fd1448
+    OKX:
+      key: 4f817d5b-5ced-4b00-b5e3-d9c3bf7a0e70
+      secret: 03EC605D55CF9D8B7E405BD1AB258B43
+      passphrase: Passphrase1#
+    Bitmart:
+      key: 19396aef3a650f3995c5caad42935bcc681a0cff
+      secret: 708117f5f899122b305787f394897b5a88a4459c7e48d4e3dbf2e066144fa16c
+      memo: scanner
+    LBank:
+      key: 0a1b7b74-eb2f-4cce-8900-b6980ea40df7
+      secret: 009554932EFC398E2A63C9E8E1737852
+    #Api ключ Coinex с истекающим сроком
+    Coinex:
+      key: 7323B954D3EF4A61A86B1F1B843538D4
+      secret: B34DC3F4376AA64345CD0EC811391A599D2A60C01FF954EB
+    XT:
+      key: 21f4f1a6-7d48-4a08-b712-6993d4262bc5
+      secret: 10db7f81923dc256b4de9738de75626d1e436574
+    BingX:
+      key: oDp2jGhexStzRCZ3pYiFZ2WCjb0UtITZCoVf03TPXWufuMYNWC3PILjJUU5nCq1nIQUykg7Sf0DWUnUhlF7lg
+      secret: mYHNvDKq1Md7gyKwR0aRsS07uA8gCnKN3QDloQlYyEwqSLnXwmIrqvofxMh9aHgc0LVXN1B2qAFhJDR4g

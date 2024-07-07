@@ -1,0 +1,313 @@
+package com.exchange.scanner.services.impl.api;
+
+import com.exchange.scanner.dto.response.exchangedata.okx.chains.OKXChainData;
+import com.exchange.scanner.dto.response.exchangedata.okx.chains.OKXChainsResponse;
+import com.exchange.scanner.dto.response.exchangedata.okx.depth.OKXCoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.okx.coins.OKXCurrencyResponse;
+import com.exchange.scanner.dto.response.exchangedata.okx.tickervolume.OKXDataVolumeTicker;
+import com.exchange.scanner.dto.response.exchangedata.okx.tickervolume.OKXVolumeTicker;
+import com.exchange.scanner.dto.response.exchangedata.okx.tradingfee.OKXTradingFeeResponse;
+import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
+import com.exchange.scanner.model.Chain;
+import com.exchange.scanner.model.Coin;
+import com.exchange.scanner.services.utils.AppUtils.CoinFactory;
+import com.exchange.scanner.services.utils.AppUtils.ListUtils;
+import com.exchange.scanner.services.utils.OKX.OKXDepthBuilder;
+import com.exchange.scanner.services.utils.OKX.OKXSignatureBuilder;
+import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
+import java.math.BigDecimal;
+import java.time.Duration;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Service
+@Slf4j
+public class ApiOKX implements ApiExchange {
+
+    @Value("${exchanges.apiKeys.OKX.key}")
+    private String key;
+
+    @Value("${exchanges.apiKeys.OKX.secret}")
+    private String secret;
+
+    @Value("${exchanges.apiKeys.OKX.passphrase}")
+    private String passphrase;
+
+    private static final String NAME = "OKX";
+
+    public final static String BASE_ENDPOINT = "https://www.okx.com";
+
+    private static final int TIMEOUT = 10000;
+
+    private static final int REQUEST_DELAY_DURATION = 100;
+
+    private static final int DEPTH_REQUEST_LIMIT = 20;
+
+    private final WebClient webClient;
+
+    public ApiOKX() {
+        this.webClient = WebClientBuilder.buildWebClient(BASE_ENDPOINT, TIMEOUT);
+    }
+
+    @Override
+    public Set<Coin> getAllCoins() {
+        Set<Coin> coins = new HashSet<>();
+
+        OKXCurrencyResponse response = getCurrencies().block();
+
+        if (response == null) return coins;
+
+        coins = response.getData().stream()
+                .filter(symbol -> symbol.getQuoteCcy().equals("USDT") && symbol.getState().equals("live"))
+                .map(symbol -> CoinFactory.getCoin(symbol.getBaseCcy()))
+                .collect(Collectors.toSet());
+
+        return coins;
+    }
+
+    private Mono<OKXCurrencyResponse> getCurrencies() {
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/api/v5/public/instruments")
+                    .queryParam("instType", "SPOT")
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения списка валют. Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(OKXCurrencyResponse.class);
+    }
+
+    @Override
+    public Set<Coin> getCoinChain(Set<Coin> coins) {
+        Set<Coin> coinsWithChains = new HashSet<>();
+        OKXChainsResponse response = getChains(coins).blockLast();
+
+        if (response == null) return coinsWithChains;
+        Set<String> coinsNames = coins.stream().map(Coin::getName).collect(Collectors.toSet());
+        List<OKXChainData> okxChainData = response.getData().stream()
+                .filter(data -> coinsNames.contains(data.getCcy()))
+                        .toList();
+        coins.forEach(coin -> {
+            Set<Chain> chains = new HashSet<>();
+            okxChainData.forEach(chainResponse -> {
+               if (coin.getName().equals(chainResponse.getCcy())) {
+                   String chainName = chainResponse.getChain().replaceAll("-.*", "");
+                   if (chainResponse.getChain().equals("BTC-Lightning")) {
+                       chainName = "LIGHTNING";
+                   }
+                   Chain chain = new Chain();
+                   chain.setName(chainName);
+                   chain.setCommission(new BigDecimal(chainResponse.getMaxFee()));
+                   chains.add(chain);
+               }
+            });
+            coin.setChains(chains);
+            coinsWithChains.add(coin);
+        });
+
+        return coinsWithChains;
+    }
+
+    private Flux<OKXChainsResponse> getChains(Set<Coin> coins) {
+        int maxSymbolRequestSize= 20;
+        List<List<Coin>> partitions = ListUtils.partition(new ArrayList<>(coins), maxSymbolRequestSize);
+
+        return Flux.fromIterable(partitions)
+            .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
+            .flatMap(partition -> {
+                String requestPath = "/api/v5/asset/currencies";
+                OKXSignatureBuilder signatureBuilder = new OKXSignatureBuilder(secret);
+                signatureBuilder.createSignature("GET", requestPath, Collections.singletonMap("ccy", generateSymbolsParameters(partition)));
+                return webClient
+                    .get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path(requestPath)
+                            .queryParam("ccy", generateSymbolsParameters(partition))
+                            .build()
+                    )
+                    .header("OK-ACCESS-KEY", key)
+                    .header("OK-ACCESS-SIGN", signatureBuilder.getSignature())
+                    .header("OK-ACCESS-TIMESTAMP", signatureBuilder.getTimestamp())
+                    .header("OK-ACCESS-PASSPHRASE", passphrase)
+                    .retrieve()
+                    .onStatus(
+                            status -> status.is4xxClientError() || status.is5xxServerError(),
+                            response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                                log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
+                                return Mono.empty();
+                            })
+                    )
+                    .bodyToFlux(OKXChainsResponse.class);
+            });
+    }
+
+    @Override
+    public Set<Coin> getTradingFee(Set<Coin> coins) {
+        Set<Coin> coinsWithTradingFees = new HashSet<>();
+
+        coins.forEach(coin -> {
+            OKXTradingFeeResponse response = getFee(coin).block();
+
+            if (response != null) {
+                BigDecimal takerFee = new BigDecimal(response.getData().getFirst().getTaker()).abs();
+                coin.setTakerFee(takerFee);
+                coinsWithTradingFees.add(coin);
+            }
+
+            try {
+                Thread.sleep(REQUEST_DELAY_DURATION);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException(ex);
+            }
+        });
+
+
+        return coinsWithTradingFees;
+    }
+
+    private Mono<OKXTradingFeeResponse> getFee(Coin coin) {
+        String symbol = coin.getName() + "-USDT";
+        String requestPath = "/api/v5/account/trade-fee";
+        Map<String, String> params = new HashMap<>();
+        params.put("instType", "SPOT");
+        params.put("instId", symbol);
+        OKXSignatureBuilder signatureBuilder = new OKXSignatureBuilder(secret);
+        signatureBuilder.createSignature("GET", requestPath, params);
+
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path(requestPath)
+                    .queryParam("instType", "SPOT")
+                    .queryParam("instId", symbol)
+                    .build()
+            )
+            .header("OK-ACCESS-KEY", key)
+            .header("OK-ACCESS-SIGN", signatureBuilder.getSignature())
+            .header("OK-ACCESS-TIMESTAMP", signatureBuilder.getTimestamp())
+            .header("OK-ACCESS-PASSPHRASE", passphrase)
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Для торговой пары {}. Причина: {}", symbol, errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(OKXTradingFeeResponse.class);
+    }
+
+    @Override
+    public Set<Coin> getCoinVolume24h(Set<Coin> coins) {
+        Set<Coin> coinsWithVolume24h = new HashSet<>();
+
+        coins.forEach(coin -> {
+            OKXVolumeTicker response = getCoinTickerVolume(coin).block();
+            if (response != null) {
+                OKXDataVolumeTicker volumeTicker = response.getData().stream()
+                        .filter(dataResponse -> dataResponse.getInstType().equals("SPOT"))
+                        .findFirst().orElse(null);
+                if (volumeTicker != null) {
+                    coin.setVolume24h(new BigDecimal(volumeTicker.getVolCcy24h()));
+                    coinsWithVolume24h.add(coin);
+                }
+            }
+
+            try {
+                Thread.sleep(REQUEST_DELAY_DURATION);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
+            }
+        });
+
+        return coinsWithVolume24h;
+    }
+
+    private Mono<OKXVolumeTicker> getCoinTickerVolume(Coin coin) {
+        String symbol = coin.getName() + "-USDT";
+
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/api/v5/market/ticker")
+                    .queryParam("instId", symbol)
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(OKXVolumeTicker.class);
+    }
+
+    @Override
+    public Set<CoinDepth> getOrderBook(Set<String> coins) {
+        Set<CoinDepth> coinDepthSet = new HashSet<>();
+
+        coins.forEach(coin -> {
+            OKXCoinDepth response = getCoinDepth(coin).block();
+
+            if (response != null) {
+                CoinDepth coinDepth = OKXDepthBuilder.getCoinDepth(coin, response.getData().getFirst());
+                coinDepthSet.add(coinDepth);
+            }
+
+            try {
+                Thread.sleep(REQUEST_DELAY_DURATION);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
+            }
+        });
+
+        return coinDepthSet;
+    }
+
+    private Mono<OKXCoinDepth> getCoinDepth(String coinName) {
+        String symbol = coinName + "-USDT";
+
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder.path("/api/v5/market/books")
+                        .queryParam("instId", symbol)
+                        .queryParam("sz", DEPTH_REQUEST_LIMIT)
+                        .build())
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(OKXCoinDepth.class);
+    }
+
+    private static String generateSymbolsParameters(List<Coin> coins) {
+        String parameters;
+        StringBuilder sb = new StringBuilder();
+        coins.forEach(coin -> sb.append(coin.getName()).append(","));
+        sb.deleteCharAt(sb.length() - 1);
+        parameters = sb.toString();
+
+        return parameters;
+    }
+
+}
