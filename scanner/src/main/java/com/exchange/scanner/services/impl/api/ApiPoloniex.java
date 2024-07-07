@@ -7,9 +7,9 @@ import com.exchange.scanner.dto.response.exchangedata.poloniex.tickervolume.Polo
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.CoinFactory;
+import com.exchange.scanner.services.utils.AppUtils.CoinFactory;
 import com.exchange.scanner.services.utils.Poloniex.PoloniexCoinDepthBuilder;
-import com.exchange.scanner.services.utils.WebClientBuilder;
+import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 
 import com.poloniex.api.client.model.OrderBook;
 import com.poloniex.api.client.rest.PoloRestClient;

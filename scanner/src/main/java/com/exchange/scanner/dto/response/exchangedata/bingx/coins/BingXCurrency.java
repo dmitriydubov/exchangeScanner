@@ -1,11 +1,11 @@
-package com.exchange.scanner.dto.response.exchangedata.bingx.exchangeinfo;
+package com.exchange.scanner.dto.response.exchangedata.bingx.coins;
 
 import lombok.Getter;
 import lombok.Setter;
 
 @Getter
 @Setter
-public class Symbols {
+public class BingXCurrency {
 
     private String symbol;
 

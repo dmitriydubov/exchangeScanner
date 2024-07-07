@@ -9,11 +9,11 @@ import com.exchange.scanner.dto.response.exchangedata.coinex.tradingfee.CoinexTr
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.CoinFactory;
+import com.exchange.scanner.services.utils.AppUtils.CoinFactory;
 import com.exchange.scanner.services.utils.Coinex.CoinExCoinDepthBuilder;
 import com.exchange.scanner.services.utils.Coinex.CoinexSignatureBuilder;
-import com.exchange.scanner.services.utils.ListUtils;
-import com.exchange.scanner.services.utils.WebClientBuilder;
+import com.exchange.scanner.services.utils.AppUtils.ListUtils;
+import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;

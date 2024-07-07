@@ -1,4 +1,4 @@
-package com.exchange.scanner.services.utils;
+package com.exchange.scanner.services.utils.AppUtils;
 
 import java.util.ArrayList;
 import java.util.List;

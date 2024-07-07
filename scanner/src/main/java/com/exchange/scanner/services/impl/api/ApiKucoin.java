@@ -8,11 +8,11 @@ import com.exchange.scanner.dto.response.exchangedata.kucoin.tickervolume.Kucoin
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.CoinFactory;
+import com.exchange.scanner.services.utils.AppUtils.CoinFactory;
 import com.exchange.scanner.services.utils.Kucoin.KucoinCoinDepthBuilder;
 import com.exchange.scanner.services.utils.Kucoin.KucoinSignatureBuilder;
-import com.exchange.scanner.services.utils.ListUtils;
-import com.exchange.scanner.services.utils.WebClientBuilder;
+import com.exchange.scanner.services.utils.AppUtils.ListUtils;
+import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;

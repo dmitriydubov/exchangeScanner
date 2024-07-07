@@ -1,4 +1,4 @@
-package com.exchange.scanner.services.utils;
+package com.exchange.scanner.services.utils.AppUtils;
 
 import io.netty.channel.ChannelOption;
 import io.netty.handler.timeout.ReadTimeoutHandler;
@@ -39,7 +39,7 @@ public class WebClientBuilder {
                 .build();
 
         return WebClient.builder()
-                .filter(logRequest(true))
+                .filter(logRequest(false))
                 .baseUrl(baseEndpoint)
                 .defaultHeader("Accept", "application/json")
                 .defaultHeader("Content-Type", "application/json")

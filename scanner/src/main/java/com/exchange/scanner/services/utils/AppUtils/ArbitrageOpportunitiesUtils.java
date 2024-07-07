@@ -1,206 +1,19 @@
-package com.exchange.scanner.services.utils;
+package com.exchange.scanner.services.utils.AppUtils;
 
 import com.exchange.scanner.dto.response.event.EventData;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.*;
-import com.exchange.scanner.repositories.ExchangeRepository;
 import com.exchange.scanner.repositories.OrdersBookRepository;
-import com.exchange.scanner.repositories.UserMarketSettingsRepository;
-import com.exchange.scanner.services.ApiExchangeAdapter;
-import com.exchange.scanner.services.utils.ordersbook.OrdersBookUtils;
-import org.jetbrains.annotations.NotNull;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
-import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
-public class AppServiceUtils {
+public class ArbitrageOpportunitiesUtils {
 
-    public static Map<String, Set<Coin>> getCoinsAsync(ExchangeRepository exchangeRepository,
-                                                       ApiExchangeAdapter apiExchangeAdapter
-    ) {
-        List<Exchange> exchanges = exchangeRepository.findAll();
-        if (exchanges.isEmpty()) return new HashMap<>();
-        return AppServiceUtils.getExchangeMap(exchanges, apiExchangeAdapter);
-    }
-
-    private static Map<String, Set<Coin>> getExchangeMap(List<Exchange> exchanges, ApiExchangeAdapter apiExchangeAdapter) {
-        Map<String, Set<Coin>> exchangeMap = new ConcurrentHashMap<>();
-        ExecutorService executorService = Executors.newFixedThreadPool(exchanges.size());
-        List<CompletableFuture<Void>> futures = new CopyOnWriteArrayList<>();
-        exchanges.forEach(exchange -> {
-            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                Set<Coin> coins = apiExchangeAdapter.refreshExchangeCoins(exchange);
-                synchronized (exchangeMap) {
-                    exchangeMap.put(exchange.getName(), coins);
-                }
-            }, executorService);
-            futures.add(future);
-        });
-
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        executorService.shutdown();
-        return exchangeMap;
-    }
-
-    public static Map<String, Set<Coin>> getCoinsChainInfoAsync(ApiExchangeAdapter apiExchangeAdapter,
-                                                                ExchangeRepository exchangeRepository,
-                                                                UserMarketSettingsRepository userMarketSettingsRepository
-    ) {
-        Map<String, Set<Coin>> result = new HashMap<>();
-        Set<Exchange> userExchanges = getUsersExchanges(userMarketSettingsRepository, exchangeRepository);
-        Set<String> usersCoinsNames = getUsersCoinsNames(userMarketSettingsRepository);
-
-        ExecutorService executorService = Executors.newFixedThreadPool(userExchanges.size());
-        List<CompletableFuture<Void>> futures = new CopyOnWriteArrayList<>();
-
-
-        userExchanges.forEach(exchange -> {
-            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                Set<Coin> filteredCoinsNames = getFilteredCoins(exchange, usersCoinsNames);
-                synchronized (result) {
-                    result.putAll(apiExchangeAdapter.getCoinChain(exchange.getName(), filteredCoinsNames));
-                }
-            }, executorService);
-            futures.add(future);
-        });
-
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        executorService.shutdown();
-
-        return result;
-    }
-
-    public static Map<String, Set<Coin>> getTradingFeeAsync(ApiExchangeAdapter apiExchangeAdapter,
-                                                            ExchangeRepository exchangeRepository,
-                                                            UserMarketSettingsRepository userMarketSettingsRepository
-    ) {
-        Map<String, Set<Coin>> result = new HashMap<>();
-        Set<Exchange> userExchanges = getUsersExchanges(userMarketSettingsRepository, exchangeRepository);
-        Set<String> usersCoinsNames = getUsersCoinsNames(userMarketSettingsRepository);
-        ExecutorService executorService = Executors.newFixedThreadPool(userExchanges.size());
-        List<CompletableFuture<Void>> futures = new CopyOnWriteArrayList<>();
-
-        userExchanges.forEach(exchange -> {
-            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                Set<Coin> filteredCoinsNames = getFilteredCoins(exchange, usersCoinsNames);
-                synchronized (result) {
-                    result.putAll(apiExchangeAdapter.getTradingFee(exchange.getName(), filteredCoinsNames));
-                }
-            }, executorService);
-            futures.add(future);
-        });
-
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        executorService.shutdown();
-
-        return result;
-    }
-
-    public static Map<String, Set<Coin>> getVolume24hAsync(ApiExchangeAdapter apiExchangeAdapter,
-                                                           ExchangeRepository exchangeRepository,
-                                                           UserMarketSettingsRepository userMarketSettingsRepository)
-    {
-        Map<String, Set<Coin>> result = new HashMap<>();
-        Set<Exchange> userExchanges = getUsersExchanges(userMarketSettingsRepository, exchangeRepository);
-        Set<String> usersCoinsNames = getUsersCoinsNames(userMarketSettingsRepository);
-        ExecutorService executorService = Executors.newFixedThreadPool(userExchanges.size());
-        List<CompletableFuture<Void>> futures = new CopyOnWriteArrayList<>();
-
-        userExchanges.forEach(exchange -> {
-            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                Set<Coin> filteredCoinsNames = getFilteredCoins(exchange, usersCoinsNames);
-                synchronized (result) {
-                    result.putAll(apiExchangeAdapter.getCoinVolume24h(exchange.getName(), filteredCoinsNames));
-                }
-            }, executorService);
-            futures.add(future);
-        });
-
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        executorService.shutdown();
-
-        return result;
-    }
-
-    public static Set<Exchange> getUsersExchanges(UserMarketSettingsRepository userMarketSettingsRepository,
-                                                  ExchangeRepository exchangeRepository
-    ) {
-        return userMarketSettingsRepository.findAll().stream()
-                .flatMap(settings -> {
-                    List<String> marketsBuy = settings.getMarketsBuy();
-                    List<String> marketsSell = settings.getMarketsSell();
-                    List<String> allMarketsNames = new ArrayList<>();
-                    allMarketsNames.addAll(marketsBuy);
-                    allMarketsNames.addAll(marketsSell);
-                    return allMarketsNames.stream();
-                })
-                .map(exchangeRepository::findByName)
-                .collect(Collectors.toSet());
-    }
-
-    public static Set<String> getUsersCoinsNames(UserMarketSettingsRepository userMarketSettingsRepository) {
-        return userMarketSettingsRepository.findAll().stream()
-                .flatMap(settings -> settings.getCoins().stream())
-                .collect(Collectors.toSet());
-    }
-
-    public static List<OrdersBook> getOrderBooksAsync(
-            ExchangeRepository exchangeRepository,
-            ApiExchangeAdapter apiExchangeAdapter,
-            UserMarketSettingsRepository userMarketSettingsRepository
-    ) {
-        List<OrdersBook> ordersBooks = Collections.synchronizedList(new ArrayList<>());
-        Set<Exchange> exchanges = AppServiceUtils.getUsersExchanges(userMarketSettingsRepository, exchangeRepository);
-        if (exchanges.isEmpty()) return new ArrayList<>();
-        Set<String> usersCoinsNames = AppServiceUtils.getUsersCoinsNames(userMarketSettingsRepository);
-        ExecutorService executorService = Executors.newFixedThreadPool(exchanges.size());
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-
-        exchanges.forEach(exchange -> {
-            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                Set<String> filteredCoinsNames = AppServiceUtils.getFilteredCoinsNames(exchange, usersCoinsNames);
-                Set<CoinDepth> coinDepth = apiExchangeAdapter.getOrderBook(exchange, filteredCoinsNames);
-                coinDepth.forEach(depth -> {
-                    synchronized (ordersBooks) {
-                        OrdersBook ordersBook = OrdersBookUtils.createOrderBook(exchange, depth);
-                        if (ordersBook != null) {
-                            ordersBooks.add(ordersBook);
-                        }
-                    }
-                });
-            },executorService);
-            futures.add(future);
-        });
-
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        return ordersBooks;
-    }
-
-    public synchronized static Set<String> getFilteredCoinsNames(Exchange exchange, Set<String> usersCoinsNames) {
-
-        Set<String> filteredCoinNames = new HashSet<>();
-        List<String> exchangesCoinsNames = new ArrayList<>(exchange.getCoins().stream().map(Coin::getSymbol).toList());
-
-        exchangesCoinsNames.forEach(exCoin -> usersCoinsNames.forEach(uCoin -> {
-            if (exCoin.equals(uCoin)) {
-                filteredCoinNames.add(exCoin);
-            }
-        }));
-
-        return filteredCoinNames;
-    }
-
-    public static synchronized Set<Coin> getFilteredCoins(Exchange exchange, Set<String> usersCoinsNames) {
-        return exchange.getCoins().stream()
-                .filter(coin -> usersCoinsNames.contains(coin.getName()))
-                .collect(Collectors.toSet());
-    }
-
-    public static Map<String, List<ArbitrageOpportunity>> checkExchangesForArbitrageOpportunities(
+    @Transactional
+    public Map<String, List<ArbitrageOpportunity>> checkExchangesForArbitrageOpportunities(
             UserMarketSettings userMarketSettings,
             OrdersBookRepository ordersBookRepository
     )
@@ -211,8 +24,8 @@ public class AppServiceUtils {
         userMarketSettings.getCoins().forEach(coinName -> {
             List<ArbitrageOpportunity> arbitrageOpportunities = new ArrayList<>();
             List<OrdersBook> ordersBooks = ordersBookRepository.findByCoinName(coinName);
-            Map<String, Set<Ask>> buyPrices = AppServiceUtils.getBuyPrices(ordersBooks);
-            Map<String, Set<Bid>> sellPrices = AppServiceUtils.getSellPrices(ordersBooks);
+            Map<String, Set<Ask>> buyPrices = getBuyPrices(ordersBooks);
+            Map<String, Set<Bid>> sellPrices = getSellPrices(ordersBooks);
             Map<String, Ask> lowestBuyPrice = getLowestBuyPrice(buyPrices);
             Map<String, Bid> highestSellPrice = getHighestSellPrice(sellPrices);
 
@@ -240,7 +53,7 @@ public class AppServiceUtils {
         return arbitrageOpportunitiesMap;
     }
 
-    private static Map<String, Ask> getLowestBuyPrice(Map<String, Set<Ask>> buyPrices) {
+    private Map<String, Ask> getLowestBuyPrice(Map<String, Set<Ask>> buyPrices) {
         return buyPrices.entrySet().stream()
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
@@ -253,7 +66,7 @@ public class AppServiceUtils {
                 ));
     }
 
-    private static Map<String, Bid> getHighestSellPrice(Map<String, Set<Bid>> sellPrices) {
+    private Map<String, Bid> getHighestSellPrice(Map<String, Set<Bid>> sellPrices) {
         return sellPrices.entrySet().stream()
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
@@ -266,7 +79,7 @@ public class AppServiceUtils {
                 ));
     }
 
-    private static Map<String, Set<Ask>> getBuyPrices(List<OrdersBook> ordersBooks) {
+    private Map<String, Set<Ask>> getBuyPrices(List<OrdersBook> ordersBooks) {
         return ordersBooks.stream()
                 .collect(Collectors.toMap(
                         ordersBook -> ordersBook.getExchange().getName(),
@@ -274,7 +87,7 @@ public class AppServiceUtils {
                 ));
     }
 
-    private static Map<String, Set<Bid>> getSellPrices(List<OrdersBook> ordersBooks) {
+    private Map<String, Set<Bid>> getSellPrices(List<OrdersBook> ordersBooks) {
         return ordersBooks.stream()
                 .collect(Collectors.toMap(
                         ordersBook -> ordersBook.getExchange().getName(),
@@ -282,7 +95,8 @@ public class AppServiceUtils {
                 ));
     }
 
-    private static TradingData getChainData(Bid bid, Ask ask) {
+    @Transactional
+    protected TradingData getChainData(Bid bid, Ask ask) {
         Coin coinAsk = ask.getOrdersBook().getCoin();
         Coin coinBid = bid.getOrdersBook().getCoin();
         Set<Chain> chainsForBuy = coinAsk.getChains();
@@ -313,13 +127,13 @@ public class AppServiceUtils {
                 .build();
     }
 
-    public static List<EventData> getEventDataFromArbitrageOpportunities(List<ArbitrageOpportunity> arbitrageOpportunitiesList, UserMarketSettings userMarketSettings) {
+    public List<EventData> getEventDataFromArbitrageOpportunities(List<ArbitrageOpportunity> arbitrageOpportunitiesList, UserMarketSettings userMarketSettings) {
         List<EventData> eventDataList = new ArrayList<>();
         BigDecimal userMinProfit = BigDecimal.valueOf(userMarketSettings.getProfitSpread());
         BigDecimal userMaxVolume = BigDecimal.valueOf(userMarketSettings.getMaxVolume());
 
         arbitrageOpportunitiesList.forEach(arbitrageOpportunity -> {
-            EventData eventData = AppServiceUtils.getArbitrageEventData(arbitrageOpportunity, userMaxVolume);
+            EventData eventData = getArbitrageEventData(arbitrageOpportunity, userMaxVolume);
             if (userMinProfit.compareTo(new BigDecimal(eventData.getFiatSpread())) < 0) {
                 eventDataList.add(eventData);
             }
@@ -327,7 +141,7 @@ public class AppServiceUtils {
         return eventDataList;
     }
 
-    private static EventData getArbitrageEventData(ArbitrageOpportunity arbitrageOpportunity, BigDecimal userMaxVolume) {
+    private EventData getArbitrageEventData(ArbitrageOpportunity arbitrageOpportunity, BigDecimal userMaxVolume) {
         BigDecimal maxProfit = BigDecimal.ZERO;
         BigDecimal maxProfitCoin = BigDecimal.ZERO;
         BigDecimal priceAmount = BigDecimal.ZERO;
@@ -435,19 +249,19 @@ public class AppServiceUtils {
         );
     }
 
-    private static BigDecimal calculateTradingFee(Ask ask, Bid bid, BigDecimal tradingFeeAsk, BigDecimal tradingFeeBid) {
+    private BigDecimal calculateTradingFee(Ask ask, Bid bid, BigDecimal tradingFeeAsk, BigDecimal tradingFeeBid) {
         return bid.getPrice().multiply(tradingFeeBid).add(ask.getPrice().multiply(tradingFeeAsk));
     }
 
-    private static BigDecimal calculateChainFee(Ask ask, BigDecimal chainFee) {
+    private BigDecimal calculateChainFee(Ask ask, BigDecimal chainFee) {
         return ask.getPrice().multiply(chainFee);
     }
 
-    private static BigDecimal calculateProfit(BigDecimal volume, BigDecimal askPrice, BigDecimal bidPrice, BigDecimal fee) {
+    private BigDecimal calculateProfit(BigDecimal volume, BigDecimal askPrice, BigDecimal bidPrice, BigDecimal fee) {
         return volume.multiply(bidPrice.subtract(askPrice)).subtract(fee);
     }
 
-    private static EventData createEventData(
+    private EventData createEventData(
             ArbitrageOpportunity arbitrageOpportunity,
             BigDecimal priceAmount,
             BigDecimal coinAmount,

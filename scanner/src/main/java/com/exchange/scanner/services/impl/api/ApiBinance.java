@@ -2,22 +2,15 @@ package com.exchange.scanner.services.impl.api;
 
 import com.exchange.scanner.dto.response.exchangedata.binance.depth.BinanceCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.binance.tickervolume.BinanceCoinTickerVolume;
-import com.exchange.scanner.dto.response.exchangedata.binance.exchangeinfo.ExchangeInfo;
+import com.exchange.scanner.dto.response.exchangedata.binance.coins.BinanceCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.ApiExchangeUtils;
-import com.exchange.scanner.services.utils.CoinFactory;
-import com.exchange.scanner.services.utils.ListUtils;
-import com.exchange.scanner.services.utils.WebClientBuilder;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.exchange.scanner.services.utils.Binance.BinanceCoinDepthBuilder;
+import com.exchange.scanner.services.utils.AppUtils.CoinFactory;
+import com.exchange.scanner.services.utils.AppUtils.ListUtils;
+import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -31,12 +24,6 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ApiBinance implements ApiExchange {
 
-    @Autowired
-    private RestTemplate restTemplate;
-
-    @Autowired
-    private ObjectMapper objectMapper;
-
     private static final String NAME = "Binance";
 
     private static final String BASE_ENDPOINT = "https://api.binance.com";
@@ -45,7 +32,7 @@ public class ApiBinance implements ApiExchange {
 
     private static final int REQUEST_DELAY_DURATION = 20;
 
-    private static final int DEPTH_REQUEST_LIMIT = 20;
+    private static final int DEPTH_REQUEST_LIMIT = 15;
 
     private final WebClient webClient;
 
@@ -55,23 +42,39 @@ public class ApiBinance implements ApiExchange {
 
     @Override
     public Set<Coin> getAllCoins() {
-        String url = BASE_ENDPOINT + "/api/v3/exchangeInfo";
+        Set<Coin> coins = new HashSet<>();
 
-        ResponseEntity<ExchangeInfo> responseEntity = restTemplate.getForEntity(url, ExchangeInfo.class);
-        HttpStatusCode statusCode = responseEntity.getStatusCode();
+        BinanceCurrencyResponse response = getCurrencies().block();
 
-        if (statusCode != HttpStatus.OK || responseEntity.getBody() == null) {
-            log.error("Ошибка получения данных от Binance, код: {}", statusCode);
-            throw new RuntimeException("Ошибка получения данных от Binance, код: " + statusCode);
-        }
+        if (response == null) return coins;
 
-        return responseEntity.getBody().getSymbols().stream()
+        coins = response.getSymbols().stream()
                 .filter(symbol -> symbol.getQuoteAsset().equals("USDT") &&
                         symbol.getStatus().equals("TRADING") &&
                         symbol.getIsSpotTradingAllowed()
                 )
                 .map(symbol -> CoinFactory.getCoin(symbol.getBaseAsset()))
                 .collect(Collectors.toSet());
+
+        return coins;
+    }
+
+    private Mono<BinanceCurrencyResponse> getCurrencies() {
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/api/v3/exchangeInfo")
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения списка валют. Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(BinanceCurrencyResponse.class);
     }
 
     @Override
@@ -108,65 +111,60 @@ public class ApiBinance implements ApiExchange {
         int maxSymbolPerRequest = 100;
         List<List<Coin>> partitions = ListUtils.partition(coins, maxSymbolPerRequest);
         return Flux.fromIterable(partitions)
-                .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
-                .flatMap(partition -> webClient
-                        .get()
-                        .uri(uriBuilder -> uriBuilder.path("/api/v3/ticker/24hr")
-                                .queryParam("symbols", generateParameters(partition))
-                                .build()
-                        )
-                        .retrieve()
-                        .onStatus(
-                                status -> status.is4xxClientError() || status.is5xxServerError(),
-                                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                                    log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
-                                    return Mono.empty();
-                                })
-                        )
-                        .bodyToFlux(BinanceCoinTickerVolume.class)
-                );
+            .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
+            .flatMap(partition -> webClient
+                .get()
+                .uri(uriBuilder -> uriBuilder.path("/api/v3/ticker/24hr")
+                        .queryParam("symbols", generateParameters(partition))
+                        .build()
+                )
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                            log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                            return Mono.empty();
+                        })
+                )
+                .bodyToFlux(BinanceCoinTickerVolume.class)
+            );
     }
 
     @Override
     public Set<CoinDepth> getOrderBook(Set<String> coins) {
-        Flux<CoinDepth> response = getCoinDepth(coins);
+        Set<CoinDepth> coinDepthSet = new HashSet<>();
 
-        return new HashSet<>(Objects.requireNonNull(response
-                .collectList()
-                .block()));
+        coins.forEach(coin -> {
+            BinanceCoinDepth response = getCoinDepth(coin).block();
+
+            if (response != null) {
+                CoinDepth coinDepth = BinanceCoinDepthBuilder.getCoinDepth(coin, response);
+                coinDepthSet.add(coinDepth);
+            }
+        });
+
+        return coinDepthSet;
     }
 
-    private Flux<CoinDepth> getCoinDepth(Set<String> coins) {
-        List<String> coinSymbols = coins.stream().map(coin -> coin + "USDT").toList();
+    private Mono<BinanceCoinDepth> getCoinDepth(String coinName) {
+        String symbol = coinName + "USDT";
 
-        return Flux.fromIterable(coinSymbols)
-                .flatMap(coin -> webClient
-                        .get()
-                        .uri(uriBuilder -> uriBuilder.path("/api/v3/depth")
-                                .queryParam("symbol", coin)
-                                .queryParam("limit", DEPTH_REQUEST_LIMIT)
-                                .build()
-                        )
-                        .retrieve()
-                        .onStatus(
-                                status -> status.is4xxClientError() || status.is5xxServerError(),
-                                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                                    log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
-                                    return Mono.empty();
-                                })
-                        )
-                        .bodyToFlux(String.class)
-                        .map(response -> {
-                            try {
-                                BinanceCoinDepth binanceCoinDepth = objectMapper.readValue(response, BinanceCoinDepth.class);
-                                binanceCoinDepth.setCoinName(coin.replaceAll("USDT", ""));
-
-                                return ApiExchangeUtils.getBinanceCoinDepth(binanceCoinDepth);
-                            } catch (JsonProcessingException e) {
-                                throw new RuntimeException(e);
-                            }
-                        })
-                );
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder.path("/api/v3/depth")
+                    .queryParam("symbol", symbol)
+                    .queryParam("limit", DEPTH_REQUEST_LIMIT)
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(BinanceCoinDepth.class);
     }
 
     private static String generateParameters(List<Coin> coins) {

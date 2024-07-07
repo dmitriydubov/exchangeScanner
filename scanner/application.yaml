@@ -31,7 +31,7 @@ spring:
 exchanges:
   apiKeys:
     #Api ключ Gate.io с истекающим сроком
-    gateIO:
+    GateIO:
       key: 772206b7012c7e1032e2bcb6d206716d
       secret: ac5066ea5bed73af02bd53ad998045d879e2a93c0ae4b33dd6c339d4057c6d02
     MEXC:
@@ -70,3 +70,6 @@ exchanges:
     XT:
       key: 21f4f1a6-7d48-4a08-b712-6993d4262bc5
       secret: 10db7f81923dc256b4de9738de75626d1e436574
+    BingX:
+      key: oDp2jGhexStzRCZ3pYiFZ2WCjb0UtITZCoVf03TPXWufuMYNWC3PILjJUU5nCq1nIQUykg7Sf0DWUnUhlF7lg
+      secret: mYHNvDKq1Md7gyKwR0aRsS07uA8gCnKN3QDloQlYyEwqSLnXwmIrqvofxMh9aHgc0LVXN1B2qAFhJDR4g

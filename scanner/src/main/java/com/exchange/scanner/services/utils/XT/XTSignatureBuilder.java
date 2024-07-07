@@ -42,8 +42,6 @@ public class XTSignatureBuilder {
     public void createSignature(String method, String path) {
         String preSignString = createPreSignString(method, path);
 
-        System.out.println(preSignString);
-
         try {
             Mac mac = Mac.getInstance(ALGORITHM);
             SecretKeySpec keySpec = new SecretKeySpec(secretKey.getBytes(StandardCharsets.UTF_8), ALGORITHM);

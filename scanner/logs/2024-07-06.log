@@ -50,7 +50,7 @@ Caused by: java.lang.NullPointerException: Cannot invoke "java.util.Map.forEach(
 	at com.exchange.scanner.services.impl.api.ApiCoinEx.getChains(ApiCoinEx.java:103)
 	at com.exchange.scanner.services.impl.api.ApiCoinEx.getCoinChain(ApiCoinEx.java:90)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getCoinChain(ApiExchangeAdapterImpl.java:103)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getCoinsChainInfoAsync$2(AppServiceUtils.java:63)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getCoinsChainInfoAsync$2(AppServiceUtils.java:63)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-06 00:21:54 [INFO] - Closing JPA EntityManagerFactory for persistence unit 'default'
@@ -259,7 +259,7 @@ Original Stack Trace:
 		at reactor.core.publisher.Mono.block(Mono.java:1779)
 		at com.exchange.scanner.services.impl.api.ApiCoinW.getTradingFee(ApiCoinW.java:84)
 		at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getTradingFee(ApiExchangeAdapterImpl.java:130)
-		at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getTradingFeeAsync$4(AppServiceUtils.java:89)
+		at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getTradingFeeAsync$4(AppServiceUtils.java:89)
 		at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 		at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
 		at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
@@ -467,7 +467,7 @@ Caused by: java.lang.NullPointerException: Cannot invoke "java.util.Map.forEach(
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 	at com.exchange.scanner.services.impl.api.ApiCoinW.getTradingFee(ApiCoinW.java:87)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getTradingFee(ApiExchangeAdapterImpl.java:130)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getTradingFeeAsync$4(AppServiceUtils.java:89)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getTradingFeeAsync$4(AppServiceUtils.java:89)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-06 12:16:42 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 18196 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -524,7 +524,7 @@ Caused by: java.lang.NullPointerException: Cannot invoke "java.util.Map.forEach(
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 	at com.exchange.scanner.services.impl.api.ApiCoinW.getTradingFee(ApiCoinW.java:88)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getTradingFee(ApiExchangeAdapterImpl.java:130)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getTradingFeeAsync$4(AppServiceUtils.java:89)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getTradingFeeAsync$4(AppServiceUtils.java:89)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-06 12:17:41 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 9428 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -1115,7 +1115,7 @@ Original Stack Trace:
 		at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 		at com.exchange.scanner.services.impl.api.ApiCoinW.getOrderBook(ApiCoinW.java:203)
 		at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:78)
-		at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
+		at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
 		at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 		at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
 		at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
@@ -1254,12 +1254,12 @@ java.util.concurrent.CompletionException: java.lang.RuntimeException: Ошибк
 	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.RuntimeException: Ошибка в методе getOrderBooks. Монеты нет в списке монет биржи
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$createOrderBook$17(AppServiceUtils.java:203)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$createOrderBook$17(AppServiceUtils.java:203)
 	at java.base/java.util.Optional.orElseThrow(Optional.java:403)
-	at com.exchange.scanner.services.utils.AppServiceUtils.createOrderBook(AppServiceUtils.java:203)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.createOrderBook(AppServiceUtils.java:203)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-06 14:13:12 [INFO] - Request: GET https://www.coinw.com/api/v1/public?command=returnOrderBook&symbol=ENJ_USDT&size=20
@@ -1329,10 +1329,10 @@ java.util.concurrent.CompletionException: java.lang.NullPointerException: Cannot
 	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.NullPointerException: Cannot invoke "java.util.Set.stream()" because the return value of "com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth.getCoinDepthBids()" is null
-	at com.exchange.scanner.services.utils.AppServiceUtils.createOrderBook(AppServiceUtils.java:206)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.createOrderBook(AppServiceUtils.java:206)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-06 14:14:57 [INFO] - Request: GET https://www.coinw.com/api/v1/public?command=returnOrderBook&symbol=BTC_USDT&size=20
@@ -1359,10 +1359,10 @@ java.util.concurrent.CompletionException: java.lang.NullPointerException: Cannot
 	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.NullPointerException: Cannot invoke "java.util.Set.stream()" because the return value of "com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth.getCoinDepthBids()" is null
-	at com.exchange.scanner.services.utils.AppServiceUtils.createOrderBook(AppServiceUtils.java:206)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.createOrderBook(AppServiceUtils.java:206)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-06 14:15:02 [INFO] - Request: GET https://www.coinw.com/api/v1/public?command=returnOrderBook&symbol=ENJ_USDT&size=20
@@ -1389,10 +1389,10 @@ java.util.concurrent.CompletionException: java.lang.NullPointerException: Cannot
 	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.NullPointerException: Cannot invoke "java.util.Set.stream()" because the return value of "com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth.getCoinDepthBids()" is null
-	at com.exchange.scanner.services.utils.AppServiceUtils.createOrderBook(AppServiceUtils.java:206)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.createOrderBook(AppServiceUtils.java:206)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-06 14:15:07 [INFO] - Request: GET https://www.coinw.com/api/v1/public?command=returnOrderBook&symbol=BTC_USDT&size=20
@@ -1419,10 +1419,10 @@ java.util.concurrent.CompletionException: java.lang.NullPointerException: Cannot
 	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.NullPointerException: Cannot invoke "java.util.Set.stream()" because the return value of "com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth.getCoinDepthBids()" is null
-	at com.exchange.scanner.services.utils.AppServiceUtils.createOrderBook(AppServiceUtils.java:206)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.createOrderBook(AppServiceUtils.java:206)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-06 14:22:12 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 7324 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -3451,7 +3451,7 @@ Original Stack Trace:
 		at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 		at com.exchange.scanner.services.impl.api.ApiKucoin.getOrderBook(ApiKucoin.java:252)
 		at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:70)
-		at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:166)
+		at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:166)
 		at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 		at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
 		at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
@@ -3586,7 +3586,7 @@ Original Stack Trace:
 		at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 		at com.exchange.scanner.services.impl.api.ApiKucoin.getOrderBook(ApiKucoin.java:252)
 		at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:70)
-		at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:166)
+		at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:166)
 		at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 		at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
 		at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
@@ -6903,10 +6903,10 @@ java.util.concurrent.CompletionException: java.lang.NullPointerException: Cannot
 	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.NullPointerException: Cannot invoke "java.lang.Integer.intValue()" because the return value of "com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth.getStatusCode()" is null
-	at com.exchange.scanner.services.utils.ordersbook.OrdersBookUtils.createOrderBook(OrdersBookUtils.java:19)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:169)
+	at com.exchange.scanner.services.utils.AppUtils.OrdersBookUtils.createOrderBook(OrdersBookUtils.java:19)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:169)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:167)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:167)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-06 20:41:27 [INFO] - scheduling-1 приступил к выполнению задачи getOrderBooks
@@ -7089,10 +7089,10 @@ java.util.concurrent.CompletionException: java.lang.NullPointerException: Cannot
 	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.NullPointerException: Cannot invoke "java.lang.Integer.intValue()" because the return value of "com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth.getStatusCode()" is null
-	at com.exchange.scanner.services.utils.ordersbook.OrdersBookUtils.createOrderBook(OrdersBookUtils.java:19)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:169)
+	at com.exchange.scanner.services.utils.AppUtils.OrdersBookUtils.createOrderBook(OrdersBookUtils.java:19)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:169)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:167)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:167)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-06 20:43:10 [INFO] - scheduling-1 приступил к выполнению задачи getOrderBooks
@@ -7275,10 +7275,10 @@ java.util.concurrent.CompletionException: java.lang.NullPointerException: Cannot
 	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.NullPointerException: Cannot invoke "java.lang.Integer.intValue()" because the return value of "com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth.getStatusCode()" is null
-	at com.exchange.scanner.services.utils.ordersbook.OrdersBookUtils.createOrderBook(OrdersBookUtils.java:19)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:169)
+	at com.exchange.scanner.services.utils.AppUtils.OrdersBookUtils.createOrderBook(OrdersBookUtils.java:19)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:169)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:167)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:167)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-06 20:44:14 [INFO] - scheduling-1 приступил к выполнению задачи getOrderBooks
@@ -7461,10 +7461,10 @@ java.util.concurrent.CompletionException: java.lang.NullPointerException: Cannot
 	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.NullPointerException: Cannot invoke "java.lang.Integer.intValue()" because the return value of "com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth.getStatusCode()" is null
-	at com.exchange.scanner.services.utils.ordersbook.OrdersBookUtils.createOrderBook(OrdersBookUtils.java:19)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:169)
+	at com.exchange.scanner.services.utils.AppUtils.OrdersBookUtils.createOrderBook(OrdersBookUtils.java:19)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:169)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:167)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:167)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-06 20:51:30 [INFO] - scheduling-1 приступил к выполнению задачи getOrderBooks

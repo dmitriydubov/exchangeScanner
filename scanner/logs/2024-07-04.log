@@ -755,7 +755,7 @@ Caused by: java.lang.RuntimeException: com.fasterxml.jackson.core.io.JsonEOFExce
 		at reactor.core.publisher.Mono.block(Mono.java:1779)
 		at com.exchange.scanner.services.impl.api.ApiPoloniex.getOrderBook(ApiPoloniex.java:195)
 		at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:73)
-		at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
+		at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
 		at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 		at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
 		at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
@@ -830,7 +830,7 @@ Caused by: java.lang.IndexOutOfBoundsException: Index 2 out of bounds for length
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 	at com.exchange.scanner.services.impl.api.ApiPoloniex.getOrderBook(ApiPoloniex.java:194)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:73)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 21:53:56 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 18836 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -889,7 +889,7 @@ Caused by: java.lang.IndexOutOfBoundsException: Index 2 out of bounds for length
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 	at com.exchange.scanner.services.impl.api.ApiPoloniex.getOrderBook(ApiPoloniex.java:194)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:73)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 21:55:46 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 8728 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -948,7 +948,7 @@ Caused by: java.lang.IndexOutOfBoundsException: Index 2 out of bounds for length
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 	at com.exchange.scanner.services.impl.api.ApiPoloniex.getOrderBook(ApiPoloniex.java:194)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:73)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 21:57:59 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 10084 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -1007,7 +1007,7 @@ Caused by: java.lang.IndexOutOfBoundsException: Index 2 out of bounds for length
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 	at com.exchange.scanner.services.impl.api.ApiPoloniex.getOrderBook(ApiPoloniex.java:194)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:73)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 21:59:15 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 10064 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -1066,7 +1066,7 @@ Caused by: java.lang.IndexOutOfBoundsException: Index 2 out of bounds for length
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 	at com.exchange.scanner.services.impl.api.ApiPoloniex.getOrderBook(ApiPoloniex.java:194)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:73)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:03:33 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 11392 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -1125,7 +1125,7 @@ Caused by: java.lang.IndexOutOfBoundsException: Index 2 out of bounds for length
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 	at com.exchange.scanner.services.impl.api.ApiPoloniex.getOrderBook(ApiPoloniex.java:194)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:73)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:06:07 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 10040 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -1184,7 +1184,7 @@ Caused by: java.lang.IndexOutOfBoundsException: Index 2 out of bounds for length
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 	at com.exchange.scanner.services.impl.api.ApiPoloniex.getOrderBook(ApiPoloniex.java:194)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:73)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:06:21 [ERROR] - Unexpected error occurred in scheduled task
@@ -1206,7 +1206,7 @@ Caused by: java.lang.IndexOutOfBoundsException: Index 2 out of bounds for length
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 	at com.exchange.scanner.services.impl.api.ApiPoloniex.getOrderBook(ApiPoloniex.java:194)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:73)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:06:25 [ERROR] - Unexpected error occurred in scheduled task
@@ -1228,7 +1228,7 @@ Caused by: java.lang.IndexOutOfBoundsException: Index 2 out of bounds for length
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 	at com.exchange.scanner.services.impl.api.ApiPoloniex.getOrderBook(ApiPoloniex.java:194)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:73)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:06:27 [INFO] - Closing JPA EntityManagerFactory for persistence unit 'default'
@@ -1290,7 +1290,7 @@ Caused by: java.lang.IndexOutOfBoundsException: Index 2 out of bounds for length
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 	at com.exchange.scanner.services.impl.api.ApiPoloniex.getOrderBook(ApiPoloniex.java:194)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:73)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:11:14 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 6248 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -1351,7 +1351,7 @@ Caused by: com.poloniex.api.client.common.PoloApiException: {
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 	at com.exchange.scanner.services.impl.api.ApiPoloniex.getOrderBook(ApiPoloniex.java:194)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:73)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:11:28 [ERROR] - Unexpected error occurred in scheduled task
@@ -1375,7 +1375,7 @@ Caused by: com.poloniex.api.client.common.PoloApiException: {
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 	at com.exchange.scanner.services.impl.api.ApiPoloniex.getOrderBook(ApiPoloniex.java:194)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:73)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:11:29 [INFO] - Closing JPA EntityManagerFactory for persistence unit 'default'
@@ -1476,7 +1476,7 @@ Caused by: com.poloniex.api.client.common.PoloApiException: {
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 	at com.exchange.scanner.services.impl.api.ApiPoloniex.getOrderBook(ApiPoloniex.java:194)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:73)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:12:57 [ERROR] - Unexpected error occurred in scheduled task
@@ -1500,7 +1500,7 @@ Caused by: com.poloniex.api.client.common.PoloApiException: {
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 	at com.exchange.scanner.services.impl.api.ApiPoloniex.getOrderBook(ApiPoloniex.java:194)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:73)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:12:58 [INFO] - Closing JPA EntityManagerFactory for persistence unit 'default'
@@ -1552,12 +1552,12 @@ java.util.concurrent.CompletionException: java.lang.RuntimeException: Ошибк
 	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.RuntimeException: Ошибка в методе getOrderBooks. Монеты нет в списке монет биржи
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$createOrderBook$17(AppServiceUtils.java:204)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$createOrderBook$17(AppServiceUtils.java:204)
 	at java.base/java.util.Optional.orElseThrow(Optional.java:403)
-	at com.exchange.scanner.services.utils.AppServiceUtils.createOrderBook(AppServiceUtils.java:204)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.createOrderBook(AppServiceUtils.java:204)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:15:29 [ERROR] - Unexpected error occurred in scheduled task
@@ -1569,12 +1569,12 @@ java.util.concurrent.CompletionException: java.lang.RuntimeException: Ошибк
 	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.RuntimeException: Ошибка в методе getOrderBooks. Монеты нет в списке монет биржи
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$createOrderBook$17(AppServiceUtils.java:204)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$createOrderBook$17(AppServiceUtils.java:204)
 	at java.base/java.util.Optional.orElseThrow(Optional.java:403)
-	at com.exchange.scanner.services.utils.AppServiceUtils.createOrderBook(AppServiceUtils.java:204)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.createOrderBook(AppServiceUtils.java:204)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:16:39 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 20036 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -1677,7 +1677,7 @@ Caused by: com.poloniex.api.client.common.PoloApiException: {
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 	at com.exchange.scanner.services.impl.api.ApiPoloniex.getOrderBook(ApiPoloniex.java:194)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:73)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:17:58 [ERROR] - Unexpected error occurred in scheduled task
@@ -1701,7 +1701,7 @@ Caused by: com.poloniex.api.client.common.PoloApiException: {
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
 	at com.exchange.scanner.services.impl.api.ApiPoloniex.getOrderBook(ApiPoloniex.java:194)
 	at com.exchange.scanner.services.impl.ApiExchangeAdapterImpl.getOrderBook(ApiExchangeAdapterImpl.java:73)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:164)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:17:58 [INFO] - Closing JPA EntityManagerFactory for persistence unit 'default'
@@ -1753,12 +1753,12 @@ java.util.concurrent.CompletionException: java.lang.RuntimeException: Ошибк
 	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.RuntimeException: Ошибка в методе getOrderBooks. Монеты нет в списке монет биржи
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$createOrderBook$17(AppServiceUtils.java:204)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$createOrderBook$17(AppServiceUtils.java:204)
 	at java.base/java.util.Optional.orElseThrow(Optional.java:403)
-	at com.exchange.scanner.services.utils.AppServiceUtils.createOrderBook(AppServiceUtils.java:204)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.createOrderBook(AppServiceUtils.java:204)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:18:24 [ERROR] - Unexpected error occurred in scheduled task
@@ -1770,12 +1770,12 @@ java.util.concurrent.CompletionException: java.lang.RuntimeException: Ошибк
 	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.RuntimeException: Ошибка в методе getOrderBooks. Монеты нет в списке монет биржи
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$createOrderBook$17(AppServiceUtils.java:204)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$createOrderBook$17(AppServiceUtils.java:204)
 	at java.base/java.util.Optional.orElseThrow(Optional.java:403)
-	at com.exchange.scanner.services.utils.AppServiceUtils.createOrderBook(AppServiceUtils.java:204)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.createOrderBook(AppServiceUtils.java:204)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:18:28 [ERROR] - Unexpected error occurred in scheduled task
@@ -1787,12 +1787,12 @@ java.util.concurrent.CompletionException: java.lang.RuntimeException: Ошибк
 	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.RuntimeException: Ошибка в методе getOrderBooks. Монеты нет в списке монет биржи
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$createOrderBook$17(AppServiceUtils.java:204)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$createOrderBook$17(AppServiceUtils.java:204)
 	at java.base/java.util.Optional.orElseThrow(Optional.java:403)
-	at com.exchange.scanner.services.utils.AppServiceUtils.createOrderBook(AppServiceUtils.java:204)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.createOrderBook(AppServiceUtils.java:204)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:21:44 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 3384 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -1841,12 +1841,12 @@ java.util.concurrent.CompletionException: java.lang.RuntimeException: Ошибк
 	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.RuntimeException: Ошибка в методе getOrderBooks. Монеты нет в списке монет биржи
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$createOrderBook$17(AppServiceUtils.java:207)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$createOrderBook$17(AppServiceUtils.java:207)
 	at java.base/java.util.Optional.orElseThrow(Optional.java:403)
-	at com.exchange.scanner.services.utils.AppServiceUtils.createOrderBook(AppServiceUtils.java:207)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.createOrderBook(AppServiceUtils.java:207)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:23:27 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 10064 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -1896,7 +1896,7 @@ java.util.concurrent.CompletionException: java.lang.NullPointerException: Cannot
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.NullPointerException: Cannot invoke "String.toCharArray()" because "val" is null
 	at java.base/java.math.BigDecimal.<init>(BigDecimal.java:903)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$createOrderBook$18(AppServiceUtils.java:214)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$createOrderBook$18(AppServiceUtils.java:214)
 	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:197)
 	at java.base/java.util.HashMap$KeySpliterator.forEachRemaining(HashMap.java:1715)
 	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:509)
@@ -1906,10 +1906,10 @@ Caused by: java.lang.NullPointerException: Cannot invoke "String.toCharArray()" 
 	at java.base/java.util.stream.ReferencePipeline.toArray(ReferencePipeline.java:616)
 	at java.base/java.util.stream.ReferencePipeline.toArray(ReferencePipeline.java:622)
 	at java.base/java.util.stream.ReferencePipeline.toList(ReferencePipeline.java:627)
-	at com.exchange.scanner.services.utils.AppServiceUtils.createOrderBook(AppServiceUtils.java:218)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.createOrderBook(AppServiceUtils.java:218)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:26:15 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 12804 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -1959,7 +1959,7 @@ java.util.concurrent.CompletionException: java.lang.NullPointerException: Cannot
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.NullPointerException: Cannot invoke "String.toCharArray()" because "val" is null
 	at java.base/java.math.BigDecimal.<init>(BigDecimal.java:903)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$createOrderBook$18(AppServiceUtils.java:212)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$createOrderBook$18(AppServiceUtils.java:212)
 	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:197)
 	at java.base/java.util.HashMap$KeySpliterator.forEachRemaining(HashMap.java:1715)
 	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:509)
@@ -1969,10 +1969,10 @@ Caused by: java.lang.NullPointerException: Cannot invoke "String.toCharArray()" 
 	at java.base/java.util.stream.ReferencePipeline.toArray(ReferencePipeline.java:616)
 	at java.base/java.util.stream.ReferencePipeline.toArray(ReferencePipeline.java:622)
 	at java.base/java.util.stream.ReferencePipeline.toList(ReferencePipeline.java:627)
-	at com.exchange.scanner.services.utils.AppServiceUtils.createOrderBook(AppServiceUtils.java:216)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.createOrderBook(AppServiceUtils.java:216)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:29:08 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 18612 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -2022,7 +2022,7 @@ java.util.concurrent.CompletionException: java.lang.NullPointerException: Cannot
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.NullPointerException: Cannot invoke "String.toCharArray()" because "val" is null
 	at java.base/java.math.BigDecimal.<init>(BigDecimal.java:903)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$createOrderBook$18(AppServiceUtils.java:212)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$createOrderBook$18(AppServiceUtils.java:212)
 	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:197)
 	at java.base/java.util.HashMap$KeySpliterator.forEachRemaining(HashMap.java:1715)
 	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:509)
@@ -2032,10 +2032,10 @@ Caused by: java.lang.NullPointerException: Cannot invoke "String.toCharArray()" 
 	at java.base/java.util.stream.ReferencePipeline.toArray(ReferencePipeline.java:616)
 	at java.base/java.util.stream.ReferencePipeline.toArray(ReferencePipeline.java:622)
 	at java.base/java.util.stream.ReferencePipeline.toList(ReferencePipeline.java:627)
-	at com.exchange.scanner.services.utils.AppServiceUtils.createOrderBook(AppServiceUtils.java:216)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.createOrderBook(AppServiceUtils.java:216)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:30:36 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 3128 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -2085,7 +2085,7 @@ java.util.concurrent.CompletionException: java.lang.NullPointerException: Cannot
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.NullPointerException: Cannot invoke "String.toCharArray()" because "val" is null
 	at java.base/java.math.BigDecimal.<init>(BigDecimal.java:903)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$createOrderBook$18(AppServiceUtils.java:212)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$createOrderBook$18(AppServiceUtils.java:212)
 	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:197)
 	at java.base/java.util.HashMap$KeySpliterator.forEachRemaining(HashMap.java:1715)
 	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:509)
@@ -2095,10 +2095,10 @@ Caused by: java.lang.NullPointerException: Cannot invoke "String.toCharArray()" 
 	at java.base/java.util.stream.ReferencePipeline.toArray(ReferencePipeline.java:616)
 	at java.base/java.util.stream.ReferencePipeline.toArray(ReferencePipeline.java:622)
 	at java.base/java.util.stream.ReferencePipeline.toList(ReferencePipeline.java:627)
-	at com.exchange.scanner.services.utils.AppServiceUtils.createOrderBook(AppServiceUtils.java:216)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.createOrderBook(AppServiceUtils.java:216)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:31:13 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 2552 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -2148,7 +2148,7 @@ java.util.concurrent.CompletionException: java.lang.NullPointerException: Cannot
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.NullPointerException: Cannot invoke "String.toCharArray()" because "val" is null
 	at java.base/java.math.BigDecimal.<init>(BigDecimal.java:903)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$createOrderBook$18(AppServiceUtils.java:213)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$createOrderBook$18(AppServiceUtils.java:213)
 	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:197)
 	at java.base/java.util.HashMap$KeySpliterator.forEachRemaining(HashMap.java:1715)
 	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:509)
@@ -2158,10 +2158,10 @@ Caused by: java.lang.NullPointerException: Cannot invoke "String.toCharArray()" 
 	at java.base/java.util.stream.ReferencePipeline.toArray(ReferencePipeline.java:616)
 	at java.base/java.util.stream.ReferencePipeline.toArray(ReferencePipeline.java:622)
 	at java.base/java.util.stream.ReferencePipeline.toList(ReferencePipeline.java:627)
-	at com.exchange.scanner.services.utils.AppServiceUtils.createOrderBook(AppServiceUtils.java:216)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.createOrderBook(AppServiceUtils.java:216)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:34:25 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 5824 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -2211,7 +2211,7 @@ java.util.concurrent.CompletionException: java.lang.NullPointerException: Cannot
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.NullPointerException: Cannot invoke "String.toCharArray()" because "val" is null
 	at java.base/java.math.BigDecimal.<init>(BigDecimal.java:903)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$createOrderBook$18(AppServiceUtils.java:212)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$createOrderBook$18(AppServiceUtils.java:212)
 	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:197)
 	at java.base/java.util.HashMap$KeySpliterator.forEachRemaining(HashMap.java:1715)
 	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:509)
@@ -2221,10 +2221,10 @@ Caused by: java.lang.NullPointerException: Cannot invoke "String.toCharArray()" 
 	at java.base/java.util.stream.ReferencePipeline.toArray(ReferencePipeline.java:616)
 	at java.base/java.util.stream.ReferencePipeline.toArray(ReferencePipeline.java:622)
 	at java.base/java.util.stream.ReferencePipeline.toList(ReferencePipeline.java:627)
-	at com.exchange.scanner.services.utils.AppServiceUtils.createOrderBook(AppServiceUtils.java:216)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.createOrderBook(AppServiceUtils.java:216)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:35:57 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 9912 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)
@@ -2274,7 +2274,7 @@ java.util.concurrent.CompletionException: java.lang.NullPointerException: Cannot
 	at java.base/java.lang.Thread.run(Thread.java:1583)
 Caused by: java.lang.NullPointerException: Cannot invoke "String.toCharArray()" because "val" is null
 	at java.base/java.math.BigDecimal.<init>(BigDecimal.java:903)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$createOrderBook$18(AppServiceUtils.java:213)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$createOrderBook$18(AppServiceUtils.java:213)
 	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:197)
 	at java.base/java.util.HashMap$KeySpliterator.forEachRemaining(HashMap.java:1715)
 	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:509)
@@ -2284,10 +2284,10 @@ Caused by: java.lang.NullPointerException: Cannot invoke "String.toCharArray()" 
 	at java.base/java.util.stream.ReferencePipeline.toArray(ReferencePipeline.java:616)
 	at java.base/java.util.stream.ReferencePipeline.toArray(ReferencePipeline.java:622)
 	at java.base/java.util.stream.ReferencePipeline.toList(ReferencePipeline.java:627)
-	at com.exchange.scanner.services.utils.AppServiceUtils.createOrderBook(AppServiceUtils.java:216)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.createOrderBook(AppServiceUtils.java:216)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$10(AppServiceUtils.java:166)
 	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
-	at com.exchange.scanner.services.utils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
+	at com.exchange.scanner.services.utils.AppUtils.AppServiceUtils.lambda$getOrderBooksAsync$11(AppServiceUtils.java:165)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
 	... 3 common frames omitted
 2024-07-04 22:44:54 [INFO] - Starting ScannerApplication using Java 21.0.3 with PID 14180 (C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner\target\classes started by dmitriydubov in C:\Users\schli\OneDrive\Desktop\Биржевой сканер\exchangeScanner\scanner)

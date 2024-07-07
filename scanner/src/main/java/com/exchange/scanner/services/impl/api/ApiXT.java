@@ -8,9 +8,9 @@ import com.exchange.scanner.dto.response.exchangedata.xt.coins.XTCurrencyRespons
 import com.exchange.scanner.dto.response.exchangedata.xt.tickervolume.XTVolumeTicker;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.CoinFactory;
-import com.exchange.scanner.services.utils.ListUtils;
-import com.exchange.scanner.services.utils.WebClientBuilder;
+import com.exchange.scanner.services.utils.AppUtils.CoinFactory;
+import com.exchange.scanner.services.utils.AppUtils.ListUtils;
+import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 import com.exchange.scanner.services.utils.XT.XTCoinDepthBuilder;
 import com.exchange.scanner.services.utils.XT.XTSignatureBuilder;
 import lombok.extern.slf4j.Slf4j;
@@ -104,7 +104,6 @@ public class ApiXT implements ApiExchange {
                 .map(Coin::getName)
                 .collect(Collectors.toSet());
 
-        coinsNames.forEach(System.out::println);
         List<XTChainResult> xtChainResultListFiltered = response.getResult().stream()
                 .filter(result -> coinsNames.contains(result.getCurrency().toUpperCase()))
                 .toList();

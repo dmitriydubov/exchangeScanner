@@ -1,20 +1,57 @@
-package com.exchange.scanner.services.utils.ordersbook;
+package com.exchange.scanner.services.utils.AppUtils;
 
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Ask;
 import com.exchange.scanner.model.Bid;
 import com.exchange.scanner.model.Exchange;
 import com.exchange.scanner.model.OrdersBook;
+import com.exchange.scanner.repositories.ExchangeRepository;
+import com.exchange.scanner.repositories.UserMarketSettingsRepository;
+import com.exchange.scanner.services.ApiExchangeAdapter;
 import org.jetbrains.annotations.NotNull;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class OrdersBookUtils {
 
-    public static OrdersBook createOrderBook(Exchange exchange, CoinDepth depth) {
+    public List<OrdersBook> getOrderBooksAsync(
+            ExchangeRepository exchangeRepository,
+            ApiExchangeAdapter apiExchangeAdapter,
+            UserMarketSettingsRepository userMarketSettingsRepository
+    ) {
+        List<OrdersBook> ordersBooks = Collections.synchronizedList(new ArrayList<>());
+        Set<Exchange> exchanges = AppServiceUtils.getUsersExchanges(userMarketSettingsRepository, exchangeRepository);
+        if (exchanges.isEmpty()) return new ArrayList<>();
+        Set<String> usersCoinsNames = AppServiceUtils.getUsersCoinsNames(userMarketSettingsRepository);
+        ExecutorService executorService = Executors.newFixedThreadPool(exchanges.size());
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+
+        exchanges.forEach(exchange -> {
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                Set<String> filteredCoinsNames = AppServiceUtils.getFilteredCoinsNames(exchange, usersCoinsNames);
+                Set<CoinDepth> coinDepth = apiExchangeAdapter.getOrderBook(exchange, filteredCoinsNames);
+                coinDepth.forEach(depth -> {
+                    synchronized (ordersBooks) {
+                        OrdersBook ordersBook = createOrderBook(exchange, depth);
+                        if (ordersBook != null) {
+                            ordersBooks.add(ordersBook);
+                        }
+                    }
+                });
+            },executorService);
+            futures.add(future);
+        });
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        return ordersBooks;
+    }
+
+    private OrdersBook createOrderBook(Exchange exchange, CoinDepth depth) {
         if (depth == null) return null;
         if (depth.getStatusCode() == 404) return null;
 
@@ -26,9 +63,9 @@ public class OrdersBookUtils {
                         .findFirst().orElseThrow(() -> new RuntimeException("Ошибка в методе getOrderBooks. Монеты нет в списке монет биржи"))
         );
 
-        List<Bid> bids = OrdersBookUtils.getBids(depth, ordersBook);
+        List<Bid> bids = getBids(depth, ordersBook);
 
-        List<Ask> asks = OrdersBookUtils.getAsks(depth, ordersBook);
+        List<Ask> asks = getAsks(depth, ordersBook);
 
         ordersBook.setBids(bids);
         ordersBook.setAsks(asks);
@@ -36,7 +73,7 @@ public class OrdersBookUtils {
         return ordersBook;
     }
 
-    private static @NotNull List<Ask> getAsks(CoinDepth depth, OrdersBook ordersBook) {
+    private @NotNull List<Ask> getAsks(CoinDepth depth, OrdersBook ordersBook) {
         return depth.getCoinDepthAsks().stream()
             .map(depthAsk -> {
                 BigDecimal price = new BigDecimal(depthAsk.getPrice()).setScale(4, RoundingMode.CEILING);
@@ -54,7 +91,7 @@ public class OrdersBookUtils {
             .toList();
     }
 
-    private static @NotNull List<Bid> getBids(CoinDepth depth, OrdersBook ordersBook) {
+    private @NotNull List<Bid> getBids(CoinDepth depth, OrdersBook ordersBook) {
         return depth.getCoinDepthBids().stream()
             .map(depthBid -> {
                 BigDecimal price = new BigDecimal(depthBid.getPrice()).setScale(4, RoundingMode.CEILING);

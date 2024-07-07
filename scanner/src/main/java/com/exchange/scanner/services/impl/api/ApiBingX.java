@@ -1,31 +1,29 @@
 package com.exchange.scanner.services.impl.api;
 
+import com.exchange.scanner.dto.response.exchangedata.bingx.chains.BingXChainResponse;
 import com.exchange.scanner.dto.response.exchangedata.bingx.depth.BingXCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.bingx.tickervolume.BingXVolumeTicker;
-import com.exchange.scanner.dto.response.exchangedata.bingx.exchangeinfo.BingXSymbolData;
+import com.exchange.scanner.dto.response.exchangedata.bingx.coins.BingXCurrencyResponse;
+import com.exchange.scanner.dto.response.exchangedata.bingx.tradingfee.BingXTradingFeeResponse;
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
+import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.ApiExchangeUtils;
-import com.exchange.scanner.services.utils.CoinFactory;
-import com.exchange.scanner.services.utils.WebClientBuilder;
-import com.fasterxml.jackson.core.JsonProcessingException;
+import com.exchange.scanner.services.utils.BingX.BingXCoinDepthBuilder;
+import com.exchange.scanner.services.utils.BingX.BingXSignatureBuilder;
+import com.exchange.scanner.services.utils.AppUtils.CoinFactory;
+import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
-import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
-import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -35,10 +33,13 @@ import java.util.stream.Collectors;
 public class ApiBingX implements ApiExchange {
 
     @Autowired
-    private RestTemplate restTemplate;
-
-    @Autowired
     private ObjectMapper objectMapper;
+
+    @Value("${exchanges.apiKeys.BingX.key}")
+    private String key;
+
+    @Value("${exchanges.apiKeys.BingX.secret}")
+    private String secret;
 
     private static final String NAME = "BingX";
 
@@ -60,40 +61,168 @@ public class ApiBingX implements ApiExchange {
 
     @Override
     public Set<Coin> getAllCoins() {
+        Set<Coin> coins = new HashSet<>();
 
-        String url = BASE_ENDPOINT + "/openApi/spot/v1/common/symbols";
+        BingXCurrencyResponse response = getCurrencies().block();
 
-        ResponseEntity<String> responseEntity = restTemplate.getForEntity(url, String.class);
-        HttpStatusCode statusCode = responseEntity.getStatusCode();
+        if (response == null) return coins;
 
-        if (statusCode != HttpStatus.OK || responseEntity.getBody() == null) {
-            log.error("Ошибка получения данных от BingX, код: {}", statusCode);
-            throw new RuntimeException("Ошибка получения данных от BingX, код: " + statusCode);
-        }
+        coins = response.getData().getSymbols().stream()
+                .filter(symbol -> symbol.getSymbol().endsWith("-USDT") && symbol.getStatus() == 1)
+                .map(symbol -> {
+                    String coinName = CoinFactory.refactorToStandardCoinName(symbol.getSymbol(), "-");
+                    return CoinFactory.getCoin(coinName);
+                })
+                .collect(Collectors.toSet());
 
-        try {
-            BingXSymbolData data = objectMapper.readValue(responseEntity.getBody(), BingXSymbolData.class);
-            return data.getData().getSymbols().stream()
-                    .filter(symbol -> symbol.getSymbol().endsWith("-USDT") && symbol.getStatus() == 1)
-                    .map(symbol -> {
-                        String coinName = CoinFactory.refactorToStandardCoinName(symbol.getSymbol(), "-");
-                        return CoinFactory.getCoin(coinName);
+        return coins;
+    }
+
+    private Mono<BingXCurrencyResponse> getCurrencies() {
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/openApi/spot/v1/common/symbols")
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения списка валют. Причина: {}", errorBody);
+                        return Mono.empty();
                     })
-                    .collect(Collectors.toSet());
-        } catch (IOException ex) {
-            log.error("Ошибка десериализации ответа от BingX", ex);
-            throw new RuntimeException("Ошибка десериализации ответа от BingX", ex);
-        }
+            )
+            .bodyToMono(String.class)
+            .handle((response, sink) -> {
+                try {
+                    sink.next(objectMapper.readValue(response, BingXCurrencyResponse.class));
+                } catch (IOException ex) {
+                    log.error("Ошибка десериализации ответа при получении списка монет от BingX", ex);
+                    sink.error(new RuntimeException());
+                }
+            });
     }
 
     @Override
     public Set<Coin> getCoinChain(Set<Coin> coins) {
-        return Set.of();
+        Set<Coin> coinsWithChains = new HashSet<>();
+
+        coins.forEach(coin -> {
+            BingXChainResponse response = getChains(coin).block();
+
+            if (response != null && response.getData() != null && !response.getData().isEmpty()) {
+                Set<Chain> chains = new HashSet<>();
+
+                response.getData().getFirst().getNetworkList().forEach(network -> {
+                    Chain chain = new Chain();
+                    chain.setName(network.getNetwork());
+                    chain.setCommission(new BigDecimal(network.getWithdrawFee()));
+                    chains.add(chain);
+                });
+
+                coin.setChains(chains);
+                coinsWithChains.add(coin);
+            }
+
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException(ex);
+            }
+        });
+
+        return coinsWithChains;
+    }
+
+    private Mono<BingXChainResponse> getChains(Coin coin) {
+        String symbol = coin.getName();
+        String requestPath = "/openApi/wallets/v1/capital/config/getall";
+        TreeMap<String, String> params = new TreeMap<>();
+        params.put("coin", symbol);
+        BingXSignatureBuilder signatureBuilder = new BingXSignatureBuilder(key, secret, params);
+        signatureBuilder.createSignature();
+
+        return webClient
+            .get()
+            .uri(uriBuilder -> {
+                uriBuilder.path(requestPath);
+                signatureBuilder.getParameters().forEach(uriBuilder::queryParam);
+                return uriBuilder.build();
+            })
+            .headers(httpHeaders -> {
+                signatureBuilder.getHeaders().forEach(httpHeaders::add);
+            })
+            .header("signature", signatureBuilder.getSignature())
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(BingXChainResponse.class);
     }
 
     @Override
     public Set<Coin> getTradingFee(Set<Coin> coins) {
-        return Set.of();
+        Set<Coin> coinsWithTradingFee = new HashSet<>();
+
+        coins.forEach(coin -> {
+            BingXTradingFeeResponse response = getFee(coin).block();
+
+            if (response != null) {
+                coin.setTakerFee(new BigDecimal(response.getData().getTakerCommissionRate()));
+                coinsWithTradingFee.add(coin);
+            }
+
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
+            }
+        });
+
+        return coinsWithTradingFee;
+    }
+
+    private Mono<BingXTradingFeeResponse> getFee(Coin coin) {
+        String symbol = coin.getName() + "-USDT";
+        String requestPath = "/openApi/spot/v1/user/commissionRate";
+        TreeMap<String, String> params = new TreeMap<>();
+        params.put("symbol", symbol);
+        BingXSignatureBuilder signatureBuilder = new BingXSignatureBuilder(key, secret, params);
+        signatureBuilder.createSignature();
+
+        return webClient
+            .get()
+            .uri(uriBuilder -> {
+                uriBuilder.path(requestPath);
+                signatureBuilder.getParameters().forEach(uriBuilder::queryParam);
+                return uriBuilder.build();
+            })
+            .headers(httpHeaders -> {
+                signatureBuilder.getHeaders().forEach(httpHeaders::add);
+            })
+            .header("signature", signatureBuilder.getSignature())
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Для торговой пары {}. Причина: {}", symbol, errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(String.class)
+            .handle((response, sink) -> {
+                try {
+                    sink.next(objectMapper.readValue(response, BingXTradingFeeResponse.class));
+                } catch (IOException ex) {
+                    log.error("Ошибка десериализации ответа при получении торговой комиссии от BingX", ex);
+                    sink.error(new RuntimeException());
+                }
+            });
     }
 
     @Override
@@ -122,65 +251,65 @@ public class ApiBingX implements ApiExchange {
         String symbol = coin.getName() + "-USDT";
 
         return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/openApi/spot/v1/ticker/24hr")
-                        .queryParam("symbol", symbol)
-                        .queryParam("timestamp", new Timestamp(System.currentTimeMillis()).getTime())
-                        .build()
-                )
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToMono(BingXVolumeTicker.class);
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/openApi/spot/v1/ticker/24hr")
+                    .queryParam("symbol", symbol)
+                    .queryParam("timestamp", new Timestamp(System.currentTimeMillis()).getTime())
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(BingXVolumeTicker.class);
     }
 
     @Override
     public Set<CoinDepth> getOrderBook(Set<String> coins) {
-        Flux<CoinDepth> response = getCoinDepth(coins);
+        Set<CoinDepth> coinDepths = new HashSet<>();
 
-        return new HashSet<>(Objects.requireNonNull(response
-                .collectList()
-                .block()));
+        coins.forEach(coin -> {
+            BingXCoinDepth response = getCoinDepth(coin).block();
+
+            if (response != null) {
+                CoinDepth coinDepth = BingXCoinDepthBuilder.getCoinDepth(coin, response.getData());
+                coinDepths.add(coinDepth);
+            }
+
+            try {
+                Thread.sleep(REQUEST_DELAY_DURATION);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
+            }
+        });
+
+        return coinDepths;
     }
 
-    private Flux<CoinDepth> getCoinDepth(Set<String> coins) {
-        List<String> coinSymbols = coins.stream().map(coin -> coin + "_USDT").toList();
+    private Mono<BingXCoinDepth> getCoinDepth(String coinName) {
+        String symbol = coinName + "_USDT";
 
-        return Flux.fromIterable(coinSymbols)
-                .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
-                .flatMap(coin -> webClient
-                        .get()
-                        .uri(uriBuilder -> uriBuilder.path("/openApi/spot/v2/market/depth")
-                                .queryParam("symbol", coin)
-                                .queryParam("depth", DEPTH_REQUEST_LIMIT)
-                                .queryParam("type", TYPE_REQUEST)
-                                .build()
-                        )
-                        .retrieve()
-                        .onStatus(
-                                status -> status.is4xxClientError() || status.is5xxServerError(),
-                                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                                    log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
-                                    return Mono.empty();
-                                })
-                        )
-                        .bodyToFlux(String.class)
-                        .map(response -> {
-                            try {
-                                BingXCoinDepth bingXCoinDepth = objectMapper.readValue(response, BingXCoinDepth.class);
-                                bingXCoinDepth.setCoinName(coin.replaceAll("_USDT", ""));
-
-                                return ApiExchangeUtils.getBingXCoinDepth(bingXCoinDepth);
-                            } catch (JsonProcessingException e) {
-                                throw new RuntimeException(e);
-                            }
-                        })
-                );
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder.path("/openApi/spot/v2/market/depth")
+                    .queryParam("symbol", symbol)
+                    .queryParam("depth", DEPTH_REQUEST_LIMIT)
+                    .queryParam("type", TYPE_REQUEST)
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(BingXCoinDepth.class);
     }
 }

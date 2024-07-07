@@ -1,4 +1,4 @@
-package com.exchange.scanner.services.utils;
+package com.exchange.scanner.services.utils.AppUtils;
 
 import com.exchange.scanner.model.UserMarketSettings;
 import com.exchange.scanner.security.model.User;

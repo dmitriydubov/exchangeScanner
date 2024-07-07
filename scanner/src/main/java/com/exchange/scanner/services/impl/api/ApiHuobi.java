@@ -9,7 +9,9 @@ import com.exchange.scanner.dto.response.exchangedata.huobi.tradingfee.HuobiTrad
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.*;
+import com.exchange.scanner.services.utils.AppUtils.CoinFactory;
+import com.exchange.scanner.services.utils.AppUtils.ListUtils;
+import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 import com.exchange.scanner.services.utils.Huobi.HuobiCoinDepthBuilder;
 import com.huobi.client.TradeClient;
 import com.huobi.client.req.trade.FeeRateRequest;

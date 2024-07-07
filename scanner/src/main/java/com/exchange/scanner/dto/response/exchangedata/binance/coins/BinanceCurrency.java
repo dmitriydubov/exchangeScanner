@@ -1,11 +1,11 @@
-package com.exchange.scanner.dto.response.exchangedata.binance.exchangeinfo;
+package com.exchange.scanner.dto.response.exchangedata.binance.coins;
 
 import lombok.Getter;
 import lombok.Setter;
 
 @Getter
 @Setter
-public class Symbols {
+public class BinanceCurrency {
 
     private String status;
 

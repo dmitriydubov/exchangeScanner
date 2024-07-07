@@ -8,10 +8,10 @@ import com.exchange.scanner.dto.response.exchangedata.gateio.tradingfee.GateIOTr
 import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.CoinFactory;
+import com.exchange.scanner.services.utils.AppUtils.CoinFactory;
 import com.exchange.scanner.services.utils.GateIO.GateIOCoinDepthBuilder;
 import com.exchange.scanner.services.utils.GateIO.GateIOSignatureBuilder;
-import com.exchange.scanner.services.utils.WebClientBuilder;
+import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -27,10 +27,10 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ApiGateIO implements ApiExchange {
 
-    @Value("${exchanges.apiKeys.gateIO.key}")
+    @Value("${exchanges.apiKeys.GateIO.key}")
     private String key;
 
-    @Value("${exchanges.apiKeys.gateIO.secret}")
+    @Value("${exchanges.apiKeys.GateIO.secret}")
     private String secret;
 
     private static final String NAME = "Gate.io";

@@ -38,21 +38,21 @@ public class ApiExchangeAdapterImpl implements ApiExchangeAdapter {
 
         switch (exchange.getName()) {
 //            case "Binance" -> coins.addAll(apiBinance.getAllCoins());
-            case "Gate.io" -> coins.addAll(apiGateIO.getAllCoins()); //1
-            case "MEXC" -> coins.addAll(apiMEXC.getAllCoins()); //5
-            case "Bybit" -> coins.addAll(apiBybit.getAllCoins()); //6
-            case "Kucoin" -> coins.addAll(apiKucoin.getAllCoins()); //2
-            case "Bitget" -> coins.addAll(apiBitget.getAllCoins()); //3
-            case "Huobi" -> coins.addAll(apiHuobi.getAllCoins()); //7
-            case "Poloniex" -> coins.addAll(apiPoloniex.getAllCoins()); //8
-            case "OKX" -> coins.addAll(apiOKX.getAllCoins()); //9
-            case "Bitmart" -> coins.addAll(apiBitmart.getAllCoins()); //10
-            case "LBank" -> coins.addAll(apiLBank.getAllCoins()); //11
-            case "CoinEx" -> coins.addAll(apiCoinEx.getAllCoins()); //12
-            case "CoinW" -> coins.addAll(apiCoinW.getAllCoins()); //13
-            case "XT" -> coins.addAll(apiXT.getAllCoins()); //14
-            case "Probit" -> coins.addAll(apiProbit.getAllCoins()); //4
-//            case "BingX" -> coins.addAll(apiBingX.getAllCoins());
+            case "Gate.io" -> coins.addAll(apiGateIO.getAllCoins());
+            case "MEXC" -> coins.addAll(apiMEXC.getAllCoins());
+            case "Bybit" -> coins.addAll(apiBybit.getAllCoins());
+            case "Kucoin" -> coins.addAll(apiKucoin.getAllCoins());
+            case "Bitget" -> coins.addAll(apiBitget.getAllCoins());
+            case "Huobi" -> coins.addAll(apiHuobi.getAllCoins());
+            case "Poloniex" -> coins.addAll(apiPoloniex.getAllCoins());
+            case "OKX" -> coins.addAll(apiOKX.getAllCoins());
+            case "Bitmart" -> coins.addAll(apiBitmart.getAllCoins());
+            case "LBank" -> coins.addAll(apiLBank.getAllCoins());
+            case "CoinEx" -> coins.addAll(apiCoinEx.getAllCoins());
+            case "CoinW" -> coins.addAll(apiCoinW.getAllCoins());
+            case "XT" -> coins.addAll(apiXT.getAllCoins());
+            case "Probit" -> coins.addAll(apiProbit.getAllCoins());
+            case "BingX" -> coins.addAll(apiBingX.getAllCoins());
         }
 
         return coins;
@@ -64,21 +64,21 @@ public class ApiExchangeAdapterImpl implements ApiExchangeAdapter {
 
         switch (exchange.getName()) {
 //            case "Binance" -> ordersBook.addAll(apiBinance.getOrderBook(coins));
-            case "Gate.io" -> ordersBook.addAll(apiGateIO.getOrderBook(coins)); //1
-            case "MEXC" -> ordersBook.addAll(apiMEXC.getOrderBook(coins)); //5
-            case "Bybit" -> ordersBook.addAll(apiBybit.getOrderBook(coins)); //6
-            case "Kucoin" ->  ordersBook.addAll(apiKucoin.getOrderBook(coins)); //2
-            case "Bitget" -> ordersBook.addAll(apiBitget.getOrderBook(coins)); //3
-            case "Huobi" -> ordersBook.addAll(apiHuobi.getOrderBook(coins)); //7
-            case "Poloniex" -> ordersBook.addAll(apiPoloniex.getOrderBook(coins)); //8
-            case "OKX" -> ordersBook.addAll(apiOKX.getOrderBook(coins)); //9
-            case "Bitmart" -> ordersBook.addAll(apiBitmart.getOrderBook(coins)); //10
-            case "LBank" -> ordersBook.addAll(apiLBank.getOrderBook(coins)); //11
-            case "CoinEx" -> ordersBook.addAll(apiCoinEx.getOrderBook(coins)); //12
-            case "CoinW" -> ordersBook.addAll(apiCoinW.getOrderBook(coins)); //13
-            case "XT" -> ordersBook.addAll(apiXT.getOrderBook(coins)); //14
-            case "Probit" -> ordersBook.addAll(apiProbit.getOrderBook(coins)); //4
-//            case "BingX" -> ordersBook.addAll(apiBingX.getOrderBook(coins));
+            case "Gate.io" -> ordersBook.addAll(apiGateIO.getOrderBook(coins));
+            case "MEXC" -> ordersBook.addAll(apiMEXC.getOrderBook(coins));
+            case "Bybit" -> ordersBook.addAll(apiBybit.getOrderBook(coins));
+            case "Kucoin" ->  ordersBook.addAll(apiKucoin.getOrderBook(coins));
+            case "Bitget" -> ordersBook.addAll(apiBitget.getOrderBook(coins));
+            case "Huobi" -> ordersBook.addAll(apiHuobi.getOrderBook(coins));
+            case "Poloniex" -> ordersBook.addAll(apiPoloniex.getOrderBook(coins));
+            case "OKX" -> ordersBook.addAll(apiOKX.getOrderBook(coins));
+            case "Bitmart" -> ordersBook.addAll(apiBitmart.getOrderBook(coins));
+            case "LBank" -> ordersBook.addAll(apiLBank.getOrderBook(coins));
+            case "CoinEx" -> ordersBook.addAll(apiCoinEx.getOrderBook(coins));
+            case "CoinW" -> ordersBook.addAll(apiCoinW.getOrderBook(coins));
+            case "XT" -> ordersBook.addAll(apiXT.getOrderBook(coins));
+            case "Probit" -> ordersBook.addAll(apiProbit.getOrderBook(coins));
+            case "BingX" -> ordersBook.addAll(apiBingX.getOrderBook(coins));
         }
 
         return ordersBook;
@@ -90,21 +90,21 @@ public class ApiExchangeAdapterImpl implements ApiExchangeAdapter {
 
         switch (exchange) {
 //            case "Binance" -> coins.addAll(apiBinance.getCoinChain(coinsSet));
-            case "Gate.io" -> coins.addAll(apiGateIO.getCoinChain(coinsSet)); //1 нет информации по комиссии сети
-            case "MEXC" -> coins.addAll(apiMEXC.getCoinChain(coinsSet)); //5
-            case "Bybit" -> coins.addAll(apiBybit.getCoinChain(coinsSet)); //6
-            case "Kucoin" ->  coins.addAll(apiKucoin.getCoinChain(coinsSet)); //2
-            case "Bitget" -> coins.addAll(apiBitget.getCoinChain(coinsSet)); //3
-            case "Huobi" -> coins.addAll(apiHuobi.getCoinChain(coinsSet)); //7
-            case "Poloniex" -> coins.addAll(apiPoloniex.getCoinChain(coinsSet)); //8
-            case "OKX" -> coins.addAll(apiOKX.getCoinChain(coinsSet)); //9
-            case "Bitmart" -> coins.addAll(apiBitmart.getCoinChain(coinsSet)); //10
-            case "LBank" -> coins.addAll(apiLBank.getCoinChain(coinsSet)); //11
-            case "CoinEx" -> coins.addAll(apiCoinEx.getCoinChain(coinsSet)); //12
-            case "CoinW" -> coins.addAll(apiCoinW.getCoinChain(coinsSet)); //13
-            case "XT" -> coins.addAll(apiXT.getCoinChain(coinsSet)); //14
-            case "Probit" -> coins.addAll(apiProbit.getCoinChain(coinsSet)); //4
-//            case "BingX" -> coins.addAll(apiBingX.getCoinChain(coinsSet));
+            case "Gate.io" -> coins.addAll(apiGateIO.getCoinChain(coinsSet)); //нет информации по комиссии сети
+            case "MEXC" -> coins.addAll(apiMEXC.getCoinChain(coinsSet));
+            case "Bybit" -> coins.addAll(apiBybit.getCoinChain(coinsSet));
+            case "Kucoin" ->  coins.addAll(apiKucoin.getCoinChain(coinsSet));
+            case "Bitget" -> coins.addAll(apiBitget.getCoinChain(coinsSet));
+            case "Huobi" -> coins.addAll(apiHuobi.getCoinChain(coinsSet));
+            case "Poloniex" -> coins.addAll(apiPoloniex.getCoinChain(coinsSet));
+            case "OKX" -> coins.addAll(apiOKX.getCoinChain(coinsSet));
+            case "Bitmart" -> coins.addAll(apiBitmart.getCoinChain(coinsSet));
+            case "LBank" -> coins.addAll(apiLBank.getCoinChain(coinsSet));
+            case "CoinEx" -> coins.addAll(apiCoinEx.getCoinChain(coinsSet));
+            case "CoinW" -> coins.addAll(apiCoinW.getCoinChain(coinsSet));
+            case "XT" -> coins.addAll(apiXT.getCoinChain(coinsSet));
+            case "Probit" -> coins.addAll(apiProbit.getCoinChain(coinsSet));
+            case "BingX" -> coins.addAll(apiBingX.getCoinChain(coinsSet));
         }
 
         return Collections.singletonMap(exchange, coins);
@@ -116,21 +116,21 @@ public class ApiExchangeAdapterImpl implements ApiExchangeAdapter {
 
         switch (exchange) {
 //            case "Binance" -> coins.addAll(apiBinance.getTradingFee(coinsSet));
-            case "Gate.io" -> coins.addAll(apiGateIO.getTradingFee(coinsSet)); //1
-            case "MEXC" -> coins.addAll(apiMEXC.getTradingFee(coinsSet)); //5
-            case "Bybit" -> coins.addAll(apiBybit.getTradingFee(coinsSet)); //6
-            case "Kucoin" ->  coins.addAll(apiKucoin.getTradingFee(coinsSet)); //2
-            case "Bitget" -> coins.addAll(apiBitget.getTradingFee(coinsSet)); //3
-            case "Huobi" -> coins.addAll(apiHuobi.getTradingFee(coinsSet)); //7
-            case "Poloniex" -> coins.addAll(apiPoloniex.getTradingFee(coinsSet)); //8
-            case "OKX" -> coins.addAll(apiOKX.getTradingFee(coinsSet)); //9
-            case "Bitmart" -> coins.addAll(apiBitmart.getTradingFee(coinsSet)); //10
-            case "LBank" -> coins.addAll(apiLBank.getTradingFee(coinsSet)); //11
-            case "CoinEx" -> coins.addAll(apiCoinEx.getTradingFee(coinsSet)); //12
-            case "CoinW" -> coins.addAll(apiCoinW.getTradingFee(coinsSet)); //13
+            case "Gate.io" -> coins.addAll(apiGateIO.getTradingFee(coinsSet));
+            case "MEXC" -> coins.addAll(apiMEXC.getTradingFee(coinsSet));
+            case "Bybit" -> coins.addAll(apiBybit.getTradingFee(coinsSet));
+            case "Kucoin" ->  coins.addAll(apiKucoin.getTradingFee(coinsSet));
+            case "Bitget" -> coins.addAll(apiBitget.getTradingFee(coinsSet));
+            case "Huobi" -> coins.addAll(apiHuobi.getTradingFee(coinsSet));
+            case "Poloniex" -> coins.addAll(apiPoloniex.getTradingFee(coinsSet));
+            case "OKX" -> coins.addAll(apiOKX.getTradingFee(coinsSet));
+            case "Bitmart" -> coins.addAll(apiBitmart.getTradingFee(coinsSet));
+            case "LBank" -> coins.addAll(apiLBank.getTradingFee(coinsSet));
+            case "CoinEx" -> coins.addAll(apiCoinEx.getTradingFee(coinsSet));
+            case "CoinW" -> coins.addAll(apiCoinW.getTradingFee(coinsSet));
             case "XT" -> coins.addAll(apiXT.getTradingFee(coinsSet)); //XT Не предоставляет торговые комиссии
-            case "Probit" -> coins.addAll(apiProbit.getTradingFee(coinsSet)); //4
-//            case "BingX" -> coins.addAll(apiBingX.getTradingFee(coinsSet));
+            case "Probit" -> coins.addAll(apiProbit.getTradingFee(coinsSet));
+            case "BingX" -> coins.addAll(apiBingX.getTradingFee(coinsSet));
         }
 
         return Collections.singletonMap(exchange, coins);
@@ -142,7 +142,7 @@ public class ApiExchangeAdapterImpl implements ApiExchangeAdapter {
         Set<Coin> result = new HashSet<>();
 
         switch (exchangeName) {
-            case "Binance" -> result.addAll(apiBinance.getCoinVolume24h(coins));
+//            case "Binance" -> result.addAll(apiBinance.getCoinVolume24h(coins));
             case "Gate.io" -> result.addAll(apiGateIO.getCoinVolume24h(coins));
             case "MEXC" -> result.addAll(apiMEXC.getCoinVolume24h(coins));
             case "Bybit" -> result.addAll(apiBybit.getCoinVolume24h(coins));

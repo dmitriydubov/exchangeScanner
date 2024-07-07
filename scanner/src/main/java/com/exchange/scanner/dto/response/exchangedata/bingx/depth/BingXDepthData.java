@@ -8,7 +8,7 @@ import java.util.List;
 
 @Getter
 @Setter
-public class Data {
+public class BingXDepthData {
 
     private List<List<String>> bids;
 
