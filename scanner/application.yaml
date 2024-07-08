@@ -21,7 +21,7 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: false
-    open-in-view: false
+    open-in-view: true
     defer-datasource-initialization: true
   sql:
     init:
@@ -73,3 +73,6 @@ exchanges:
     BingX:
       key: oDp2jGhexStzRCZ3pYiFZ2WCjb0UtITZCoVf03TPXWufuMYNWC3PILjJUU5nCq1nIQUykg7Sf0DWUnUhlF7lg
       secret: mYHNvDKq1Md7gyKwR0aRsS07uA8gCnKN3QDloQlYyEwqSLnXwmIrqvofxMh9aHgc0LVXN1B2qAFhJDR4g
+    Binance:
+      key: OcVdL4HyRH28bHrxaFPjCX0UI99oh1CdBSQXUXq7zK0qztXz9luimU9sMmxIIYOY
+      secret: 2jjX7IB3QQvsmZcxf9kBWFSAKvD1l0CHMvUO3PqXJmW70DTnNZ7DYcRyk133mV9l

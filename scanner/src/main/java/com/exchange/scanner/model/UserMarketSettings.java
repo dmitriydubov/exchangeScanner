@@ -20,7 +20,7 @@ public class UserMarketSettings {
     @Column(nullable = false)
     private Long id;
 
-    @OneToOne(cascade = CascadeType.REMOVE, fetch = FetchType.LAZY)
+    @OneToOne(cascade = CascadeType.REMOVE)
     @JoinColumn(name = "user_id", referencedColumnName = "id")
     private User user;
 
@@ -39,11 +39,11 @@ public class UserMarketSettings {
     @ElementCollection(fetch = FetchType.EAGER)
     private List<String> coins;
 
-    @ElementCollection(fetch = FetchType.LAZY)
+    @ElementCollection
     @CollectionTable(name = "markets_buy")
     private List<String> marketsBuy;
 
-    @ElementCollection(fetch = FetchType.LAZY)
+    @ElementCollection
     @CollectionTable(name = "markets_sell")
     private List<String> marketsSell;
 }

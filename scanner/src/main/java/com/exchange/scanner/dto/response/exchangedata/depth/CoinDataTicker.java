@@ -1,4 +1,4 @@
-package com.exchange.scanner.dto.response.exchangedata.responsedata;
+package com.exchange.scanner.dto.response.exchangedata.depth;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

@@ -1,18 +1,22 @@
 package com.exchange.scanner.services.impl.api;
 
+import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
+import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.poloniex.chains.PoloniexChain;
 import com.exchange.scanner.dto.response.exchangedata.poloniex.depth.PoloniexCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.poloniex.coins.PoloniexCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.poloniex.tickervolume.PoloniexVolumeTicker;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.AppUtils.CoinFactory;
+import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.Poloniex.PoloniexCoinDepthBuilder;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 
 import com.poloniex.api.client.model.OrderBook;
 import com.poloniex.api.client.rest.PoloRestClient;
+import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
@@ -61,7 +65,7 @@ public class ApiPoloniex implements ApiExchange {
 
         coins = response.stream()
                 .filter(symbol -> symbol.getQuoteCurrencyName().equals("USDT") && symbol.getState().equals("NORMAL"))
-                .map(symbol -> CoinFactory.getCoin(symbol.getBaseCurrencyName()))
+                .map(symbol -> ObjectUtils.getCoin(symbol.getBaseCurrencyName()))
                 .collect(Collectors.toSet());
 
         return coins;
@@ -82,12 +86,20 @@ public class ApiPoloniex implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToFlux(PoloniexCurrencyResponse.class);
+            .bodyToFlux(PoloniexCurrencyResponse.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Flux.empty();
+            });
     }
 
     @Override
-    public Set<Coin> getCoinChain(Set<Coin> coins) {
-        Set<Coin> coinsWithChains = new HashSet<>();
+    public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
+        Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
 
         coins.forEach(coin -> {
             Map<String, PoloniexChain> response = getChains(coin).block();
@@ -100,8 +112,8 @@ public class ApiPoloniex implements ApiExchange {
                     chain.setCommission(new BigDecimal(responseValue.getWithdrawalFee()));
                     chains.add(chain);
                 });
-                coin.setChains(chains);
-                coinsWithChains.add(coin);
+                ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
+                chainsDTOSet.add(responseDTO);
             }
 
             try {
@@ -111,7 +123,7 @@ public class ApiPoloniex implements ApiExchange {
             }
         });
 
-        return coinsWithChains;
+        return chainsDTOSet;
     }
 
     private Mono<Map<String, PoloniexChain>> getChains(Coin coin) {
@@ -129,32 +141,49 @@ public class ApiPoloniex implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(new ParameterizedTypeReference<Map<String, PoloniexChain>>() {});
+            .bodyToMono(new ParameterizedTypeReference<Map<String, PoloniexChain>>() {})
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
-    public Set<Coin> getTradingFee(Set<Coin> coins) {
+    public  Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
+        Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
+
         PoloRestClient poloniexApiClient = new PoloRestClient(BASE_ENDPOINT, key, secret);
 
-        Set<Coin> coinsWithFees = new HashSet<>();
-
         coins.forEach(coin -> {
-            coin.setTakerFee(new BigDecimal(poloniexApiClient.getFeeInfo().getTakerRate()));
-            coinsWithFees.add(coin);
+            TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                    exchangeName,
+                    coin,
+                    poloniexApiClient.getFeeInfo().getTakerRate()
+            );
+            tradingFeeSet.add(responseDTO);
         });
 
-        return coinsWithFees;
+        return tradingFeeSet;
     }
 
     @Override
-    public Set<Coin> getCoinVolume24h(Set<Coin> coins) {
-        Set<Coin> coinsWithVolume24h = new HashSet<>();
+    public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
+        Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
 
         coins.forEach(coin -> {
             PoloniexVolumeTicker response = getCoinTicker(coin).block();
             if (response != null) {
-                coin.setVolume24h(new BigDecimal(response.getAmount()));
-                coinsWithVolume24h.add(coin);
+                Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                        exchange,
+                        coin,
+                        response.getAmount()
+                );
+
+                volume24HSet.add(responseDTO);
             }
 
             try {
@@ -164,7 +193,7 @@ public class ApiPoloniex implements ApiExchange {
             }
         });
 
-        return coinsWithVolume24h;
+        return volume24HSet;
     }
 
     private Mono<PoloniexVolumeTicker> getCoinTicker(Coin coin) {
@@ -184,7 +213,15 @@ public class ApiPoloniex implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(PoloniexVolumeTicker.class);
+            .bodyToMono(PoloniexVolumeTicker.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override

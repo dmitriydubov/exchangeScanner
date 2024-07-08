@@ -1,20 +1,25 @@
 package com.exchange.scanner.services.impl.api;
 
+import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
+import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.bingx.chains.BingXChainResponse;
 import com.exchange.scanner.dto.response.exchangedata.bingx.depth.BingXCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.bingx.tickervolume.BingXVolumeTicker;
 import com.exchange.scanner.dto.response.exchangedata.bingx.coins.BingXCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.bingx.tradingfee.BingXTradingFeeResponse;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.services.utils.BingX.BingXCoinDepthBuilder;
 import com.exchange.scanner.services.utils.BingX.BingXSignatureBuilder;
-import com.exchange.scanner.services.utils.AppUtils.CoinFactory;
+import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -70,8 +75,8 @@ public class ApiBingX implements ApiExchange {
         coins = response.getData().getSymbols().stream()
                 .filter(symbol -> symbol.getSymbol().endsWith("-USDT") && symbol.getStatus() == 1)
                 .map(symbol -> {
-                    String coinName = CoinFactory.refactorToStandardCoinName(symbol.getSymbol(), "-");
-                    return CoinFactory.getCoin(coinName);
+                    String coinName = ObjectUtils.refactorToStandardCoinName(symbol.getSymbol(), "-");
+                    return ObjectUtils.getCoin(coinName);
                 })
                 .collect(Collectors.toSet());
 
@@ -94,6 +99,14 @@ public class ApiBingX implements ApiExchange {
                     })
             )
             .bodyToMono(String.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            })
             .handle((response, sink) -> {
                 try {
                     sink.next(objectMapper.readValue(response, BingXCurrencyResponse.class));
@@ -105,8 +118,8 @@ public class ApiBingX implements ApiExchange {
     }
 
     @Override
-    public Set<Coin> getCoinChain(Set<Coin> coins) {
-        Set<Coin> coinsWithChains = new HashSet<>();
+    public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
+        Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
 
         coins.forEach(coin -> {
             BingXChainResponse response = getChains(coin).block();
@@ -121,8 +134,8 @@ public class ApiBingX implements ApiExchange {
                     chains.add(chain);
                 });
 
-                coin.setChains(chains);
-                coinsWithChains.add(coin);
+                ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
+                chainsDTOSet.add(responseDTO);
             }
 
             try {
@@ -132,7 +145,7 @@ public class ApiBingX implements ApiExchange {
             }
         });
 
-        return coinsWithChains;
+        return chainsDTOSet;
     }
 
     private Mono<BingXChainResponse> getChains(Coin coin) {
@@ -162,19 +175,31 @@ public class ApiBingX implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(BingXChainResponse.class);
+            .bodyToMono(BingXChainResponse.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
-    public Set<Coin> getTradingFee(Set<Coin> coins) {
-        Set<Coin> coinsWithTradingFee = new HashSet<>();
+    public Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
+        Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
 
         coins.forEach(coin -> {
             BingXTradingFeeResponse response = getFee(coin).block();
 
             if (response != null) {
-                coin.setTakerFee(new BigDecimal(response.getData().getTakerCommissionRate()));
-                coinsWithTradingFee.add(coin);
+                TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                        exchangeName,
+                        coin,
+                        response.getData().getTakerCommissionRate()
+                );
+                tradingFeeSet.add(responseDTO);
             }
 
             try {
@@ -184,7 +209,7 @@ public class ApiBingX implements ApiExchange {
             }
         });
 
-        return coinsWithTradingFee;
+        return tradingFeeSet;
     }
 
     private Mono<BingXTradingFeeResponse> getFee(Coin coin) {
@@ -215,6 +240,14 @@ public class ApiBingX implements ApiExchange {
                     })
             )
             .bodyToMono(String.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            })
             .handle((response, sink) -> {
                 try {
                     sink.next(objectMapper.readValue(response, BingXTradingFeeResponse.class));
@@ -226,15 +259,20 @@ public class ApiBingX implements ApiExchange {
     }
 
     @Override
-    public Set<Coin> getCoinVolume24h(Set<Coin> coins) {
-        Set<Coin> coinsWithVolume24h = new HashSet<>();
+    public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
+        Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
 
         coins.forEach(coin -> {
             BingXVolumeTicker response = getCoinTickerVolume(coin).block();
 
             if (response != null) {
-                coin.setVolume24h(new BigDecimal(response.getData().getFirst().getQuoteVolume()));
-                coinsWithVolume24h.add(coin);
+                Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                        exchange,
+                        coin,
+                        response.getData().getFirst().getQuoteVolume()
+                );
+
+                volume24HSet.add(responseDTO);
             }
 
             try {
@@ -244,7 +282,7 @@ public class ApiBingX implements ApiExchange {
             }
         });
 
-        return coinsWithVolume24h;
+        return volume24HSet;
     }
 
     private Mono<BingXVolumeTicker> getCoinTickerVolume(Coin coin) {
@@ -266,7 +304,15 @@ public class ApiBingX implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(BingXVolumeTicker.class);
+            .bodyToMono(BingXVolumeTicker.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
@@ -310,6 +356,14 @@ public class ApiBingX implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(BingXCoinDepth.class);
+            .bodyToMono(BingXCoinDepth.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 }

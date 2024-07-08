@@ -20,12 +20,12 @@ public class OrdersBook {
     @Column(nullable = false)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
+    @ManyToOne(cascade = CascadeType.ALL)
     @OnDelete(action = OnDeleteAction.CASCADE)
     @JoinColumn(name = "coin_id", nullable = false, referencedColumnName = "id")
     private Coin coin;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne
     @JoinColumn(name = "exchange_id", nullable = false, referencedColumnName = "id")
     private Exchange exchange;
 

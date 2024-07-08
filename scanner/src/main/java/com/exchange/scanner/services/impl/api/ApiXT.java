@@ -1,6 +1,9 @@
 package com.exchange.scanner.services.impl.api;
 
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
+import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
+import com.exchange.scanner.dto.response.Volume24HResponseDTO;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.xt.chains.XTChainResponse;
 import com.exchange.scanner.dto.response.exchangedata.xt.chains.XTChainResult;
 import com.exchange.scanner.dto.response.exchangedata.xt.depth.XTCoinDepth;
@@ -8,11 +11,12 @@ import com.exchange.scanner.dto.response.exchangedata.xt.coins.XTCurrencyRespons
 import com.exchange.scanner.dto.response.exchangedata.xt.tickervolume.XTVolumeTicker;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.AppUtils.CoinFactory;
+import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.AppUtils.ListUtils;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 import com.exchange.scanner.services.utils.XT.XTCoinDepthBuilder;
 import com.exchange.scanner.services.utils.XT.XTSignatureBuilder;
+import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -67,7 +71,7 @@ public class ApiXT implements ApiExchange {
                 )
                 .map(symbol -> {
                     String coinName = symbol.getBaseCurrency().toUpperCase();
-                    return CoinFactory.getCoin(coinName);
+                    return ObjectUtils.getCoin(coinName);
                 })
                 .collect(Collectors.toSet());
 
@@ -89,16 +93,24 @@ public class ApiXT implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(XTCurrencyResponse.class);
+            .bodyToMono(XTCurrencyResponse.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
-    public Set<Coin> getCoinChain(Set<Coin> coins) {
-        Set<Coin> coinsWithChains = new HashSet<>();
+    public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
+        Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
 
         XTChainResponse response = getChains().block();
 
-        if (response == null) return coinsWithChains;
+        if (response == null) return chainsDTOSet;
 
         Set<String> coinsNames = coins.stream()
                 .map(Coin::getName)
@@ -117,18 +129,17 @@ public class ApiXT implements ApiExchange {
                         .filter(chainResponse -> chainResponse.getDepositEnabled() && chainResponse.getWithdrawEnabled())
                         .forEach(chainResponse -> {
                             Chain chain = new Chain();
-                            chain.setName(chainResponse.getChain());
+                            chain.setName(chainResponse.getChain().toUpperCase());
                             chain.setCommission(new BigDecimal(chainResponse.getWithdrawFeeAmount()));
                             chains.add(chain);
                         });
                 }
             });
-            coin.setChains(chains);
-            coinsWithChains.add(coin);
+            ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
+            chainsDTOSet.add(responseDTO);
         });
 
-
-        return coinsWithChains;
+        return chainsDTOSet;
     }
 
     private Mono<XTChainResponse> getChains() {
@@ -154,40 +165,57 @@ public class ApiXT implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(XTChainResponse.class);
+            .bodyToMono(XTChainResponse.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
-    public Set<Coin> getTradingFee(Set<Coin> coins) {
-        Set<Coin> coinsFee = new HashSet<>();
+    public Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
+        Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
 
         coins.forEach(coin -> {
-            coin.setTakerFee(BigDecimal.ZERO);
-            coinsFee.add(coin);
+            TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                    exchangeName,
+                    coin,
+                    "0"
+            );
+            tradingFeeSet.add(responseDTO);
         });
 
-        return coinsFee;
+        return tradingFeeSet;
     }
 
     @Override
-    public Set<Coin> getCoinVolume24h(Set<Coin> coins) {
-        Set<Coin> coinsWithVolume24h = new HashSet<>();
+    public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
+        Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
 
         XTVolumeTicker response = getCoinTickerVolume(new ArrayList<>(coins)).blockLast();
 
-        if (response == null) return  coinsWithVolume24h;
+        if (response == null) return  volume24HSet;
         coins.forEach(coin -> {
             response.getResult().stream()
                 .filter(responseData -> responseData.getS().endsWith("_usdt"))
                 .forEach(responseData -> {
                     if (coin.getName().equals(responseData.getS().replaceAll("_usdt", "").toUpperCase())) {
-                        coin.setVolume24h(new BigDecimal(responseData.getV()));
-                        coinsWithVolume24h.add(coin);
+                        Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                                exchange,
+                                coin,
+                                responseData.getV()
+                        );
+
+                        volume24HSet.add(responseDTO);
                     }
                 });
         });
 
-        return coinsWithVolume24h;
+        return volume24HSet;
     }
 
     private Flux<XTVolumeTicker> getCoinTickerVolume(List<Coin> coins) {
@@ -210,7 +238,15 @@ public class ApiXT implements ApiExchange {
                             return Mono.empty();
                         })
                 )
-                .bodyToFlux(XTVolumeTicker.class));
+                .bodyToFlux(XTVolumeTicker.class))
+                .onErrorResume(error -> {
+                    if (error instanceof ReadTimeoutException) {
+                        log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                    } else {
+                        log.error("Ошибка при запросе к {}.", NAME, error);
+                    }
+                    return Flux.empty();
+                });
     }
 
     @Override
@@ -253,7 +289,15 @@ public class ApiXT implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(XTCoinDepth.class);
+            .bodyToMono(XTCoinDepth.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     private static String generateParameters(List<Coin> coins) {

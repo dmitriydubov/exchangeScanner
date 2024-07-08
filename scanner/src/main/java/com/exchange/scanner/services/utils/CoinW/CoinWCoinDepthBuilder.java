@@ -1,11 +1,13 @@
 package com.exchange.scanner.services.utils.CoinW;
 
 import com.exchange.scanner.dto.response.exchangedata.coinw.depth.CoinWDepthData;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepthAsk;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepthBid;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthAsk;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthBid;
 
+import java.math.BigDecimal;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 public class CoinWCoinDepthBuilder {
@@ -16,16 +18,16 @@ public class CoinWCoinDepthBuilder {
 
         Set<CoinDepthAsk> coinDepthAsks = data.getAsks().stream().map(ask -> {
                 CoinDepthAsk coinDepthAsk = new CoinDepthAsk();
-                coinDepthAsk.setPrice(ask.getFirst());
-                coinDepthAsk.setVolume(ask.getLast());
+                coinDepthAsk.setPrice(new BigDecimal(ask.getFirst()));
+                coinDepthAsk.setVolume(new BigDecimal(ask.getLast()));
                 return coinDepthAsk;
             })
             .collect(Collectors.toSet());
 
         Set<CoinDepthBid> coinDepthBids = data.getBids().stream().map(bid -> {
                 CoinDepthBid coinDepthBid = new CoinDepthBid();
-                coinDepthBid.setPrice(bid.getFirst());
-                coinDepthBid.setVolume(bid.getLast());
+                coinDepthBid.setPrice(new BigDecimal(bid.getFirst()));
+                coinDepthBid.setVolume(new BigDecimal(bid.getLast()));
                 return coinDepthBid;
             })
             .collect(Collectors.toSet());
@@ -35,8 +37,8 @@ public class CoinWCoinDepthBuilder {
         } else {
             coinDepth.setStatusCode(200);
         }
-        coinDepth.setCoinDepthAsks(coinDepthAsks);
-        coinDepth.setCoinDepthBids(coinDepthBids);
+        coinDepth.setCoinDepthAsks(new TreeSet<>(coinDepthAsks));
+        coinDepth.setCoinDepthBids(new TreeSet<>(coinDepthBids));
 
         return coinDepth;
     }

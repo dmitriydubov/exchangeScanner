@@ -1,15 +1,15 @@
 package com.exchange.scanner.services.utils.AppUtils;
 
+import com.exchange.scanner.dto.response.ChainResponseDTO;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
 import com.exchange.scanner.repositories.ExchangeRepository;
 import com.exchange.scanner.repositories.UserMarketSettingsRepository;
 import com.exchange.scanner.services.ApiExchangeAdapter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
@@ -17,23 +17,26 @@ import java.util.concurrent.Executors;
 
 public class CoinChainUtils {
 
-    public Map<String, Set<Coin>> getCoinsChainInfoAsync(ApiExchangeAdapter apiExchangeAdapter,
+    private static final Logger log = LoggerFactory.getLogger(CoinChainUtils.class);
+
+    public Set<ChainResponseDTO> getCoinsChainInfoAsync(ApiExchangeAdapter apiExchangeAdapter,
                                                          ExchangeRepository exchangeRepository,
                                                          UserMarketSettingsRepository userMarketSettingsRepository
     ) {
-        Map<String, Set<Coin>> result = new HashMap<>();
+        Set<ChainResponseDTO> result = Collections.synchronizedSet(new HashSet<>());
         Set<Exchange> userExchanges = AppServiceUtils.getUsersExchanges(userMarketSettingsRepository, exchangeRepository);
+        if (userExchanges == null || userExchanges.isEmpty()) return result;
         Set<String> usersCoinsNames = AppServiceUtils.getUsersCoinsNames(userMarketSettingsRepository);
 
         ExecutorService executorService = Executors.newFixedThreadPool(userExchanges.size());
         List<CompletableFuture<Void>> futures = new CopyOnWriteArrayList<>();
 
-
         userExchanges.forEach(exchange -> {
             CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                Set<Coin> filteredCoinsNames = AppServiceUtils.getFilteredCoins(exchange, usersCoinsNames);
+                Set<Coin> filteredCoins = AppServiceUtils.getFilteredCoins(exchange, usersCoinsNames);
+                Set<ChainResponseDTO> chainResponseDTOSet = apiExchangeAdapter.getCoinChain(exchange.getName(), filteredCoins);
                 synchronized (result) {
-                    result.putAll(apiExchangeAdapter.getCoinChain(exchange.getName(), filteredCoinsNames));
+                    result.addAll(chainResponseDTOSet);
                 }
             }, executorService);
             futures.add(future);

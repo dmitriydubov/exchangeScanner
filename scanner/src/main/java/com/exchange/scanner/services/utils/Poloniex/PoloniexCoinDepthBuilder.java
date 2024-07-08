@@ -1,12 +1,14 @@
 package com.exchange.scanner.services.utils.Poloniex;
 
 import com.exchange.scanner.dto.response.exchangedata.poloniex.depth.PoloniexCoinDepth;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepthAsk;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepthBid;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthAsk;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthBid;
 
+import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.TreeSet;
 
 public class PoloniexCoinDepthBuilder {
 
@@ -18,10 +20,10 @@ public class PoloniexCoinDepthBuilder {
         Set<CoinDepthBid> coinDepthBids = new HashSet<>();
 
         int checkBidOrdersSum = 0;
-        for (int i = 0; i < depth.getBids().size(); i++) {
+        for (int i = 0; i < depth.getBids().size(); i+=2) {
             CoinDepthBid coinDepthBid = new CoinDepthBid();
-            coinDepthBid.setPrice(depth.getBids().get(i));
-            coinDepthBid.setVolume(depth.getBids().get(i + 1));
+            coinDepthBid.setPrice(new BigDecimal(depth.getBids().get(i)));
+            coinDepthBid.setVolume(new BigDecimal(depth.getBids().get(i + 1)));
             checkBidOrdersSum += 2;
             coinDepthBids.add(coinDepthBid);
             if (checkBidOrdersSum == depth.getBids().size()) break;
@@ -30,10 +32,10 @@ public class PoloniexCoinDepthBuilder {
         Set<CoinDepthAsk> coinDepthAsks =new HashSet<>();
 
         int checkAskOrdersSum = 0;
-        for (int i = 0; i < depth.getAsks().size(); i++) {
+        for (int i = 0; i < depth.getAsks().size(); i+=2) {
             CoinDepthAsk coinDepthAsk = new CoinDepthAsk();
-            coinDepthAsk.setPrice(depth.getAsks().get(i));
-            coinDepthAsk.setVolume(depth.getAsks().get(i + 1));
+            coinDepthAsk.setPrice(new BigDecimal(depth.getAsks().get(i)));
+            coinDepthAsk.setVolume(new BigDecimal(depth.getAsks().get(i + 1)));
             checkAskOrdersSum += 2;
             coinDepthAsks.add(coinDepthAsk);
             if (checkAskOrdersSum == depth.getAsks().size()) break;
@@ -44,8 +46,8 @@ public class PoloniexCoinDepthBuilder {
         } else {
             coinDepth.setStatusCode(200);
         }
-        coinDepth.setCoinDepthBids(coinDepthBids);
-        coinDepth.setCoinDepthAsks(coinDepthAsks);
+        coinDepth.setCoinDepthBids(new TreeSet<>(coinDepthBids));
+        coinDepth.setCoinDepthAsks(new TreeSet<>(coinDepthAsks));
 
         return coinDepth;
     }

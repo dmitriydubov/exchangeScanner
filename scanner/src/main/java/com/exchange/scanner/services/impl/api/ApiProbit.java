@@ -1,5 +1,8 @@
 package com.exchange.scanner.services.impl.api;
 
+import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
+import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.probit.chains.Data;
 import com.exchange.scanner.dto.response.exchangedata.probit.chains.ProbitChainData;
 import com.exchange.scanner.dto.response.exchangedata.probit.depth.ProbitCoinDepth;
@@ -7,13 +10,14 @@ import com.exchange.scanner.dto.response.exchangedata.probit.tradingfee.FeeData;
 import com.exchange.scanner.dto.response.exchangedata.probit.tradingfee.ProbitTradingFeeResponse;
 import com.exchange.scanner.dto.response.exchangedata.probit.coins.ProbitCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.probit.tickervolume.ProbitTickerVolume;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.AppUtils.CoinFactory;
+import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.AppUtils.ListUtils;
 import com.exchange.scanner.services.utils.Probit.ProbitCoinDepthBuilder;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
+import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -55,7 +59,7 @@ public class ApiProbit implements ApiExchange {
             .filter(symbol ->
                     symbol.getQuoteCurrencyId().equals("USDT") && !symbol.getClosed()
             )
-            .map(symbol -> CoinFactory.getCoin(symbol.getBaseCurrencyId()))
+            .map(symbol -> ObjectUtils.getCoin(symbol.getBaseCurrencyId()))
             .collect(Collectors.toSet());
 
         return coins;
@@ -76,17 +80,25 @@ public class ApiProbit implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(ProbitCurrencyResponse.class);
+            .bodyToMono(ProbitCurrencyResponse.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
-    public Set<Coin> getCoinChain(Set<Coin> coins) {
-        Set<Coin> coinsWithChains = new HashSet<>();
+    public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
+        Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
         Set<String> coinsNames = coins.stream().map(Coin::getName).collect(Collectors.toSet());
 
         ProbitChainData response = getChainResponse().block();
         if (response == null) {
             log.error("При попытке получения списка сетей получен пустой ответ от {}", NAME);
-            return coinsWithChains;
+            return chainsDTOSet;
         }
         List<Data> data = response.getData().stream()
                 .filter(coinResponse -> coinsNames.contains(coinResponse.getId()))
@@ -104,11 +116,11 @@ public class ApiProbit implements ApiExchange {
                     });
                 }
             });
-            coin.setChains(chains);
-            coinsWithChains.add(coin);
+            ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
+            chainsDTOSet.add(responseDTO);
         });
 
-        return coinsWithChains;
+        return chainsDTOSet;
     }
 
     private Mono<ProbitChainData> getChainResponse() {
@@ -126,17 +138,25 @@ public class ApiProbit implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(ProbitChainData.class);
+            .bodyToMono(ProbitChainData.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
-    public Set<Coin> getTradingFee(Set<Coin> coins) {
-        Set<Coin> coinsWithFee = new HashSet<>();
+    public Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
+        Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
         Set<String> symbols = coins.stream().map(coin -> coin.getName() + "-USDT").collect(Collectors.toSet());
 
         ProbitTradingFeeResponse response = getFee().block();
 
-        if (response == null) return coinsWithFee;
+        if (response == null) return tradingFeeSet;
         List<FeeData> data = response.getData().stream()
                 .filter(feeData -> symbols.contains(feeData.getId()))
                 .toList();
@@ -144,13 +164,17 @@ public class ApiProbit implements ApiExchange {
         coins.forEach(coin -> {
             data.forEach(feeData -> {
                 if (coin.getName().equals(feeData.getBaseCurrencyId())) {
-                    coin.setTakerFee(new BigDecimal(feeData.getTakerFeeRate()));
-                    coinsWithFee.add(coin);
+                    TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                            exchangeName,
+                            coin,
+                            feeData.getTakerFeeRate()
+                    );
+                    tradingFeeSet.add(responseDTO);
                 }
             });
         });
 
-        return coinsWithFee;
+        return tradingFeeSet;
     }
 
     private Mono<ProbitTradingFeeResponse> getFee() {
@@ -168,27 +192,40 @@ public class ApiProbit implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(ProbitTradingFeeResponse.class);
+            .bodyToMono(ProbitTradingFeeResponse.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
-    public Set<Coin> getCoinVolume24h(Set<Coin> coins) {
-        Set<Coin> coinsWithVolume24h = new HashSet<>();
+    public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
+        Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
 
         ProbitTickerVolume response = getCoinTickerVolume(new ArrayList<>(coins)).blockLast();
 
-        if (response == null) return coinsWithVolume24h;
+        if (response == null) return volume24HSet;
 
         coins.forEach(coin -> {
             response.getData().forEach(data -> {
                 if (coin.getName().equals(data.getMarketId().replaceAll("-USDT", ""))) {
-                    coin.setVolume24h(new BigDecimal(data.getQuoteVolume()));
-                    coinsWithVolume24h.add(coin);
+                    Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                            exchange,
+                            coin,
+                            data.getQuoteVolume()
+                    );
+
+                    volume24HSet.add(responseDTO);
                 }
             });
         });
 
-        return coinsWithVolume24h;
+        return volume24HSet;
     }
 
     private Flux<ProbitTickerVolume> getCoinTickerVolume(List<Coin> coins) {
@@ -213,6 +250,14 @@ public class ApiProbit implements ApiExchange {
                         })
                 )
                 .bodyToFlux(ProbitTickerVolume.class)
+                .onErrorResume(error -> {
+                    if (error instanceof ReadTimeoutException) {
+                        log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                    } else {
+                        log.error("Ошибка при запросе к {}.", NAME, error);
+                    }
+                    return Flux.empty();
+                })
             );
     }
 
@@ -254,7 +299,15 @@ public class ApiProbit implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(ProbitCoinDepth.class);
+            .bodyToMono(ProbitCoinDepth.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     private static String generateParameters(List<Coin> coins) {

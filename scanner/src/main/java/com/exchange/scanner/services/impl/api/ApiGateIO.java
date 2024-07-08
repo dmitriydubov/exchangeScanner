@@ -1,17 +1,21 @@
 package com.exchange.scanner.services.impl.api;
 
+import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
+import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.gateio.chains.ChainDTO;
 import com.exchange.scanner.dto.response.exchangedata.gateio.coins.GateIoCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.gateio.depth.GateIOCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.gateio.volume24h.GateIOCoinTickerVolume;
 import com.exchange.scanner.dto.response.exchangedata.gateio.tradingfee.GateIOTradingFeeResponse;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.AppUtils.CoinFactory;
+import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.GateIO.GateIOCoinDepthBuilder;
 import com.exchange.scanner.services.utils.GateIO.GateIOSignatureBuilder;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
+import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -56,7 +60,7 @@ public class ApiGateIO implements ApiExchange {
         if (response == null) return coins;
         coins = response.stream()
                 .filter(currency -> currency.getQuote().equals("USDT") && currency.getTradeStatus().equals("tradable"))
-                .map(currency -> CoinFactory.getCoin(currency.getBase()))
+                .map(currency -> ObjectUtils.getCoin(currency.getBase()))
                 .collect(Collectors.toSet());
 
         return coins;
@@ -78,18 +82,26 @@ public class ApiGateIO implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToFlux(GateIoCurrencyResponse.class);
+            .bodyToFlux(GateIoCurrencyResponse.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Flux.empty();
+            });
     }
 
     @Override
-    public Set<Coin> getCoinChain(Set<Coin> coins) {
-        Set<Coin> coinsWithChains = new HashSet<>();
+    public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
+        Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
         coins.forEach(coin -> {
             List<Chain> response = getChains(coin).collectList().block();
             if (response != null) {
                 Set<Chain> chains = new HashSet<>(response);
-                coin.setChains(chains);
-                coinsWithChains.add(coin);
+                ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
+                chainsDTOSet.add(responseDTO);
             } else {
                 log.error("При попытке получения списка сетей получен пустой ответ от {}", NAME);
             }
@@ -100,7 +112,7 @@ public class ApiGateIO implements ApiExchange {
             }
         });
 
-        return coinsWithChains;
+        return chainsDTOSet;
     }
 
     private Flux<Chain> getChains(Coin coin) {
@@ -126,6 +138,14 @@ public class ApiGateIO implements ApiExchange {
                     })
             )
             .bodyToFlux(ChainDTO.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Flux.empty();
+            })
             .filter(chainDTO -> chainDTO.getIsDisabled() == 0 && chainDTO.getIsDepositDisabled() == 0 && chainDTO.getIsWithdrawDisabled() == 0)
             .map(chainDTO -> {
                 Chain chain = new Chain();
@@ -136,15 +156,19 @@ public class ApiGateIO implements ApiExchange {
     }
 
     @Override
-    public Set<Coin> getTradingFee(Set<Coin> coins) {
-        Set<Coin> coinsWithTradingFee = new HashSet<>();
+    public Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
+        Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
 
         coins.forEach(coin -> {
             GateIOTradingFeeResponse response = getFee(coin).block();
 
             if (response != null) {
-                coin.setTakerFee(new BigDecimal(response.getTakerFee()));
-                coinsWithTradingFee.add(coin);
+                TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                        exchangeName,
+                        coin,
+                        response.getTakerFee()
+                );
+                tradingFeeSet.add(responseDTO);
             } else {
                 log.error("При попытке получения торговой комиссии для монеты {}, получен пустой ответ от {}", coin.getName(), NAME);
             }
@@ -156,7 +180,7 @@ public class ApiGateIO implements ApiExchange {
             }
         });
 
-        return coinsWithTradingFee;
+        return tradingFeeSet;
     }
 
     private Mono<GateIOTradingFeeResponse> getFee(Coin coin) {
@@ -194,19 +218,32 @@ public class ApiGateIO implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(GateIOTradingFeeResponse.class);
+            .bodyToMono(GateIOTradingFeeResponse.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
-    public Set<Coin> getCoinVolume24h(Set<Coin> coins) {
-        Set<Coin> coinsWithVolume24h = new HashSet<>();
+    public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
+        Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
 
         coins.forEach(coin -> {
             List<GateIOCoinTickerVolume> response = getCoinTickerVolume(coin).collectList().block();
             if (response != null) {
                 GateIOCoinTickerVolume volume = response.getFirst();
-                coin.setVolume24h(new BigDecimal(volume.getQuoteVolume()));
-                coinsWithVolume24h.add(coin);
+                Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                        exchange,
+                        coin,
+                        volume.getQuoteVolume()
+                );
+
+                volume24HSet.add(responseDTO);
             }
 
             try {
@@ -216,7 +253,7 @@ public class ApiGateIO implements ApiExchange {
             }
         });
 
-        return coinsWithVolume24h;
+        return volume24HSet;
     }
 
     private Flux<GateIOCoinTickerVolume> getCoinTickerVolume(Coin coin) {
@@ -237,7 +274,15 @@ public class ApiGateIO implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToFlux(GateIOCoinTickerVolume.class);
+            .bodyToFlux(GateIOCoinTickerVolume.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Flux.empty();
+            });
     }
 
     @Override
@@ -280,6 +325,14 @@ public class ApiGateIO implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(GateIOCoinDepth.class);
+            .bodyToMono(GateIOCoinDepth.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 }

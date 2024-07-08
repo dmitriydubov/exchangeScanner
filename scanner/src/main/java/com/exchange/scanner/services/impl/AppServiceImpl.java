@@ -1,5 +1,8 @@
 package com.exchange.scanner.services.impl;
 
+import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
+import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.event.ArbitrageEvent;
 import com.exchange.scanner.dto.response.event.EventData;
 import com.exchange.scanner.model.*;
@@ -24,6 +27,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class AppServiceImpl implements AppService {
     private static final Logger log = LoggerFactory.getLogger(AppServiceImpl.class);
 
@@ -52,7 +56,6 @@ public class AppServiceImpl implements AppService {
     private static final int SCHEDULED_RATE_TIME_FOR_GET_ORDERS_BOOK = 5000;
 
     @Override
-    @Transactional
     @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_REFRESH_COINS)
     public void refreshCoins() {
         long start = System.currentTimeMillis();
@@ -72,23 +75,19 @@ public class AppServiceImpl implements AppService {
 
     @Override
     @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_CHAINS)
-    @Transactional
     public void getCoinsChains() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи getCoinsChains", Thread.currentThread().getName());
 
         CoinChainUtils coinChainUtils = new CoinChainUtils();
-        Map<String, Set<Coin>> coinsMap = coinChainUtils.getCoinsChainInfoAsync(apiExchangeAdapter, exchangeRepository, userMarketSettingsRepository);
-        coinsMap.forEach((exchange, coins) -> {
-//            System.out.println("exchange: " + exchange);
-//            coins.forEach(coin -> {
-//                System.out.println("coin: " + coin.getName());
-//                System.out.println("chains:");
-//                coin.getChains().forEach(ch -> {
-//                    System.out.println(ch.getName() + " " + ch.getCommission());
-//                });
-//            });
-            coinRepository.saveAll(coins);
+        Set<ChainResponseDTO> response = coinChainUtils.getCoinsChainInfoAsync(
+                apiExchangeAdapter,
+                exchangeRepository,
+                userMarketSettingsRepository
+        );
+
+        response.forEach(chainResponse -> {
+            chainResponse.getCoin().setChains(chainResponse.getChains());
         });
 
         long end = System.currentTimeMillis() - start;
@@ -97,20 +96,18 @@ public class AppServiceImpl implements AppService {
 
     @Override
     @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_TRADING_FEE)
-    @Transactional
     public void getTradingFee() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи getTradingFee", Thread.currentThread().getName());
 
         TradingFeeUtils tradingFeeUtils = new TradingFeeUtils();
-        Map<String, Set<Coin>> coinsMap = tradingFeeUtils.getTradingFeeAsync(apiExchangeAdapter, exchangeRepository, userMarketSettingsRepository);
-        coinsMap.forEach((exchange, coins) -> {
-//            System.out.println("Exchange: " + exchange);
-//            coins.forEach(coin -> {
-//                System.out.println(coin.getName());
-//                System.out.println(coin.getTakerFee());
-//            });
-            coinRepository.saveAll(coins);
+        Set<TradingFeeResponseDTO> tradingResponse = tradingFeeUtils.getTradingFeeAsync(
+                apiExchangeAdapter,
+                exchangeRepository,
+                userMarketSettingsRepository
+        );
+        tradingResponse.forEach(response -> {
+            response.getCoin().setTakerFee(response.getTradingFee());
         });
 
         long end = System.currentTimeMillis() - start;
@@ -119,16 +116,18 @@ public class AppServiceImpl implements AppService {
 
     @Override
     @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H)
-    @Transactional
     public void getVolume24h() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи getVolume24h", Thread.currentThread().getName());
 
         RefreshVolume24hUtils refreshVolume24hUtils = new RefreshVolume24hUtils();
-        Map<String, Set<Coin>> coinsMap = refreshVolume24hUtils.getVolume24hAsync(apiExchangeAdapter, exchangeRepository, userMarketSettingsRepository);
-
-        coinsMap.forEach((exchange, coins) -> {
-            coinRepository.saveAll(coins);
+        Set<Volume24HResponseDTO> volume24HResponse = refreshVolume24hUtils.getVolume24hAsync(
+                apiExchangeAdapter,
+                exchangeRepository,
+                userMarketSettingsRepository
+        );
+        volume24HResponse.forEach(volume24H -> {
+            volume24H.getCoin().setVolume24h(volume24H.getVolume24H());
         });
 
         long end = System.currentTimeMillis() - start;
@@ -137,10 +136,9 @@ public class AppServiceImpl implements AppService {
 
     @Override
     @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_ORDERS_BOOK)
-    @Transactional
     public void getOrderBooks() {
-        long start = System.currentTimeMillis();
-        log.info("{} приступил к выполнению задачи getOrderBooks", Thread.currentThread().getName());
+//        long start = System.currentTimeMillis();
+//        log.info("{} приступил к выполнению задачи getOrderBooks", Thread.currentThread().getName());
 
         OrdersBookUtils ordersBookUtils = new OrdersBookUtils();
         List<OrdersBook> ordersBooks = ordersBookUtils.getOrderBooksAsync(
@@ -152,28 +150,24 @@ public class AppServiceImpl implements AppService {
         ordersBookRepository.deleteAllInBatch();
         ordersBookRepository.saveAll(ordersBooks);
 
-        long end = System.currentTimeMillis() - start;
-        log.info("Операция обновления стакана цен выполнена. Время выполнения: {}s", end / 1000);
+//        long end = System.currentTimeMillis() - start;
+//        log.info("Операция обновления стакана цен выполнена. Время выполнения: {}s", end / 1000);
     }
 
-    @Transactional
     protected void updateCoins(Map<String, Set<Coin>> coinsMap) {
-        Set<Exchange> exchangesToUpdate = new HashSet<>();
         coinsMap.forEach((exchangeName, coins) -> {
             Exchange exchange = exchangeRepository.findByName(exchangeName);
             Set<Coin> coinsToDelete =  exchange.getCoins().stream()
                     .filter(coin -> !coins.contains(coin))
                     .collect(Collectors.toSet());
-            coinRepository.deleteAllInBatch(coinsToDelete);
             exchange.getCoins().removeAll(coinsToDelete);
-            exchange.setCoins(coins);
-            exchangesToUpdate.add(exchange);
+            Set<Coin> coinsToUpdate = coins.stream()
+                    .filter(updatedCoin -> !exchange.getCoins().contains(updatedCoin))
+                    .collect(Collectors.toSet());
+            exchange.getCoins().addAll(coinsToUpdate);
         });
-
-        exchangeRepository.saveAll(exchangesToUpdate);
     }
 
-    @Transactional
     protected UserMarketSettings createUserMarketSettingsWithDefaults(User user) {
         List<String> exchangesNames = exchangeRepository.findAll().stream().map(Exchange::getName).toList();
         var userMarketSettings = UserMarketSettingsBuilder.getDefaultUserMarketSettings(user, exchangesNames);
@@ -182,7 +176,6 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Transactional
     public CompletableFuture<Set<String>> getExchanges() {
         return CompletableFuture.supplyAsync(() -> {
             return exchangeRepository.findAll().stream().map(Exchange::getName).collect(Collectors.toSet());
@@ -190,7 +183,6 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Transactional
     public CompletableFuture<List<ArbitrageEvent>> getArbitrageOpportunities(UserDetails userDetails) {
         return CompletableFuture.supplyAsync(() -> {
             if (userDetails == null) {

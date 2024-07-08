@@ -95,8 +95,7 @@ public class ArbitrageOpportunitiesUtils {
                 ));
     }
 
-    @Transactional
-    protected TradingData getChainData(Bid bid, Ask ask) {
+    private TradingData getChainData(Bid bid, Ask ask) {
         Coin coinAsk = ask.getOrdersBook().getCoin();
         Coin coinBid = bid.getOrdersBook().getCoin();
         Set<Chain> chainsForBuy = coinAsk.getChains();

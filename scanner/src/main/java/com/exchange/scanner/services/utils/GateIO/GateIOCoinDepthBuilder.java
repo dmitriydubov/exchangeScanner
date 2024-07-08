@@ -1,11 +1,13 @@
 package com.exchange.scanner.services.utils.GateIO;
 
 import com.exchange.scanner.dto.response.exchangedata.gateio.depth.GateIOCoinDepth;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepthAsk;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepthBid;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthAsk;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthBid;
 
+import java.math.BigDecimal;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 
@@ -18,8 +20,8 @@ public class GateIOCoinDepthBuilder {
         Set<CoinDepthAsk> coinDepthAskSet = depth.getAsks().stream()
             .map(ask -> {
                 CoinDepthAsk coinDepthAsk = new CoinDepthAsk();
-                coinDepthAsk.setPrice(ask.getFirst());
-                coinDepthAsk.setVolume(ask.getLast());
+                coinDepthAsk.setPrice(new BigDecimal(ask.getFirst()));
+                coinDepthAsk.setVolume(new BigDecimal(ask.getLast()));
                 return coinDepthAsk;
             })
             .collect(Collectors.toSet());
@@ -27,8 +29,8 @@ public class GateIOCoinDepthBuilder {
         Set<CoinDepthBid> coinDepthBidSet = depth.getBids().stream()
             .map(bid -> {
                 CoinDepthBid coinDepthBid = new CoinDepthBid();
-                coinDepthBid.setPrice(bid.getFirst());
-                coinDepthBid.setVolume(bid.getLast());
+                coinDepthBid.setPrice(new BigDecimal(bid.getFirst()));
+                coinDepthBid.setVolume(new BigDecimal(bid.getLast()));
                 return coinDepthBid;
             })
             .collect(Collectors.toSet());
@@ -38,8 +40,8 @@ public class GateIOCoinDepthBuilder {
         } else {
             coinDepth.setStatusCode(200);
         }
-        coinDepth.setCoinDepthAsks(coinDepthAskSet);
-        coinDepth.setCoinDepthBids(coinDepthBidSet);
+        coinDepth.setCoinDepthAsks(new TreeSet<>(coinDepthAskSet));
+        coinDepth.setCoinDepthBids(new TreeSet<>(coinDepthBidSet));
 
         return coinDepth;
     }

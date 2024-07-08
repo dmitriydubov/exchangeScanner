@@ -1,11 +1,13 @@
 package com.exchange.scanner.services.utils.BingX;
 
 import com.exchange.scanner.dto.response.exchangedata.bingx.depth.BingXDepthData;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepthAsk;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepthBid;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthAsk;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthBid;
 
+import java.math.BigDecimal;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 public class BingXCoinDepthBuilder {
@@ -17,8 +19,8 @@ public class BingXCoinDepthBuilder {
         Set<CoinDepthAsk> coinDepthAskSet = data.getAsks().stream()
                 .map(ask -> {
                     CoinDepthAsk coinDepthAsk = new CoinDepthAsk();
-                    coinDepthAsk.setPrice(ask.getFirst());
-                    coinDepthAsk.setVolume(ask.getLast());
+                    coinDepthAsk.setPrice(new BigDecimal(ask.getFirst()));
+                    coinDepthAsk.setVolume(new BigDecimal(ask.getLast()));
                     return coinDepthAsk;
                 })
                 .collect(Collectors.toSet());
@@ -26,8 +28,8 @@ public class BingXCoinDepthBuilder {
         Set<CoinDepthBid> coinDepthBidSet = data.getBids().stream()
                 .map(bid -> {
                     CoinDepthBid coinDepthBid = new CoinDepthBid();
-                    coinDepthBid.setPrice(bid.getFirst());
-                    coinDepthBid.setVolume(bid.getLast());
+                    coinDepthBid.setPrice(new BigDecimal(bid.getFirst()));
+                    coinDepthBid.setVolume(new BigDecimal(bid.getLast()));
                     return coinDepthBid;
                 })
                 .collect(Collectors.toSet());
@@ -37,8 +39,8 @@ public class BingXCoinDepthBuilder {
         } else {
             coinDepth.setStatusCode(200);
         }
-        coinDepth.setCoinDepthAsks(coinDepthAskSet);
-        coinDepth.setCoinDepthBids(coinDepthBidSet);
+        coinDepth.setCoinDepthAsks(new TreeSet<>(coinDepthAskSet));
+        coinDepth.setCoinDepthBids(new TreeSet<>(coinDepthBidSet));
 
         return coinDepth;
     }

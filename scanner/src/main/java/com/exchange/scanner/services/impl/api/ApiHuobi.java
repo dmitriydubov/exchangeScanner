@@ -1,21 +1,25 @@
 package com.exchange.scanner.services.impl.api;
 
+import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
+import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.huobi.chains.HuobiChainsResponse;
 import com.exchange.scanner.dto.response.exchangedata.huobi.depth.HuobiCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.huobi.coins.HuobiCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.huobi.tickervolume.HuobiVolumeTicker;
 import com.exchange.scanner.dto.response.exchangedata.huobi.tradingfee.HuobiFeeData;
 import com.exchange.scanner.dto.response.exchangedata.huobi.tradingfee.HuobiTradingFeeResponse;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.AppUtils.CoinFactory;
+import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.AppUtils.ListUtils;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 import com.exchange.scanner.services.utils.Huobi.HuobiCoinDepthBuilder;
 import com.huobi.client.TradeClient;
 import com.huobi.client.req.trade.FeeRateRequest;
 import com.huobi.constant.HuobiOptions;
+import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -64,7 +68,7 @@ public class ApiHuobi implements ApiExchange {
 
         coins = response.getData().stream()
                 .filter(symbol -> symbol.getQcdn().equals("USDT") && symbol.getTe())
-                .map(symbol -> CoinFactory.getCoin(symbol.getBcdn()))
+                .map(symbol -> ObjectUtils.getCoin(symbol.getBcdn()))
                 .collect(Collectors.toSet());
 
         return coins;
@@ -72,25 +76,33 @@ public class ApiHuobi implements ApiExchange {
 
     private Mono<HuobiCurrencyResponse> getCurrencies() {
         return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/v2/settings/common/symbols")
-                        .build()
-                )
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения списка валют. Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToMono(HuobiCurrencyResponse.class);
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/v2/settings/common/symbols")
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения списка валют. Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(HuobiCurrencyResponse.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
-    public Set<Coin> getCoinChain(Set<Coin> coins) {
-        Set<Coin> coinsWithChains = new HashSet<>();
+    public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
+        Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
 
         coins.forEach(coin -> {
             HuobiChainsResponse response = getChains(coin).block();
@@ -103,8 +115,8 @@ public class ApiHuobi implements ApiExchange {
                     chain.setCommission(new BigDecimal(chainResponse.getTransactFeeWithdraw()));
                     chains.add(chain);
                 });
-                coin.setChains(chains);
-                coinsWithChains.add(coin);
+                ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
+                chainsDTOSet.add(responseDTO);
             }
 
             try {
@@ -114,31 +126,39 @@ public class ApiHuobi implements ApiExchange {
             }
         });
 
-        return coinsWithChains;
+        return chainsDTOSet;
     }
 
     private Mono<HuobiChainsResponse> getChains(Coin coin) {
         return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/v2/reference/currencies")
-                        .queryParam("currency", coin.getName().toLowerCase())
-                        .build()
-                )
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToMono(HuobiChainsResponse.class);
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/v2/reference/currencies")
+                    .queryParam("currency", coin.getName().toLowerCase())
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(HuobiChainsResponse.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
-    public Set<Coin> getTradingFee(Set<Coin> coins) {
-        Set<Coin> coinsWithTradingFee = new HashSet<>();
+    public Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
+        Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
 
         HuobiTradingFeeResponse response = getFee(coins);
 
@@ -151,13 +171,17 @@ public class ApiHuobi implements ApiExchange {
         coins.forEach(coin -> {
             data.forEach(feeResponse -> {
                 if (coin.getName().equalsIgnoreCase(feeResponse.getSymbol().replaceAll("usdt", ""))) {
-                    coin.setTakerFee(new BigDecimal(feeResponse.getTakerFeeRate()));
-                    coinsWithTradingFee.add(coin);
+                    TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                            exchangeName,
+                            coin,
+                            feeResponse.getTakerFeeRate()
+                    );
+                    tradingFeeSet.add(responseDTO);
                 }
             });
         });
 
-        return coinsWithTradingFee;
+        return tradingFeeSet;
     }
 
     private HuobiTradingFeeResponse getFee(Set<Coin> coins) {
@@ -183,15 +207,20 @@ public class ApiHuobi implements ApiExchange {
     }
 
     @Override
-    public Set<Coin> getCoinVolume24h(Set<Coin> coins) {
-        Set<Coin> coinsWithVolume24h = new HashSet<>();
+    public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
+        Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
 
         coins.forEach(coin -> {
             HuobiVolumeTicker response = getCoinTickerVolume(coin).block();
 
             if (response != null) {
-                coin.setVolume24h(new BigDecimal(response.getTick().getVol()));
-                coinsWithVolume24h.add(coin);
+                Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                        exchange,
+                        coin,
+                        response.getTick().getVol()
+                );
+
+                volume24HSet.add(responseDTO);
             }
 
             try {
@@ -201,28 +230,36 @@ public class ApiHuobi implements ApiExchange {
             }
         });
 
-        return coinsWithVolume24h;
+        return volume24HSet;
     }
 
     private Mono<HuobiVolumeTicker> getCoinTickerVolume(Coin coin) {
         String symbol = coin.getName().toLowerCase() + "usdt";
 
         return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/market/detail/merged")
-                        .queryParam("symbol", symbol)
-                        .build()
-                )
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToMono(HuobiVolumeTicker.class);
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/market/detail/merged")
+                    .queryParam("symbol", symbol)
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(HuobiVolumeTicker.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
@@ -265,7 +302,15 @@ public class ApiHuobi implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(HuobiCoinDepth.class);
+            .bodyToMono(HuobiCoinDepth.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     private static String generateSymbolsParameters(List<Coin> coins) {

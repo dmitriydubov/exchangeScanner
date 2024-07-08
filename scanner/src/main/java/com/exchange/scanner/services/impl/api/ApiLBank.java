@@ -1,17 +1,21 @@
 package com.exchange.scanner.services.impl.api;
 
+import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
+import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.lbank.chains.LBankChainsResponse;
 import com.exchange.scanner.dto.response.exchangedata.lbank.depth.LBankCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.lbank.coins.LBankCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.lbank.tickervolume.LBankVolumeTicker;
 import com.exchange.scanner.dto.response.exchangedata.lbank.tradingfee.LBankTradingFeeResponse;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.AppUtils.CoinFactory;
+import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.LBank.LBankCoinDepthBuilder;
 import com.exchange.scanner.services.utils.LBank.LBankSignatureBuilder;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
+import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -60,8 +64,8 @@ public class ApiLBank implements ApiExchange {
         coins = response.getData().stream()
                 .filter(symbol -> symbol.getSymbol().endsWith("_usdt"))
                 .map(symbol -> {
-                    String coinName = CoinFactory.refactorToStandardCoinName(symbol.getSymbol(), "_");
-                    return CoinFactory.getCoin(coinName);
+                    String coinName = ObjectUtils.refactorToStandardCoinName(symbol.getSymbol(), "_");
+                    return ObjectUtils.getCoin(coinName);
                 })
                 .collect(Collectors.toSet());
 
@@ -76,12 +80,20 @@ public class ApiLBank implements ApiExchange {
                     .build()
             )
             .retrieve()
-            .bodyToMono(LBankCurrencyResponse.class);
+            .bodyToMono(LBankCurrencyResponse.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
-    public Set<Coin> getCoinChain(Set<Coin> coins) {
-        Set<Coin> coinsWithChains = new HashSet<>();
+    public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
+        Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
 
         coins.forEach(coin -> {
             LBankChainsResponse response = getChains(coin).block();
@@ -99,8 +111,8 @@ public class ApiLBank implements ApiExchange {
                         chains.add(chain);
                     }
                 });
-                coin.setChains(chains);
-                coinsWithChains.add(coin);
+                ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
+                chainsDTOSet.add(responseDTO);
             }
 
             try {
@@ -110,7 +122,7 @@ public class ApiLBank implements ApiExchange {
             }
         });
 
-        return coinsWithChains;
+        return chainsDTOSet;
     }
 
     private Mono<LBankChainsResponse> getChains(Coin coin) {
@@ -131,18 +143,30 @@ public class ApiLBank implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(LBankChainsResponse.class);
+            .bodyToMono(LBankChainsResponse.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
-    public Set<Coin> getTradingFee(Set<Coin> coins) {
-        Set<Coin> coinsWithTradingFee = new HashSet<>();
+    public Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
+        Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
 
         coins.forEach(coin -> {
            LBankTradingFeeResponse response = getFee(coin).block();
            if (response != null) {
-               coin.setTakerFee(new BigDecimal(response.getData().getFirst().getTakerCommission()));
-               coinsWithTradingFee.add(coin);
+               TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                       exchangeName,
+                       coin,
+                       response.getData().getFirst().getTakerCommission()
+               );
+               tradingFeeSet.add(responseDTO);
            }
            try {
                Thread.sleep(REQUEST_DELAY_DURATION);
@@ -151,7 +175,7 @@ public class ApiLBank implements ApiExchange {
            }
         });
 
-        return coinsWithTradingFee;
+        return tradingFeeSet;
     }
 
     private Mono<LBankTradingFeeResponse> getFee(Coin coin) {
@@ -182,19 +206,32 @@ public class ApiLBank implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(LBankTradingFeeResponse.class);
+            .bodyToMono(LBankTradingFeeResponse.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
-    public Set<Coin> getCoinVolume24h(Set<Coin> coins) {
-        Set<Coin> coinsWithVolume24h = new HashSet<>();
+    public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
+        Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
 
         coins.forEach(coin -> {
             LBankVolumeTicker response = getCoinTicker(coin).block();
 
             if (response != null) {
-                coin.setVolume24h(new BigDecimal(response.getData().getFirst().getTicker().getTurnover()));
-                coinsWithVolume24h.add(coin);
+                Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                        exchange,
+                        coin,
+                        response.getData().getFirst().getTicker().getTurnover()
+                );
+
+                volume24HSet.add(responseDTO);
             }
 
             try {
@@ -204,7 +241,7 @@ public class ApiLBank implements ApiExchange {
             }
         });
 
-        return coinsWithVolume24h;
+        return volume24HSet;
     }
 
     private Mono<LBankVolumeTicker> getCoinTicker(Coin coin) {
@@ -225,7 +262,15 @@ public class ApiLBank implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(LBankVolumeTicker.class);
+            .bodyToMono(LBankVolumeTicker.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
@@ -267,6 +312,14 @@ public class ApiLBank implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(LBankCoinDepth.class);
+            .bodyToMono(LBankCoinDepth.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 }

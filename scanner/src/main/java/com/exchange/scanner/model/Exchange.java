@@ -16,7 +16,10 @@ import java.util.Set;
 @Entity
 @Getter
 @Setter
-@Table(name = "exchanges")
+@Table(name = "exchanges", indexes = {
+        @Index(name = "idx_exchange_name", columnList = "name"),
+        @Index(name = "idx_exchange_isBlockBySuperuser", columnList = "is_block_by_superuser")
+})
 public class Exchange {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -35,7 +38,7 @@ public class Exchange {
     @Column(name = "is_block_by_superuser")
     private Boolean isBlockBySuperuser = false;
 
-    @ManyToMany(fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @ManyToMany(cascade = CascadeType.ALL)
     @JoinTable(
             name = "exchanges_coins",
             joinColumns = @JoinColumn(name = "exchange_id"),

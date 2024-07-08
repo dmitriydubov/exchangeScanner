@@ -1,18 +1,22 @@
 package com.exchange.scanner.services.impl.api;
 
+import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
+import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.bitmart.chains.BitmartChainsCurrencies;
 import com.exchange.scanner.dto.response.exchangedata.bitmart.chains.BitmartChainsResponse;
 import com.exchange.scanner.dto.response.exchangedata.bitmart.depth.BitmartCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.bitmart.coins.BitmartCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.bitmart.tickervolume.BitmartVolumeTicker;
 import com.exchange.scanner.dto.response.exchangedata.bitmart.tradingfee.BitmartTradingFeeResponse;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.services.utils.Bitmart.BitmartCoinDepthBuilder;
 import com.exchange.scanner.services.utils.Bitmart.BitmartSignatureBuilder;
-import com.exchange.scanner.services.utils.AppUtils.CoinFactory;
+import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
+import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -44,6 +48,8 @@ public class ApiBitmart implements ApiExchange {
 
     private static final int REQUEST_DELAY_DURATION = 200;
 
+    private static final int REQUEST_FEE_DELAY_DURATION = 1000;
+
     private static final int DEPTH_REQUEST_LIMIT = 20;
 
     private final WebClient webClient;
@@ -62,7 +68,7 @@ public class ApiBitmart implements ApiExchange {
 
         coins = response.getData().getSymbols().stream()
                 .filter(symbol -> symbol.getQuoteCurrency().equals("USDT") && symbol.getTradeStatus().equals("trading"))
-                .map(symbol -> CoinFactory.getCoin(symbol.getBaseCurrency()))
+                .map(symbol -> ObjectUtils.getCoin(symbol.getBaseCurrency()))
                 .collect(Collectors.toSet());
 
         return coins;
@@ -83,15 +89,23 @@ public class ApiBitmart implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(BitmartCurrencyResponse.class);
+            .bodyToMono(BitmartCurrencyResponse.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
-    public Set<Coin> getCoinChain(Set<Coin> coins) {
-        Set<Coin> coinsWithChains = new HashSet<>();
+    public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
+        Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
         BitmartChainsResponse response = getChains().block();
 
-        if (response == null) return coinsWithChains;
+        if (response == null) return chainsDTOSet;
         Set<String> coinsNames = coins.stream().map(Coin::getName).collect(Collectors.toSet());
         List<BitmartChainsCurrencies> chainsCurrencies = response.getData().getCurrencies().stream()
                 .filter(chainResponse -> coinsNames.contains(chainResponse.getCurrency()))
@@ -107,11 +121,11 @@ public class ApiBitmart implements ApiExchange {
                     chains.add(chain);
                 }
             });
-            coin.setChains(chains);
-            coinsWithChains.add(coin);
+            ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
+            chainsDTOSet.add(responseDTO);
         });
 
-        return coinsWithChains;
+        return chainsDTOSet;
     }
 
     private Mono<BitmartChainsResponse> getChains() {
@@ -136,23 +150,41 @@ public class ApiBitmart implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(BitmartChainsResponse.class);
+            .bodyToMono(BitmartChainsResponse.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
-    public Set<Coin> getTradingFee(Set<Coin> coins) {
-        Set<Coin> coinsWithTradingFees = new HashSet<>();
+    public Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
+        Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
 
         coins.forEach(coin -> {
             BitmartTradingFeeResponse response = getFee(coin).block();
 
             if (response != null) {
-                coin.setTakerFee(new BigDecimal(response.getData().getTakerFee()));
-                coinsWithTradingFees.add(coin);
+                TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                        exchangeName,
+                        coin,
+                        response.getData().getTakerFee()
+                );
+                tradingFeeSet.add(responseDTO);
+            }
+
+            try {
+                Thread.sleep(REQUEST_FEE_DELAY_DURATION);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
             }
         });
 
-        return coinsWithTradingFees;
+        return tradingFeeSet;
     }
 
     private Mono<BitmartTradingFeeResponse> getFee(Coin coin) {
@@ -179,19 +211,32 @@ public class ApiBitmart implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(BitmartTradingFeeResponse.class);
+            .bodyToMono(BitmartTradingFeeResponse.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
-    public Set<Coin> getCoinVolume24h(Set<Coin> coins) {
-        Set<Coin> coinsWithVolume24h = new HashSet<>();
+    public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
+        Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
 
         coins.forEach(coin -> {
             BitmartVolumeTicker response = getCoinTickerVolume(coin).block();
 
             if (response != null) {
-                coin.setVolume24h(new BigDecimal(response.getData().getQv24h()));
-                coinsWithVolume24h.add(coin);
+                Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                        exchange,
+                        coin,
+                        response.getData().getQv24h()
+                );
+
+                volume24HSet.add(responseDTO);
             }
 
             try {
@@ -201,7 +246,7 @@ public class ApiBitmart implements ApiExchange {
             }
         });
 
-        return coinsWithVolume24h;
+        return volume24HSet;
     }
 
     public Mono<BitmartVolumeTicker> getCoinTickerVolume(Coin coin) {
@@ -221,7 +266,15 @@ public class ApiBitmart implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(BitmartVolumeTicker.class);
+            .bodyToMono(BitmartVolumeTicker.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 
     @Override
@@ -263,6 +316,14 @@ public class ApiBitmart implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(BitmartCoinDepth.class);
+            .bodyToMono(BitmartCoinDepth.class)
+            .onErrorResume(error -> {
+                if (error instanceof ReadTimeoutException) {
+                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
+                } else {
+                    log.error("Ошибка при запросе к {}.", NAME, error);
+                }
+                return Mono.empty();
+            });
     }
 }

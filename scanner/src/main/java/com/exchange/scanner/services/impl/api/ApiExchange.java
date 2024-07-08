@@ -1,21 +1,21 @@
 package com.exchange.scanner.services.impl.api;
 
-import com.exchange.scanner.dto.response.exchangedata.responsedata.CoinDataTicker;
-import com.exchange.scanner.dto.response.exchangedata.responsedata.coindepth.CoinDepth;
+import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
+import com.exchange.scanner.dto.response.Volume24HResponseDTO;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Coin;
 
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 public interface ApiExchange {
     Set<Coin> getAllCoins();
 
-    Set<Coin> getCoinVolume24h(Set<Coin> coins);
+    Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchangeName);
 
     Set<CoinDepth> getOrderBook(Set<String> coins);
 
-    Set<Coin> getCoinChain(Set<Coin> coins);
+    Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName);
 
-    Set<Coin> getTradingFee(Set<Coin> coins);
+    Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchange);
 }

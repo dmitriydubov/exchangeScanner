@@ -12,7 +12,10 @@ import java.util.Set;
 @Entity
 @Getter
 @Setter
-@Table(name = "coins")
+@Table(name = "coins", indexes = {
+        @Index(name = "idx_coin_name", columnList = "name"),
+        @Index(name = "idx_coin_isBlockBySuperuser", columnList = "is_block_by_superuser")
+})
 public class Coin {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -34,10 +37,10 @@ public class Coin {
     @Column(name = "taker_fee", nullable = false, precision = 38, scale = 4)
     private BigDecimal takerFee = new BigDecimal(0);
 
-    @Column(name = "volume24h", nullable = false, precision = 38)
+    @Column(name = "volume24h", nullable = false, precision = 38, scale = 4)
     private BigDecimal volume24h = new BigDecimal(0);
 
-    @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @ManyToMany(cascade = CascadeType.ALL)
     @JoinTable(
             name = "chain_coins",
             joinColumns = @JoinColumn(name = "coin_id"),
