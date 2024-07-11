@@ -1,6 +1,7 @@
-package com.exchange.scanner.services.impl.api;
+package com.exchange.scanner.services.impl.api.exchanges;
 
 import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.probit.chains.Data;
@@ -13,11 +14,12 @@ import com.exchange.scanner.dto.response.exchangedata.probit.tickervolume.Probit
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
+import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
 import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.AppUtils.ListUtils;
 import com.exchange.scanner.services.utils.Probit.ProbitCoinDepthBuilder;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
-import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -48,18 +50,24 @@ public class ApiProbit implements ApiExchange {
     }
 
     @Override
-    public Set<Coin> getAllCoins() {
+    public Set<Coin> getAllCoins(Exchange exchange) {
         Set<Coin> coins = new HashSet<>();
 
         ProbitCurrencyResponse response = getCurrencies().block();
 
-        if (response == null) return coins;
+        if (response == null || response.getData() == null) return coins;
 
         coins = response.getData().stream()
             .filter(symbol ->
                     symbol.getQuoteCurrencyId().equals("USDT") && !symbol.getClosed()
             )
-            .map(symbol -> ObjectUtils.getCoin(symbol.getBaseCurrencyId()))
+            .map(symbol -> {
+                LinkDTO links = new LinkDTO();
+                links.setDepositLink(exchange.getDepositLink() + symbol.getBaseCurrencyId().toUpperCase());
+                links.setWithdrawLink(exchange.getWithdrawLink() + symbol.getBaseCurrencyId().toUpperCase());
+                links.setTradeLink(exchange.getTradeLink() + symbol.getBaseCurrencyId().toUpperCase() + "-USDT");
+                return ObjectUtils.getCoin(symbol.getBaseCurrencyId(), NAME, links);
+            })
             .collect(Collectors.toSet());
 
         return coins;
@@ -82,11 +90,7 @@ public class ApiProbit implements ApiExchange {
             )
             .bodyToMono(ProbitCurrencyResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
@@ -96,7 +100,7 @@ public class ApiProbit implements ApiExchange {
         Set<String> coinsNames = coins.stream().map(Coin::getName).collect(Collectors.toSet());
 
         ProbitChainData response = getChainResponse().block();
-        if (response == null) {
+        if (response == null || response.getData() == null) {
             log.error("При попытке получения списка сетей получен пустой ответ от {}", NAME);
             return chainsDTOSet;
         }
@@ -140,11 +144,7 @@ public class ApiProbit implements ApiExchange {
             )
             .bodyToMono(ProbitChainData.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
@@ -156,23 +156,21 @@ public class ApiProbit implements ApiExchange {
 
         ProbitTradingFeeResponse response = getFee().block();
 
-        if (response == null) return tradingFeeSet;
+        if (response == null || response.getData() == null) return tradingFeeSet;
         List<FeeData> data = response.getData().stream()
                 .filter(feeData -> symbols.contains(feeData.getId()))
                 .toList();
 
-        coins.forEach(coin -> {
-            data.forEach(feeData -> {
-                if (coin.getName().equals(feeData.getBaseCurrencyId())) {
-                    TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
-                            exchangeName,
-                            coin,
-                            feeData.getTakerFeeRate()
-                    );
-                    tradingFeeSet.add(responseDTO);
-                }
-            });
-        });
+        coins.forEach(coin -> data.forEach(feeData -> {
+            if (coin.getName().equals(feeData.getBaseCurrencyId())) {
+                TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                        exchangeName,
+                        coin,
+                        feeData.getTakerFeeRate()
+                );
+                tradingFeeSet.add(responseDTO);
+            }
+        }));
 
         return tradingFeeSet;
     }
@@ -194,11 +192,7 @@ public class ApiProbit implements ApiExchange {
             )
             .bodyToMono(ProbitTradingFeeResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
@@ -209,28 +203,26 @@ public class ApiProbit implements ApiExchange {
 
         ProbitTickerVolume response = getCoinTickerVolume(new ArrayList<>(coins)).blockLast();
 
-        if (response == null) return volume24HSet;
+        if (response == null || response.getData() == null) return volume24HSet;
 
-        coins.forEach(coin -> {
-            response.getData().forEach(data -> {
-                if (coin.getName().equals(data.getMarketId().replaceAll("-USDT", ""))) {
-                    Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
-                            exchange,
-                            coin,
-                            data.getQuoteVolume()
-                    );
+        coins.forEach(coin -> response.getData().forEach(data -> {
+            if (coin.getName().equals(data.getMarketId().replaceAll("-USDT", ""))) {
+                Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                        exchange,
+                        coin,
+                        data.getQuoteVolume()
+                );
 
-                    volume24HSet.add(responseDTO);
-                }
-            });
-        });
+                volume24HSet.add(responseDTO);
+            }
+        }));
 
         return volume24HSet;
     }
 
     private Flux<ProbitTickerVolume> getCoinTickerVolume(List<Coin> coins) {
         int maxRequestSymbolsSize = 20;
-        List<List<Coin>> partitions = ListUtils.partition(coins, 20);
+        List<List<Coin>> partitions = ListUtils.partition(coins, maxRequestSymbolsSize);
 
         return Flux.fromIterable(partitions)
             .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
@@ -251,25 +243,21 @@ public class ApiProbit implements ApiExchange {
                 )
                 .bodyToFlux(ProbitTickerVolume.class)
                 .onErrorResume(error -> {
-                    if (error instanceof ReadTimeoutException) {
-                        log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                    } else {
-                        log.error("Ошибка при запросе к {}.", NAME, error);
-                    }
+                    LogsUtils.createErrorResumeLogs(error, NAME);
                     return Flux.empty();
                 })
             );
     }
 
     @Override
-    public Set<CoinDepth> getOrderBook(Set<String> coins) {
+    public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {
         Set<CoinDepth> coinDepthSet = new HashSet<>();
 
         coins.forEach(coin -> {
             ProbitCoinDepth response = getCoinDepth(coin).block();
 
-            if (response != null) {
-                CoinDepth coinDepth = ProbitCoinDepthBuilder.getCoinDepth(coin, response.getData());
+            if (response != null && response.getData() != null) {
+                CoinDepth coinDepth = ProbitCoinDepthBuilder.getCoinDepth(coin, response.getData(), exchange);
                 coinDepthSet.add(coinDepth);
             }
 
@@ -283,8 +271,8 @@ public class ApiProbit implements ApiExchange {
         return coinDepthSet;
     }
 
-    private Mono<ProbitCoinDepth> getCoinDepth(String coinName) {
-        String symbol = coinName + "-USDT";
+    private Mono<ProbitCoinDepth> getCoinDepth(Coin coin) {
+        String symbol = coin.getName() + "-USDT";
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder.path("/order_book")
@@ -301,11 +289,7 @@ public class ApiProbit implements ApiExchange {
             )
             .bodyToMono(ProbitCoinDepth.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }

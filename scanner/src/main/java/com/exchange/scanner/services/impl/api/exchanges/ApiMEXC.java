@@ -1,6 +1,7 @@
-package com.exchange.scanner.services.impl.api;
+package com.exchange.scanner.services.impl.api.exchanges;
 
 import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.mexc.chains.MexcChainResponse;
@@ -11,11 +12,12 @@ import com.exchange.scanner.dto.response.exchangedata.mexc.tickervolume.MexcCoin
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
+import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
 import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.Mexc.MexcCoinDepthBuilder;
 import com.exchange.scanner.services.utils.Mexc.MexcSignatureBuilder;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
-import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -54,16 +56,22 @@ public class ApiMEXC implements ApiExchange {
     }
 
     @Override
-    public Set<Coin> getAllCoins() {
+    public Set<Coin> getAllCoins(Exchange exchange) {
         Set<Coin> coins = new HashSet<>();
 
         MexcCurrencyResponse response = getCurrencies().block();
 
-        if (response == null) return coins;
+        if (response == null || response.getSymbols() == null) return coins;
 
         coins = response.getSymbols().stream()
                 .filter(symbol -> symbol.getStatus().equals("ENABLED") && symbol.getQuoteAsset().equals("USDT"))
-                .map(symbol -> ObjectUtils.getCoin(symbol.getBaseAsset()))
+                .map(symbol -> {
+                    LinkDTO links = new LinkDTO();
+                    links.setDepositLink(exchange.getDepositLink() + symbol.getBaseAsset().toUpperCase());
+                    links.setWithdrawLink(exchange.getWithdrawLink() + symbol.getBaseAsset().toUpperCase());
+                    links.setTradeLink(exchange.getTradeLink() + symbol.getBaseAsset().toUpperCase() + "_USDT");
+                    return ObjectUtils.getCoin(symbol.getBaseAsset(), NAME, links);
+                })
                 .collect(Collectors.toSet());
 
         return coins;
@@ -86,11 +94,7 @@ public class ApiMEXC implements ApiExchange {
             )
             .bodyToMono(MexcCurrencyResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
@@ -101,7 +105,7 @@ public class ApiMEXC implements ApiExchange {
         List<String> coinsNames = coins.stream().map(Coin::getName).toList();
         List<MexcChainResponse> response = getChainResponse().collectList().block();
 
-        if (response == null) {
+        if (response == null || response.getFirst() == null) {
             log.error("При попытке получения списка сетей получен пустой ответ от {}", NAME);
             return chainsDTOSet;
         }
@@ -153,11 +157,7 @@ public class ApiMEXC implements ApiExchange {
             )
             .bodyToFlux(MexcChainResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Flux.empty();
             });
     }
@@ -168,7 +168,8 @@ public class ApiMEXC implements ApiExchange {
 
         coins.forEach(coin -> {
             MexcTradingFeeResponse response = getFee(coin).block();
-            if (response != null) {
+
+            if (response != null && response.getData() != null) {
                 TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
                         exchangeName,
                         coin,
@@ -189,7 +190,7 @@ public class ApiMEXC implements ApiExchange {
 
     private Mono<MexcTradingFeeResponse> getFee(Coin coin) {
         Map<String, String> params = new HashMap<>();
-        params.put("symbol", coin.getSymbol() + "USDT");
+        params.put("symbol", coin.getName() + "USDT");
         String signature = MexcSignatureBuilder.generateMexcSignature(params, secret);
         params.put("signature", signature);
         return webClient
@@ -210,11 +211,7 @@ public class ApiMEXC implements ApiExchange {
             )
             .bodyToMono(MexcTradingFeeResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
@@ -225,7 +222,8 @@ public class ApiMEXC implements ApiExchange {
 
         coins.forEach(coin -> {
             MexcCoinTicker response = getCoinTickerVolume(coin).block();
-            if (response != null) {
+
+            if (response != null && response.getQuoteVolume() != null) {
                 Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
                         exchange,
                         coin,
@@ -264,18 +262,22 @@ public class ApiMEXC implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(MexcCoinTicker.class);
+            .bodyToMono(MexcCoinTicker.class)
+            .onErrorResume(error -> {
+                LogsUtils.createErrorResumeLogs(error, NAME);
+                return Mono.empty();
+            });
     }
 
     @Override
-    public Set<CoinDepth> getOrderBook(Set<String> coins) {
+    public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {
         Set<CoinDepth> coinDepthSet = new HashSet<>();
 
         coins.forEach(coin -> {
             MexcCoinDepth response = getCoinDepth(coin).block();
 
-            if (response != null) {
-                CoinDepth coinDepth = MexcCoinDepthBuilder.getCoinDepth(coin, response);
+            if (response != null && (response.getAsks() != null || response.getBids() != null)) {
+                CoinDepth coinDepth = MexcCoinDepthBuilder.getCoinDepth(coin, response, exchange);
                 coinDepthSet.add(coinDepth);
             }
 
@@ -289,8 +291,8 @@ public class ApiMEXC implements ApiExchange {
         return coinDepthSet;
     }
 
-    private Mono<MexcCoinDepth> getCoinDepth(String coinName) {
-        String symbol = coinName + "USDT";
+    private Mono<MexcCoinDepth> getCoinDepth(Coin coin) {
+        String symbol = coin.getName() + "USDT";
 
         return webClient
             .get()
@@ -309,22 +311,8 @@ public class ApiMEXC implements ApiExchange {
             )
             .bodyToMono(MexcCoinDepth.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
-    }
-
-    private static String generateParameters(List<Coin> coins) {
-        String parameters;
-        StringBuilder sb = new StringBuilder();
-        coins.forEach(coin -> sb.append(coin.getName()).append("USDT").append(","));
-        sb.deleteCharAt(sb.length() - 1);
-        parameters = sb.toString();
-
-        return parameters;
     }
 }

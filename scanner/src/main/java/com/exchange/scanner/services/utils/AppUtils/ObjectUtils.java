@@ -3,6 +3,7 @@ package com.exchange.scanner.services.utils.AppUtils;
 import com.exchange.scanner.dto.response.ChainResponseDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
+import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import org.jetbrains.annotations.NotNull;
@@ -15,10 +16,13 @@ import java.util.regex.Pattern;
 
 public class ObjectUtils {
 
-    public static Coin getCoin(String coinName) {
+    public static Coin getCoin(String coinName, String exchangeName, LinkDTO links) {
         Coin coin = new Coin();
         coin.setName(coinName);
-        coin.setSymbol(coinName);
+        coin.setSlug(coinName + "-" + exchangeName);
+        coin.setDepositLink(links.getDepositLink());
+        coin.setWithdrawLink(links.getWithdrawLink());
+        coin.setTradeLink(links.getTradeLink());
         return coin;
     }
 

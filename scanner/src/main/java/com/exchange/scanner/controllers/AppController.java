@@ -26,7 +26,7 @@ public class AppController {
     }
 
     @GetMapping("/refresh-data")
-    public ResponseEntity<List<ArbitrageEvent>> refreshData(@AuthenticationPrincipal UserDetails userDetails) throws ExecutionException, InterruptedException {
+    public ResponseEntity<Set<ArbitrageEvent>> refreshData(@AuthenticationPrincipal UserDetails userDetails) throws ExecutionException, InterruptedException {
         return ResponseEntity.ok(appService.getArbitrageOpportunities(userDetails).get());
     }
 }

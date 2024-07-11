@@ -7,7 +7,7 @@ import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
 import com.exchange.scanner.services.ApiExchangeAdapter;
-import com.exchange.scanner.services.impl.api.*;
+import com.exchange.scanner.services.impl.api.exchanges.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -40,51 +40,51 @@ public class ApiExchangeAdapterImpl implements ApiExchangeAdapter {
         Set<Coin> coins = new HashSet<>();
 
         switch (exchange.getName()) {
-            case "Binance" -> coins.addAll(apiBinance.getAllCoins());
-            case "Gate.io" -> coins.addAll(apiGateIO.getAllCoins());
-            case "MEXC" -> coins.addAll(apiMEXC.getAllCoins());
-            case "Bybit" -> coins.addAll(apiBybit.getAllCoins());
-            case "Kucoin" -> coins.addAll(apiKucoin.getAllCoins());
-            case "Bitget" -> coins.addAll(apiBitget.getAllCoins());
-            case "Huobi" -> coins.addAll(apiHuobi.getAllCoins());
-            case "Poloniex" -> coins.addAll(apiPoloniex.getAllCoins());
-            case "OKX" -> coins.addAll(apiOKX.getAllCoins());
-            case "Bitmart" -> coins.addAll(apiBitmart.getAllCoins());
-            case "LBank" -> coins.addAll(apiLBank.getAllCoins());
-            case "CoinEx" -> coins.addAll(apiCoinEx.getAllCoins());
-            case "CoinW" -> coins.addAll(apiCoinW.getAllCoins());
-            case "XT" -> coins.addAll(apiXT.getAllCoins());
-            case "Probit" -> coins.addAll(apiProbit.getAllCoins());
-            case "BingX" -> coins.addAll(apiBingX.getAllCoins());
+            case "Binance" -> coins.addAll(apiBinance.getAllCoins(exchange));
+            case "Gate.io" -> coins.addAll(apiGateIO.getAllCoins(exchange));
+            case "MEXC" -> coins.addAll(apiMEXC.getAllCoins(exchange));
+            case "Bybit" -> coins.addAll(apiBybit.getAllCoins(exchange));
+            case "Kucoin" -> coins.addAll(apiKucoin.getAllCoins(exchange));
+            case "Bitget" -> coins.addAll(apiBitget.getAllCoins(exchange));
+            case "Huobi" -> coins.addAll(apiHuobi.getAllCoins(exchange));
+            case "Poloniex" -> coins.addAll(apiPoloniex.getAllCoins(exchange));
+            case "OKX" -> coins.addAll(apiOKX.getAllCoins(exchange));
+            case "Bitmart" -> coins.addAll(apiBitmart.getAllCoins(exchange));
+            case "LBank" -> coins.addAll(apiLBank.getAllCoins(exchange));
+            case "CoinEx" -> coins.addAll(apiCoinEx.getAllCoins(exchange));
+            case "CoinW" -> coins.addAll(apiCoinW.getAllCoins(exchange));
+            case "XT" -> coins.addAll(apiXT.getAllCoins(exchange));
+            case "Probit" -> coins.addAll(apiProbit.getAllCoins(exchange));
+            case "BingX" -> coins.addAll(apiBingX.getAllCoins(exchange));
         }
 
         return coins;
     }
 
     @Override
-    public Set<CoinDepth> getOrderBook(Exchange exchange, Set<String> coins) {
-        Set<CoinDepth> ordersBook = new HashSet<>();
+    public Set<CoinDepth> getOrderBook(Exchange exchange, Set<Coin> coins) {
+        Set<CoinDepth> depthSet = new HashSet<>();
 
         switch (exchange.getName()) {
-            case "Binance" -> ordersBook.addAll(apiBinance.getOrderBook(coins));
-            case "Gate.io" -> ordersBook.addAll(apiGateIO.getOrderBook(coins));
-            case "MEXC" -> ordersBook.addAll(apiMEXC.getOrderBook(coins));
-            case "Bybit" -> ordersBook.addAll(apiBybit.getOrderBook(coins));
-            case "Kucoin" ->  ordersBook.addAll(apiKucoin.getOrderBook(coins));
-            case "Bitget" -> ordersBook.addAll(apiBitget.getOrderBook(coins));
-            case "Huobi" -> ordersBook.addAll(apiHuobi.getOrderBook(coins));
-            case "Poloniex" -> ordersBook.addAll(apiPoloniex.getOrderBook(coins));
-            case "OKX" -> ordersBook.addAll(apiOKX.getOrderBook(coins));
-            case "Bitmart" -> ordersBook.addAll(apiBitmart.getOrderBook(coins));
-            case "LBank" -> ordersBook.addAll(apiLBank.getOrderBook(coins));
-            case "CoinEx" -> ordersBook.addAll(apiCoinEx.getOrderBook(coins));
-            case "CoinW" -> ordersBook.addAll(apiCoinW.getOrderBook(coins));
-            case "XT" -> ordersBook.addAll(apiXT.getOrderBook(coins));
-            case "Probit" -> ordersBook.addAll(apiProbit.getOrderBook(coins));
-            case "BingX" -> ordersBook.addAll(apiBingX.getOrderBook(coins));
+            case "Binance" -> depthSet.addAll(apiBinance.getOrderBook(coins, exchange.getName()));
+            case "Gate.io" -> depthSet.addAll(apiGateIO.getOrderBook(coins, exchange.getName()));
+            case "MEXC" -> depthSet.addAll(apiMEXC.getOrderBook(coins, exchange.getName()));
+            case "Bybit" -> depthSet.addAll(apiBybit.getOrderBook(coins, exchange.getName()));
+            case "Kucoin" ->  depthSet.addAll(apiKucoin.getOrderBook(coins, exchange.getName()));
+            case "Bitget" -> depthSet.addAll(apiBitget.getOrderBook(coins, exchange.getName()));
+            case "Huobi" -> depthSet.addAll(apiHuobi.getOrderBook(coins, exchange.getName()));
+            case "Poloniex" -> depthSet.addAll(apiPoloniex.getOrderBook(coins, exchange.getName()));
+            case "OKX" -> depthSet.addAll(apiOKX.getOrderBook(coins, exchange.getName()));
+            case "Bitmart" -> depthSet.addAll(apiBitmart.getOrderBook(coins, exchange.getName()));
+            case "LBank" -> depthSet.addAll(apiLBank.getOrderBook(coins, exchange.getName()));
+            case "CoinEx" -> depthSet.addAll(apiCoinEx.getOrderBook(coins, exchange.getName()));
+            case "CoinW" -> depthSet.addAll(apiCoinW.getOrderBook(coins, exchange.getName()));
+            case "XT" -> depthSet.addAll(apiXT.getOrderBook(coins, exchange.getName()));
+            case "Probit" -> depthSet.addAll(apiProbit.getOrderBook(coins, exchange.getName()));
+            case "BingX" -> depthSet.addAll(apiBingX.getOrderBook(coins, exchange.getName()));
         }
 
-        return ordersBook;
+        return depthSet;
     }
 
     @Override

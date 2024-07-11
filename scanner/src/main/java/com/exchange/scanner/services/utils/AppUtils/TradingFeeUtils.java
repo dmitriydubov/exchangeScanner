@@ -20,6 +20,7 @@ public class TradingFeeUtils {
     ) {
         Set<TradingFeeResponseDTO> result = Collections.synchronizedSet(new HashSet<>());
         Set<Exchange> userExchanges = AppServiceUtils.getUsersExchanges(userMarketSettingsRepository, exchangeRepository);
+        if (userExchanges.isEmpty()) return result;
         Set<String> usersCoinsNames = AppServiceUtils.getUsersCoinsNames(userMarketSettingsRepository);
         ExecutorService executorService = Executors.newFixedThreadPool(userExchanges.size());
         List<CompletableFuture<Void>> futures = new CopyOnWriteArrayList<>();

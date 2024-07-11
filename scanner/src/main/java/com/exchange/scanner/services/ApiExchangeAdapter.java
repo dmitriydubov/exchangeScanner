@@ -16,7 +16,7 @@ public interface ApiExchangeAdapter {
 
     Set<Volume24HResponseDTO> getCoinVolume24h(String exchangeName, Set<Coin> coins);
 
-    Set<CoinDepth> getOrderBook(Exchange exchange, Set<String> coins);
+    Set<CoinDepth> getOrderBook(Exchange exchange, Set<Coin> coins);
 
     Set<ChainResponseDTO> getCoinChain(String exchange, Set<Coin> coinsSet);
 

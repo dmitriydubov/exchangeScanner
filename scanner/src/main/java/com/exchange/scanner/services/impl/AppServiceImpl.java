@@ -4,13 +4,18 @@ import com.exchange.scanner.dto.response.ChainResponseDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.event.ArbitrageEvent;
-import com.exchange.scanner.dto.response.event.EventData;
+import com.exchange.scanner.dto.response.CoinInfoDTO;
+import com.exchange.scanner.dto.response.event.ArbitrageOpportunity;
+import com.exchange.scanner.dto.response.event.UserTradeEvent;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.*;
 import com.exchange.scanner.repositories.*;
 import com.exchange.scanner.security.model.User;
 import com.exchange.scanner.security.repository.UserRepository;
 import com.exchange.scanner.services.ApiExchangeAdapter;
 import com.exchange.scanner.services.AppService;
+import com.exchange.scanner.services.ArbitrageService;
+import com.exchange.scanner.services.CoinMarketCapService;
 import com.exchange.scanner.services.utils.AppUtils.*;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -39,11 +44,13 @@ public class AppServiceImpl implements AppService {
 
     private final ApiExchangeAdapter apiExchangeAdapter;
 
-    private final CoinRepository coinRepository;
-
     private final OrdersBookRepository ordersBookRepository;
 
-    private final ChainRepository chainRepository;
+    private final CoinRepository coinRepository;
+
+    private final CoinMarketCapService coinMarketCapService;
+
+    private final ArbitrageService arbitrageService;
 
     private static final int SCHEDULED_RATE_TIME_FOR_REFRESH_COINS = 1000 * 60 * 60;
 
@@ -51,12 +58,14 @@ public class AppServiceImpl implements AppService {
 
     private static final int SCHEDULED_RATE_TIME_FOR_GET_TRADING_FEE = 1000 * 60 * 60;
 
-    private static final int SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H = 1000 * 60 * 60;
+    private static final int SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H = 1000 * 60 * 60 * 24;
 
     private static final int SCHEDULED_RATE_TIME_FOR_GET_ORDERS_BOOK = 5000;
 
+    private static final int SCHEDULED_RATE_TIME_FOR_GET_COIN_INFO = 1000 * 60 * 60;
+
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_REFRESH_COINS)
+//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_REFRESH_COINS)
     public void refreshCoins() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи refreshCoins", Thread.currentThread().getName());
@@ -74,7 +83,7 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_CHAINS)
+//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_CHAINS, initialDelay = 1000)
     public void getCoinsChains() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи getCoinsChains", Thread.currentThread().getName());
@@ -95,7 +104,7 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_TRADING_FEE)
+//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_TRADING_FEE, initialDelay = 2000)
     public void getTradingFee() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи getTradingFee", Thread.currentThread().getName());
@@ -115,7 +124,7 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H)
+//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H, initialDelay = 3000)
     public void getVolume24h() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи getVolume24h", Thread.currentThread().getName());
@@ -135,23 +144,52 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_ORDERS_BOOK)
-    public void getOrderBooks() {
-//        long start = System.currentTimeMillis();
-//        log.info("{} приступил к выполнению задачи getOrderBooks", Thread.currentThread().getName());
+//    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_INFO, initialDelay = 4000)
+    public void getCoinMarketCapCoinInfo() {
+        long start = System.currentTimeMillis();
+        log.info("{} приступил к выполнению задачи getCoinMarketCapCoinInfo", Thread.currentThread().getName());
 
+        CoinMarketCapUtils coinMarketCapUtils = new CoinMarketCapUtils();
+        Set<CoinInfoDTO> response = coinMarketCapUtils.getCoinMarketCapCoinInfo(
+                exchangeRepository,
+                coinMarketCapService,
+                userMarketSettingsRepository);
+
+        response.forEach(coinResponse -> {
+            Coin coin = coinResponse.getCoin();
+            coin.setCoinMarketCapLink(coinResponse.getCoinMarketCapLink() + "/" + coinResponse.getSlug() + "/");
+            coin.setLogoLink(coinResponse.getLogoLink());
+        });
+
+        long end = System.currentTimeMillis() - start;
+        log.info("Обновление информации о монете от coinmarketcap успешно заврешено. Время выполнения {}s", end / 1000);
+    }
+
+    @Override
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_ORDERS_BOOK, initialDelay = 5000)
+    public void getOrderBooks() {
+        long start = System.currentTimeMillis();
+        log.info("{} приступил к выполнению задачи getOrderBooks", Thread.currentThread().getName());
+
+        ordersBookRepository.deleteAll();
         OrdersBookUtils ordersBookUtils = new OrdersBookUtils();
-        List<OrdersBook> ordersBooks = ordersBookUtils.getOrderBooksAsync(
+        Set<CoinDepth> coinDepthSet = ordersBookUtils.getOrderBooksAsync(
                 exchangeRepository,
                 apiExchangeAdapter,
                 userMarketSettingsRepository
         );
+        coinDepthSet.forEach(depth -> {
+            OrdersBook ordersBook = ordersBookUtils.createOrderBooks(depth);
+            ordersBook.setSlug(depth.getSlug());
+            Coin coin = depth.getCoin();
+            ordersBook.setCoin(coin);
+            OrdersBook savedOrderBook = ordersBookRepository.save(ordersBook);
+            coin.setOrdersBook(savedOrderBook);
+        });
 
-        ordersBookRepository.deleteAllInBatch();
-        ordersBookRepository.saveAll(ordersBooks);
 
-//        long end = System.currentTimeMillis() - start;
-//        log.info("Операция обновления стакана цен выполнена. Время выполнения: {}s", end / 1000);
+        long end = System.currentTimeMillis() - start;
+        log.info("Операция обновления стакана цен выполнена. Время выполнения: {}s", end / 1000);
     }
 
     protected void updateCoins(Map<String, Set<Coin>> coinsMap) {
@@ -168,7 +206,7 @@ public class AppServiceImpl implements AppService {
         });
     }
 
-    protected UserMarketSettings createUserMarketSettingsWithDefaults(User user) {
+    protected synchronized UserMarketSettings createUserMarketSettingsWithDefaults(User user) {
         List<String> exchangesNames = exchangeRepository.findAll().stream().map(Exchange::getName).toList();
         var userMarketSettings = UserMarketSettingsBuilder.getDefaultUserMarketSettings(user, exchangesNames);
 
@@ -177,16 +215,18 @@ public class AppServiceImpl implements AppService {
 
     @Override
     public CompletableFuture<Set<String>> getExchanges() {
-        return CompletableFuture.supplyAsync(() -> {
-            return exchangeRepository.findAll().stream().map(Exchange::getName).collect(Collectors.toSet());
-        });
+        return CompletableFuture.supplyAsync(() -> exchangeRepository
+                .findAll().stream()
+                .map(Exchange::getName)
+                .collect(Collectors.toSet())
+        );
     }
 
     @Override
-    public CompletableFuture<List<ArbitrageEvent>> getArbitrageOpportunities(UserDetails userDetails) {
+    public CompletableFuture<Set<ArbitrageEvent>> getArbitrageOpportunities(UserDetails userDetails) {
         return CompletableFuture.supplyAsync(() -> {
             if (userDetails == null) {
-                return new ArrayList<>();
+                return new HashSet<>();
             }
 
             var user = userRepository.findByUsername(userDetails.getUsername()).orElseThrow(() ->
@@ -197,25 +237,17 @@ public class AppServiceImpl implements AppService {
             Optional<UserMarketSettings> optional = userMarketSettingsRepository.getByUser(user);
             userMarketSettings = optional.orElseGet(() -> createUserMarketSettingsWithDefaults(user));
 
-            List<ArbitrageEvent> arbitrageEvents = new ArrayList<>();
-            ArbitrageOpportunitiesUtils arbitrageOpportunitiesUtils = new ArbitrageOpportunitiesUtils();
-            Map<String, List<ArbitrageOpportunity>> arbitrageOpportunities = arbitrageOpportunitiesUtils
-                    .checkExchangesForArbitrageOpportunities(userMarketSettings, ordersBookRepository);
+            ArbitrageUtils arbitrageUtils = new ArbitrageUtils();
+            UserTradeEvent userTradeEvent = arbitrageUtils.createUserTradeEvent(
+                    exchangeRepository,
+                    ordersBookRepository,
+                    coinRepository,
+                    userMarketSettings
+            );
 
-            arbitrageOpportunities.forEach((coinName, arbitrageOpportunitiesList) -> {
+            Set<ArbitrageOpportunity> arbitrageOpportunities = arbitrageService.getArbitrageOpportunities(userTradeEvent);
 
-                ArbitrageEvent arbitrageEvent = new ArbitrageEvent();
-                List<EventData> eventDataList = arbitrageOpportunitiesUtils.getEventDataFromArbitrageOpportunities(arbitrageOpportunitiesList, userMarketSettings);
-                arbitrageEvent.setEventData(eventDataList);
-
-                if (!arbitrageEvent.getEventData().isEmpty()) {
-                    arbitrageEvent.setCoin(coinName);
-                    arbitrageEvents.add(arbitrageEvent);
-                }
-            });
-
-
-            return arbitrageEvents;
+            return Set.of();
         });
     }
 }

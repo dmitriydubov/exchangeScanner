@@ -1,6 +1,7 @@
-package com.exchange.scanner.services.impl.api;
+package com.exchange.scanner.services.impl.api.exchanges;
 
 import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.bitmart.chains.BitmartChainsCurrencies;
@@ -12,11 +13,12 @@ import com.exchange.scanner.dto.response.exchangedata.bitmart.tradingfee.Bitmart
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
+import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
 import com.exchange.scanner.services.utils.Bitmart.BitmartCoinDepthBuilder;
 import com.exchange.scanner.services.utils.Bitmart.BitmartSignatureBuilder;
 import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
-import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -59,16 +61,22 @@ public class ApiBitmart implements ApiExchange {
     }
 
     @Override
-    public Set<Coin> getAllCoins() {
+    public Set<Coin> getAllCoins(Exchange exchange) {
         Set<Coin> coins = new HashSet<>();
 
         BitmartCurrencyResponse response = getCurrencies().block();
 
-        if (response == null) return coins;
+        if (response == null || response.getData() == null) return coins;
 
         coins = response.getData().getSymbols().stream()
                 .filter(symbol -> symbol.getQuoteCurrency().equals("USDT") && symbol.getTradeStatus().equals("trading"))
-                .map(symbol -> ObjectUtils.getCoin(symbol.getBaseCurrency()))
+                .map(symbol -> {
+                    LinkDTO links = new LinkDTO();
+                    links.setDepositLink(exchange.getDepositLink());
+                    links.setWithdrawLink(exchange.getWithdrawLink());
+                    links.setTradeLink(exchange.getTradeLink() + symbol.getBaseCurrency().toUpperCase() + "_USDT");
+                    return ObjectUtils.getCoin(symbol.getBaseCurrency(), NAME, links);
+                })
                 .collect(Collectors.toSet());
 
         return coins;
@@ -91,11 +99,7 @@ public class ApiBitmart implements ApiExchange {
             )
             .bodyToMono(BitmartCurrencyResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
@@ -105,7 +109,7 @@ public class ApiBitmart implements ApiExchange {
         Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
         BitmartChainsResponse response = getChains().block();
 
-        if (response == null) return chainsDTOSet;
+        if (response == null || response.getData() == null) return chainsDTOSet;
         Set<String> coinsNames = coins.stream().map(Coin::getName).collect(Collectors.toSet());
         List<BitmartChainsCurrencies> chainsCurrencies = response.getData().getCurrencies().stream()
                 .filter(chainResponse -> coinsNames.contains(chainResponse.getCurrency()))
@@ -152,11 +156,7 @@ public class ApiBitmart implements ApiExchange {
             )
             .bodyToMono(BitmartChainsResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
@@ -168,7 +168,7 @@ public class ApiBitmart implements ApiExchange {
         coins.forEach(coin -> {
             BitmartTradingFeeResponse response = getFee(coin).block();
 
-            if (response != null) {
+            if (response != null && response.getData() != null) {
                 TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
                         exchangeName,
                         coin,
@@ -213,11 +213,7 @@ public class ApiBitmart implements ApiExchange {
             )
             .bodyToMono(BitmartTradingFeeResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
@@ -229,7 +225,7 @@ public class ApiBitmart implements ApiExchange {
         coins.forEach(coin -> {
             BitmartVolumeTicker response = getCoinTickerVolume(coin).block();
 
-            if (response != null) {
+            if (response != null && response.getData() != null) {
                 Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
                         exchange,
                         coin,
@@ -250,7 +246,7 @@ public class ApiBitmart implements ApiExchange {
     }
 
     public Mono<BitmartVolumeTicker> getCoinTickerVolume(Coin coin) {
-        String symbol = coin.getSymbol() + "_USDT";
+        String symbol = coin.getName() + "_USDT";
 
         return webClient.get()
             .uri(uriBuilder -> uriBuilder
@@ -268,24 +264,20 @@ public class ApiBitmart implements ApiExchange {
             )
             .bodyToMono(BitmartVolumeTicker.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
 
     @Override
-    public Set<CoinDepth> getOrderBook(Set<String> coins) {
+    public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {
         Set<CoinDepth> coinDepthSet = new HashSet<>();
 
         coins.forEach(coin -> {
             BitmartCoinDepth response = getCoinDepth(coin).block();
 
-            if (response != null) {
-                CoinDepth coinDepth = BitmartCoinDepthBuilder.getCoinDepth(coin, response.getData());
+            if (response != null && response.getData() != null) {
+                CoinDepth coinDepth = BitmartCoinDepthBuilder.getCoinDepth(coin, response.getData(), exchange);
                 coinDepthSet.add(coinDepth);
             }
 
@@ -299,8 +291,8 @@ public class ApiBitmart implements ApiExchange {
         return coinDepthSet;
     }
 
-    private Mono<BitmartCoinDepth> getCoinDepth(String coinName) {
-        String symbol = coinName + "_USDT";
+    private Mono<BitmartCoinDepth> getCoinDepth(Coin coin) {
+        String symbol = coin.getName() + "_USDT";
 
         return webClient
             .get()
@@ -318,11 +310,7 @@ public class ApiBitmart implements ApiExchange {
             )
             .bodyToMono(BitmartCoinDepth.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }

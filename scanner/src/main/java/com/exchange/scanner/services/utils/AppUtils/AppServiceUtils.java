@@ -32,20 +32,6 @@ public class AppServiceUtils {
                 .collect(Collectors.toSet());
     }
 
-    public static synchronized Set<String> getFilteredCoinsNames(Exchange exchange, Set<String> usersCoinsNames) {
-
-        Set<String> filteredCoinNames = new HashSet<>();
-        List<String> exchangesCoinsNames = new ArrayList<>(exchange.getCoins().stream().map(Coin::getSymbol).toList());
-
-        exchangesCoinsNames.forEach(exCoin -> usersCoinsNames.forEach(uCoin -> {
-            if (exCoin.equals(uCoin)) {
-                filteredCoinNames.add(exCoin);
-            }
-        }));
-
-        return filteredCoinNames;
-    }
-
     public static synchronized Set<Coin> getFilteredCoins(Exchange exchange, Set<String> usersCoinsNames) {
         return exchange.getCoins().stream()
                 .filter(coin -> usersCoinsNames.contains(coin.getName()))

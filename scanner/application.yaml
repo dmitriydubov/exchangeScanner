@@ -76,3 +76,6 @@ exchanges:
     Binance:
       key: OcVdL4HyRH28bHrxaFPjCX0UI99oh1CdBSQXUXq7zK0qztXz9luimU9sMmxIIYOY
       secret: 2jjX7IB3QQvsmZcxf9kBWFSAKvD1l0CHMvUO3PqXJmW70DTnNZ7DYcRyk133mV9l
+
+coinmarketcap:
+  apikey: 0e3f75dc-96af-4ae9-8ffc-d0c1876254f5

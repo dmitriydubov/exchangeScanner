@@ -1,4 +1,4 @@
-package com.exchange.scanner.model;
+package com.exchange.scanner.dto.response.event;
 
 import lombok.*;
 
@@ -22,4 +22,6 @@ public class TradingData {
     private String chainName;
 
     private BigDecimal chainFeeAmount;
+
+    private Boolean isWarning;
 }

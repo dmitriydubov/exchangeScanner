@@ -4,12 +4,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.BatchSize;
-import org.hibernate.annotations.OnDelete;
-import org.hibernate.annotations.OnDeleteAction;
-import org.hibernate.annotations.processing.SQL;
 
 import java.util.HashSet;
-import java.util.Objects;
 import java.util.Set;
 
 
@@ -35,6 +31,18 @@ public class Exchange {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "deposit_link", nullable = false)
+    private String depositLink;
+
+    @Column(name = "withdraw_link", nullable = false)
+    private String withdrawLink;
+
+    @Column(name = "trade_link", nullable = false)
+    private String tradeLink;
+
+    @Column(name = "has_query_coin_link_param")
+    private Boolean hasQueryCoinLinkParam;
+
     @Column(name = "is_block_by_superuser")
     private Boolean isBlockBySuperuser = false;
 
@@ -44,7 +52,6 @@ public class Exchange {
             joinColumns = @JoinColumn(name = "exchange_id"),
             inverseJoinColumns = @JoinColumn(name = "coin_id")
     )
-    @OnDelete(action = OnDeleteAction.CASCADE)
     @BatchSize(size = 1000)
     private Set<Coin> coins = new HashSet<>();
 }

@@ -20,7 +20,7 @@ public class UserMarketSettings {
     @Column(nullable = false)
     private Long id;
 
-    @OneToOne(cascade = CascadeType.REMOVE)
+    @OneToOne
     @JoinColumn(name = "user_id", referencedColumnName = "id")
     private User user;
 
@@ -33,17 +33,14 @@ public class UserMarketSettings {
     @Column(name = "profit_spread", nullable = false)
     private Double profitSpread;
 
-    @Column(name = "percent_spread", nullable = false)
-    private Double percentSpread;
-
     @ElementCollection(fetch = FetchType.EAGER)
     private List<String> coins;
 
-    @ElementCollection
+    @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "markets_buy")
     private List<String> marketsBuy;
 
-    @ElementCollection
+    @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "markets_sell")
     private List<String> marketsSell;
 }

@@ -4,6 +4,7 @@ import com.exchange.scanner.dto.response.exchangedata.probit.depth.ProbitDepthDa
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthAsk;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthBid;
+import com.exchange.scanner.model.Coin;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -13,9 +14,11 @@ import java.util.stream.Collectors;
 
 public class ProbitCoinDepthBuilder {
 
-    public static CoinDepth getCoinDepth(String coinName, List<ProbitDepthData> data) {
+    public static CoinDepth getCoinDepth(Coin coin, List<ProbitDepthData> data, String exchange) {
         CoinDepth coinDepth = new CoinDepth();
-        coinDepth.setCoinName(coinName);
+        coinDepth.setExchange(exchange);
+        coinDepth.setCoin(coin);
+        coinDepth.setSlug(coin.getName() + "-" + exchange);
 
         Set<CoinDepthAsk> coinDepthAskSet = data.stream()
             .filter(ask -> ask.getSide().equals("sell"))

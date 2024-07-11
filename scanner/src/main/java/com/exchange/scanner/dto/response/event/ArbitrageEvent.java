@@ -13,5 +13,9 @@ public class ArbitrageEvent {
 
     private String coin;
 
+    private String coinMarketCapLink;
+
+    private String coinMarketCapLogo;
+
     private List<EventData> eventData;
 }

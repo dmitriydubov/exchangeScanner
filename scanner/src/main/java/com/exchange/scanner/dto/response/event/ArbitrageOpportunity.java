@@ -1,5 +1,7 @@
-package com.exchange.scanner.model;
+package com.exchange.scanner.dto.response.event;
 
+import com.exchange.scanner.model.Ask;
+import com.exchange.scanner.model.Bid;
 import lombok.*;
 
 import java.util.Set;
@@ -12,6 +14,8 @@ import java.util.Set;
 public class ArbitrageOpportunity {
 
     private String coinName;
+
+    private String slug;
 
     private String exchangeForBuy;
 

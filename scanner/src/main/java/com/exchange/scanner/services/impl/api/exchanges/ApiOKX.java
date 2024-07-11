@@ -1,6 +1,7 @@
-package com.exchange.scanner.services.impl.api;
+package com.exchange.scanner.services.impl.api.exchanges;
 
 import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.okx.chains.OKXChainData;
@@ -13,12 +14,13 @@ import com.exchange.scanner.dto.response.exchangedata.okx.tradingfee.OKXTradingF
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
+import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
 import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.AppUtils.ListUtils;
 import com.exchange.scanner.services.utils.OKX.OKXDepthBuilder;
 import com.exchange.scanner.services.utils.OKX.OKXSignatureBuilder;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
-import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -61,16 +63,22 @@ public class ApiOKX implements ApiExchange {
     }
 
     @Override
-    public Set<Coin> getAllCoins() {
+    public Set<Coin> getAllCoins(Exchange exchange) {
         Set<Coin> coins = new HashSet<>();
 
         OKXCurrencyResponse response = getCurrencies().block();
 
-        if (response == null) return coins;
+        if (response == null || response.getData() == null) return coins;
 
         coins = response.getData().stream()
                 .filter(symbol -> symbol.getQuoteCcy().equals("USDT") && symbol.getState().equals("live"))
-                .map(symbol -> ObjectUtils.getCoin(symbol.getBaseCcy()))
+                .map(symbol -> {
+                    LinkDTO links = new LinkDTO();
+                    links.setDepositLink(exchange.getDepositLink());
+                    links.setWithdrawLink(exchange.getWithdrawLink());
+                    links.setTradeLink(exchange.getTradeLink() + symbol.getBaseCcy().toLowerCase() + "-usdt");
+                    return ObjectUtils.getCoin(symbol.getBaseCcy(), NAME, links);
+                })
                 .collect(Collectors.toSet());
 
         return coins;
@@ -94,11 +102,7 @@ public class ApiOKX implements ApiExchange {
             )
             .bodyToMono(OKXCurrencyResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
@@ -108,7 +112,7 @@ public class ApiOKX implements ApiExchange {
         Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
         OKXChainsResponse response = getChains(coins).blockLast();
 
-        if (response == null) return chainsDTOSet;
+        if (response == null || response.getData() == null) return chainsDTOSet;
         Set<String> coinsNames = coins.stream().map(Coin::getName).collect(Collectors.toSet());
         List<OKXChainData> okxChainData = response.getData().stream()
                 .filter(data -> coinsNames.contains(data.getCcy()))
@@ -165,11 +169,7 @@ public class ApiOKX implements ApiExchange {
                     )
                     .bodyToFlux(OKXChainsResponse.class)
                     .onErrorResume(error -> {
-                        if (error instanceof ReadTimeoutException) {
-                            log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                        } else {
-                            log.error("Ошибка при запросе к {}.", NAME, error);
-                        }
+                        LogsUtils.createErrorResumeLogs(error, NAME);
                         return Flux.empty();
                     });
             });
@@ -182,7 +182,7 @@ public class ApiOKX implements ApiExchange {
         coins.forEach(coin -> {
             OKXTradingFeeResponse response = getFee(coin).block();
 
-            if (response != null) {
+            if (response != null && response.getData() != null) {
                 TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
                         exchangeName,
                         coin,
@@ -232,11 +232,7 @@ public class ApiOKX implements ApiExchange {
             )
             .bodyToMono(OKXTradingFeeResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
@@ -247,7 +243,7 @@ public class ApiOKX implements ApiExchange {
 
         coins.forEach(coin -> {
             OKXVolumeTicker response = getCoinTickerVolume(coin).block();
-            if (response != null) {
+            if (response != null && response.getData() != null) {
                 OKXDataVolumeTicker volumeTicker = response.getData().stream()
                         .filter(dataResponse -> dataResponse.getInstType().equals("SPOT"))
                         .findFirst().orElse(null);
@@ -292,24 +288,20 @@ public class ApiOKX implements ApiExchange {
             )
             .bodyToMono(OKXVolumeTicker.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
 
     @Override
-    public Set<CoinDepth> getOrderBook(Set<String> coins) {
+    public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {
         Set<CoinDepth> coinDepthSet = new HashSet<>();
 
         coins.forEach(coin -> {
             OKXCoinDepth response = getCoinDepth(coin).block();
 
-            if (response != null) {
-                CoinDepth coinDepth = OKXDepthBuilder.getCoinDepth(coin, response.getData().getFirst());
+            if (response != null && response.getData() != null) {
+                CoinDepth coinDepth = OKXDepthBuilder.getCoinDepth(coin, response.getData().getFirst(), exchange);
                 coinDepthSet.add(coinDepth);
             }
 
@@ -323,8 +315,8 @@ public class ApiOKX implements ApiExchange {
         return coinDepthSet;
     }
 
-    private Mono<OKXCoinDepth> getCoinDepth(String coinName) {
-        String symbol = coinName + "-USDT";
+    private Mono<OKXCoinDepth> getCoinDepth(Coin coin) {
+        String symbol = coin.getName() + "-USDT";
 
         return webClient
             .get()
@@ -342,11 +334,7 @@ public class ApiOKX implements ApiExchange {
             )
             .bodyToMono(OKXCoinDepth.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }

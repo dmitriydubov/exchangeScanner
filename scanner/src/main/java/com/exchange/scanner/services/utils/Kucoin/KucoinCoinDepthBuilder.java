@@ -4,6 +4,7 @@ import com.exchange.scanner.dto.response.exchangedata.kucoin.depth.KucoinDepthDa
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthAsk;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthBid;
+import com.exchange.scanner.model.Coin;
 
 import java.math.BigDecimal;
 import java.util.Set;
@@ -12,9 +13,11 @@ import java.util.stream.Collectors;
 
 public class KucoinCoinDepthBuilder {
 
-    public static CoinDepth getCoinDepth(String coinName, KucoinDepthData data) {
+    public static CoinDepth getCoinDepth(Coin coin, KucoinDepthData data, String exchange) {
         CoinDepth coinDepth = new CoinDepth();
-        coinDepth.setCoinName(coinName);
+        coinDepth.setExchange(exchange);
+        coinDepth.setCoin(coin);
+        coinDepth.setSlug(coin.getName() + "-" + exchange);
 
         Set<CoinDepthAsk> coinDepthAskSet = data.getAsks().stream()
                 .map(ask -> {

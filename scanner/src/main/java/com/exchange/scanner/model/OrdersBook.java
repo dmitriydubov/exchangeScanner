@@ -3,16 +3,17 @@ package com.exchange.scanner.model;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import org.hibernate.annotations.OnDelete;
-import org.hibernate.annotations.OnDeleteAction;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 
 @Entity
-@Table(name = "orders_book")
 @Getter
 @Setter
+@Table(name = "orders_book", indexes =
+    @Index(name = "idx_orders_book_slug", columnList = "slug")
+)
 public class OrdersBook {
 
     @Id
@@ -20,18 +21,30 @@ public class OrdersBook {
     @Column(nullable = false)
     private Long id;
 
-    @ManyToOne(cascade = CascadeType.ALL)
-    @OnDelete(action = OnDeleteAction.CASCADE)
-    @JoinColumn(name = "coin_id", nullable = false, referencedColumnName = "id")
+    @Column(nullable = false)
+    private String slug;
+
+    @OneToOne(mappedBy = "ordersBook")
     private Coin coin;
 
-    @ManyToOne
-    @JoinColumn(name = "exchange_id", nullable = false, referencedColumnName = "id")
-    private Exchange exchange;
+    @OneToMany(cascade = CascadeType.ALL)
+    @JoinColumn(name = "order_book_asks", referencedColumnName = "id")
+    private Set<Ask> asks = new TreeSet<>();
 
-    @OneToMany(mappedBy = "ordersBook", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    private List<Ask> asks = new ArrayList<>();
+    @OneToMany(cascade = CascadeType.ALL)
+    @JoinColumn(name = "order_book_bids", referencedColumnName = "id")
+    private Set<Bid> bids = new TreeSet<>();
 
-    @OneToMany(mappedBy = "ordersBook", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    private List<Bid> bids = new ArrayList<>();
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        OrdersBook that = (OrdersBook) o;
+        return Objects.equals(slug, that.slug);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(slug);
+    }
 }

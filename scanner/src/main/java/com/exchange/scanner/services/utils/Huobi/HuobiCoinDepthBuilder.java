@@ -4,6 +4,7 @@ import com.exchange.scanner.dto.response.exchangedata.huobi.depth.HuobiDepthTick
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthAsk;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthBid;
+import com.exchange.scanner.model.Coin;
 
 import java.math.BigDecimal;
 import java.util.Set;
@@ -12,9 +13,11 @@ import java.util.stream.Collectors;
 
 public class HuobiCoinDepthBuilder {
 
-    public static CoinDepth getCoinDepth(String coinName, HuobiDepthTick depth) {
+    public static CoinDepth getCoinDepth(Coin coin, HuobiDepthTick depth, String exchange) {
         CoinDepth coinDepth = new CoinDepth();
-        coinDepth.setCoinName(coinName);
+        coinDepth.setExchange(exchange);
+        coinDepth.setCoin(coin);
+        coinDepth.setSlug(coin.getName() + "-" + exchange);
 
         Set<CoinDepthAsk> coinDepthAskSet = depth.getAsks().stream()
                 .map(ask -> {

@@ -11,7 +11,7 @@ public interface AppService {
 
     CompletableFuture<Set<String>> getExchanges();
 
-    CompletableFuture<List<ArbitrageEvent>> getArbitrageOpportunities(UserDetails userDetails);
+    CompletableFuture<Set<ArbitrageEvent>> getArbitrageOpportunities(UserDetails userDetails);
 
     void refreshCoins();
 
@@ -22,4 +22,6 @@ public interface AppService {
     void getTradingFee();
 
     void getVolume24h();
+
+    void getCoinMarketCapCoinInfo();
 }

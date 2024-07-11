@@ -1,6 +1,7 @@
-package com.exchange.scanner.services.impl.api;
+package com.exchange.scanner.services.impl.api.exchanges;
 
 import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.kucoin.chains.KucoinChainResponse;
@@ -11,12 +12,13 @@ import com.exchange.scanner.dto.response.exchangedata.kucoin.tickervolume.Kucoin
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
+import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
 import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.Kucoin.KucoinCoinDepthBuilder;
 import com.exchange.scanner.services.utils.Kucoin.KucoinSignatureBuilder;
 import com.exchange.scanner.services.utils.AppUtils.ListUtils;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
-import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -59,15 +61,21 @@ public class ApiKucoin implements ApiExchange {
     }
 
     @Override
-    public Set<Coin> getAllCoins() {
+    public Set<Coin> getAllCoins(Exchange exchange) {
         Set<Coin> coins = new HashSet<>();
         KucoinCurrencyResponse response = getCurrencies().block();
 
-        if (response == null) return coins;
+        if (response == null || response.getData() == null) return coins;
 
         coins = response.getData().stream()
                 .filter(currency -> currency.getQuoteCurrency().equals("USDT") && currency.getEnableTrading())
-                .map(currency -> ObjectUtils.getCoin(currency.getBaseCurrency()))
+                .map(currency -> {
+                    LinkDTO links = new LinkDTO();
+                    links.setDepositLink(exchange.getDepositLink() + currency.getBaseCurrency().toUpperCase());
+                    links.setWithdrawLink(exchange.getWithdrawLink() + currency.getBaseCurrency().toUpperCase());
+                    links.setTradeLink(exchange.getTradeLink() + currency.getBaseCurrency().toUpperCase() + "-USDT");
+                    return ObjectUtils.getCoin(currency.getBaseCurrency(), NAME, links);
+                })
                 .collect(Collectors.toSet());
 
         return coins;
@@ -90,11 +98,7 @@ public class ApiKucoin implements ApiExchange {
             )
             .bodyToMono(KucoinCurrencyResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
@@ -104,7 +108,8 @@ public class ApiKucoin implements ApiExchange {
         Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
         coins.forEach(coin -> {
             List<List<Chain>> response = getChain(coin).collectList().block();
-            if (response != null) {
+
+            if (response != null && response.getFirst() != null) {
                 Set<Chain> chains = new HashSet<>();
                 response.forEach(chains::addAll);
                 ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
@@ -134,11 +139,7 @@ public class ApiKucoin implements ApiExchange {
             )
             .bodyToFlux(KucoinChainResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Flux.empty();
             })
             .map(response -> response.getData().getChains().stream()
@@ -162,20 +163,18 @@ public class ApiKucoin implements ApiExchange {
         Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
         KucoinTradingFeeResponse response = getFee(coins).blockLast();
 
-        if (response == null) return tradingFeeSet;
+        if (response == null || response.getData() == null) return tradingFeeSet;
 
-        coins.forEach(coin -> {
-            response.getData().forEach(responseFee -> {
-                if (coin.getName().equals(responseFee.getSymbol().replaceAll("-USDT", ""))) {
-                    TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
-                            exchangeName,
-                            coin,
-                            responseFee.getTakerFeeRate()
-                    );
-                    tradingFeeSet.add(responseDTO);
-                }
-            });
-        });
+        coins.forEach(coin -> response.getData().forEach(responseFee -> {
+            if (coin.getName().equals(responseFee.getSymbol().replaceAll("-USDT", ""))) {
+                TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                        exchangeName,
+                        coin,
+                        responseFee.getTakerFeeRate()
+                );
+                tradingFeeSet.add(responseDTO);
+            }
+        }));
 
         return tradingFeeSet;
     }
@@ -215,11 +214,7 @@ public class ApiKucoin implements ApiExchange {
                     )
                     .bodyToFlux(KucoinTradingFeeResponse.class)
                     .onErrorResume(error -> {
-                        if (error instanceof ReadTimeoutException) {
-                            log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                        } else {
-                            log.error("Ошибка при запросе к {}.", NAME, error);
-                        }
+                        LogsUtils.createErrorResumeLogs(error, NAME);
                         return Flux.empty();
                     });
             });
@@ -231,7 +226,8 @@ public class ApiKucoin implements ApiExchange {
 
         coins.forEach(coin -> {
             KucoinTickerVolumeResponse response = getCoinTickerVolume(coin).block();
-            if (response != null) {
+
+            if (response != null && response.getData() != null) {
                 Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
                         exchange,
                         coin,
@@ -271,24 +267,20 @@ public class ApiKucoin implements ApiExchange {
             )
             .bodyToMono(KucoinTickerVolumeResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
 
     @Override
-    public Set<CoinDepth> getOrderBook(Set<String> coins) {
+    public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {
         Set<CoinDepth> coinDepthSet = new HashSet<>();
 
         coins.forEach(coin -> {
             KucoinCoinDepth response = getCoinDepth(coin).block();
 
-            if (response != null) {
-                CoinDepth coinDepth = KucoinCoinDepthBuilder.getCoinDepth(coin, response.getData());
+            if (response != null && response.getData() != null) {
+                CoinDepth coinDepth = KucoinCoinDepthBuilder.getCoinDepth(coin, response.getData(), exchange);
                 coinDepthSet.add(coinDepth);
             }
 
@@ -302,8 +294,8 @@ public class ApiKucoin implements ApiExchange {
         return coinDepthSet;
     }
 
-    private Mono<KucoinCoinDepth> getCoinDepth(String coinName) {
-        String symbol = coinName + "-USDT";
+    private Mono<KucoinCoinDepth> getCoinDepth(Coin coin) {
+        String symbol = coin.getName() + "-USDT";
 
         return webClient
             .get()
@@ -321,11 +313,7 @@ public class ApiKucoin implements ApiExchange {
             )
             .bodyToMono(KucoinCoinDepth.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }

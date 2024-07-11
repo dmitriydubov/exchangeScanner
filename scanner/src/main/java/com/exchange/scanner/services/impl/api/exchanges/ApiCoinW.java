@@ -1,6 +1,7 @@
-package com.exchange.scanner.services.impl.api;
+package com.exchange.scanner.services.impl.api.exchanges;
 
 import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.coinw.chains.CoinWChainsResponse;
@@ -11,10 +12,11 @@ import com.exchange.scanner.dto.response.exchangedata.coinw.tradingfee.CoinWTrad
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
+import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
 import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.CoinW.CoinWCoinDepthBuilder;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
-import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -23,7 +25,6 @@ import reactor.core.publisher.Mono;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
-;
 
 @Service
 @Slf4j
@@ -37,7 +38,7 @@ public class ApiCoinW implements ApiExchange {
 
     private static final int REQUEST_DELAY_DURATION = 100;
 
-    private static final int DEPTH_REQUEST_LIMIT = 15;
+    private static final int DEPTH_REQUEST_LIMIT = 20;
 
     private final WebClient webClient;
 
@@ -46,14 +47,20 @@ public class ApiCoinW implements ApiExchange {
     }
 
     @Override
-    public Set<Coin> getAllCoins() {
+    public Set<Coin> getAllCoins(Exchange exchange) {
         Set<Coin> coins = new HashSet<>();
 
         CoinWCoinAvailableResponse response = getCurrencies().block();
-        if (response == null) return coins;
+        if (response == null || response.getData() == null) return coins;
         coins = response.getData().stream()
                 .filter(currency -> currency.getCurrencyQuote().equals("USDT") && currency.getState() == 1)
-                .map(currency -> ObjectUtils.getCoin(currency.getCurrencyBase()))
+                .map(currency -> {
+                    LinkDTO links = new LinkDTO();
+                    links.setDepositLink(exchange.getDepositLink());
+                    links.setWithdrawLink(exchange.getWithdrawLink());
+                    links.setTradeLink(exchange.getTradeLink() + currency.getCurrencyBase().toUpperCase() + "USDT");
+                    return ObjectUtils.getCoin(currency.getCurrencyBase(), NAME, links);
+                })
                 .collect(Collectors.toSet());
 
         return coins;
@@ -77,11 +84,7 @@ public class ApiCoinW implements ApiExchange {
             )
             .bodyToMono(CoinWCoinAvailableResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
@@ -90,7 +93,7 @@ public class ApiCoinW implements ApiExchange {
     public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
         Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
         CoinWChainsResponse response = getChains().block();
-        if (response == null) return chainsDTOSet;
+        if (response == null || response.getData() == null) return chainsDTOSet;
 
         coins.forEach(coin -> {
             Set<Chain> chains = new HashSet<>();
@@ -128,11 +131,7 @@ public class ApiCoinW implements ApiExchange {
             )
             .bodyToMono(CoinWChainsResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
@@ -142,19 +141,17 @@ public class ApiCoinW implements ApiExchange {
         Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
 
         CoinWTradingFeeResponse response = getFee().block();
-        if (response == null) return tradingFeeSet;
-        coins.forEach(coin -> {
-            response.getData().forEach((key, value) -> {
-                if (coin.getName().equals(key)) {
-                    TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
-                            exchangeName,
-                            coin,
-                            value.getTxFee()
-                    );
-                    tradingFeeSet.add(responseDTO);
-                }
-            });
-        });
+        if (response == null || response.getData() == null) return tradingFeeSet;
+        coins.forEach(coin -> response.getData().forEach((key, value) -> {
+            if (coin.getName().equals(key)) {
+                TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                        exchangeName,
+                        coin,
+                        value.getTxFee()
+                );
+                tradingFeeSet.add(responseDTO);
+            }
+        }));
 
         return tradingFeeSet;
     }
@@ -177,11 +174,7 @@ public class ApiCoinW implements ApiExchange {
             )
             .bodyToMono(CoinWTradingFeeResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
@@ -192,21 +185,19 @@ public class ApiCoinW implements ApiExchange {
 
         CoinWVolumeResponse response = getCoinTickerVolume().block();
 
-        if (response == null) return volume24HSet;
+        if (response == null || response.getData() == null) return volume24HSet;
 
-        coins.forEach(coin -> {
-           response.getData().forEach((coinName, data) -> {
-               if (coin.getName().equals(coinName.replaceAll("_USDT", ""))) {
-                   Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
-                           exchange,
-                           coin,
-                           data.getBaseVolume()
-                   );
+        coins.forEach(coin -> response.getData().forEach((coinName, data) -> {
+            if (coin.getName().equals(coinName.replaceAll("_USDT", ""))) {
+                Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                        exchange,
+                        coin,
+                        data.getBaseVolume()
+                );
 
-                   volume24HSet.add(responseDTO);
-               }
-           });
-        });
+                volume24HSet.add(responseDTO);
+            }
+        }));
 
         return volume24HSet;
     }
@@ -230,23 +221,19 @@ public class ApiCoinW implements ApiExchange {
             )
             .bodyToMono(CoinWVolumeResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
 
     @Override
-    public Set<CoinDepth> getOrderBook(Set<String> coins) {
+    public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {
         Set<CoinDepth> coinDepthSet= new HashSet<>();
 
         coins.forEach(coin -> {
             CoinWCoinDepthResponse response = getDepthResponse(coin).block();
-            if (response != null) {
-                CoinDepth coinDepth = CoinWCoinDepthBuilder.getCoinDepth(coin, response.getData());
+            if (response != null && response.getData() != null) {
+                CoinDepth coinDepth = CoinWCoinDepthBuilder.getCoinDepth(coin, response.getData(), exchange);
                 coinDepthSet.add(coinDepth);
             }
 
@@ -260,8 +247,8 @@ public class ApiCoinW implements ApiExchange {
         return coinDepthSet;
     }
 
-    private Mono<CoinWCoinDepthResponse> getDepthResponse(String coin) {
-        String symbol = coin + "_USDT";
+    private Mono<CoinWCoinDepthResponse> getDepthResponse(Coin coin) {
+        String symbol = coin.getName() + "_USDT";
 
         return webClient
             .get()
@@ -282,11 +269,7 @@ public class ApiCoinW implements ApiExchange {
             )
             .bodyToMono(CoinWCoinDepthResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }

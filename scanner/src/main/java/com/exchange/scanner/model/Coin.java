@@ -26,19 +26,34 @@ public class Coin {
     private String name;
 
     @Column(nullable = false)
-    private String symbol;
+    private String slug;
 
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "coin_market_cap_link")
+    private String coinMarketCapLink;
+
+    @Column(name = "logo_link")
+    private String logoLink;
+
     @Column(name = "is_block_by_superuser")
     private Boolean isBlockBySuperuser = false;
 
-    @Column(name = "taker_fee", nullable = false, precision = 38, scale = 4)
+    @Column(name = "taker_fee", nullable = false, precision = 38, scale = 5)
     private BigDecimal takerFee = new BigDecimal(0);
 
-    @Column(name = "volume24h", nullable = false, precision = 38, scale = 4)
+    @Column(name = "volume24h", nullable = false, precision = 38, scale = 5)
     private BigDecimal volume24h = new BigDecimal(0);
+
+    @Column(name = "deposit_link", nullable = false)
+    private String depositLink;
+
+    @Column(name = "withdraw_link", nullable = false)
+    private String withdrawLink;
+
+    @Column(name = "trade_link", nullable = false)
+    private String tradeLink;
 
     @ManyToMany(cascade = CascadeType.ALL)
     @JoinTable(
@@ -48,10 +63,23 @@ public class Coin {
     )
     private Set<Chain> chains = new HashSet<>();
 
-    @ManyToMany(mappedBy = "coins", cascade = CascadeType.ALL)
+    @OneToOne(cascade = CascadeType.ALL)
+    @JoinColumn(name = "orders_book", referencedColumnName = "id")
+    private OrdersBook ordersBook;
+
+    @ManyToMany(mappedBy = "coins")
     private Set<Exchange> exchanges = new HashSet<>();
 
-    @Transient
-    @OneToMany(mappedBy = "coin", cascade = CascadeType.ALL)
-    private Set<OrdersBook> ordersBooks = new HashSet<>();
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Coin coin = (Coin) o;
+        return Objects.equals(name, coin.name) && Objects.equals(slug, coin.slug);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(name, slug);
+    }
 }

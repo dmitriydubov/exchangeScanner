@@ -4,6 +4,7 @@ import com.exchange.scanner.dto.response.exchangedata.poloniex.depth.PoloniexCoi
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthAsk;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthBid;
+import com.exchange.scanner.model.Coin;
 
 import java.math.BigDecimal;
 import java.util.HashSet;
@@ -12,10 +13,12 @@ import java.util.TreeSet;
 
 public class PoloniexCoinDepthBuilder {
 
-    public static CoinDepth getPoloniexCoinDepth(PoloniexCoinDepth depth) {
+    public static CoinDepth getPoloniexCoinDepth(PoloniexCoinDepth depth, Coin coin, String exchange) {
 
         CoinDepth coinDepth = new CoinDepth();
-        coinDepth.setCoinName(depth.getCoinName());
+        coinDepth.setExchange(exchange);
+        coinDepth.setCoin(coin);
+        coinDepth.setSlug(coin.getName() + "-" + exchange);
 
         Set<CoinDepthBid> coinDepthBids = new HashSet<>();
 

@@ -1,6 +1,7 @@
-package com.exchange.scanner.services.impl.api;
+package com.exchange.scanner.services.impl.api.exchanges;
 
 import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.binance.chains.BinanceChainResponse;
@@ -12,14 +13,14 @@ import com.exchange.scanner.dto.response.exchangedata.binance.tradingfee.Binance
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
+import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
 import com.exchange.scanner.services.utils.Binance.BinanceCoinDepthBuilder;
 import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.AppUtils.ListUtils;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 import com.exchange.scanner.services.utils.Binance.BinanceSignatureBuilder;
-import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
-import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -58,17 +59,23 @@ public class ApiBinance implements ApiExchange {
     }
 
     @Override
-    public Set<Coin> getAllCoins() {
+    public Set<Coin> getAllCoins(Exchange exchange) {
         Set<Coin> coins = new HashSet<>();
         BinanceCurrencyResponse response = getCurrencies().block();
-        if (response == null) return coins;
+        if (response == null || response.getSymbols() == null) return coins;
 
         coins = response.getSymbols().stream()
                 .filter(symbol -> symbol.getQuoteAsset().equals("USDT") &&
                         symbol.getStatus().equals("TRADING") &&
                         symbol.getIsSpotTradingAllowed()
                 )
-                .map(symbol -> ObjectUtils.getCoin(symbol.getBaseAsset()))
+                .map(symbol -> {
+                    LinkDTO links = new LinkDTO();
+                    links.setDepositLink(exchange.getDepositLink() + symbol.getBaseAsset().toUpperCase());
+                    links.setWithdrawLink(exchange.getWithdrawLink() + symbol.getBaseAsset().toUpperCase());
+                    links.setTradeLink(exchange.getTradeLink() + symbol.getBaseAsset().toUpperCase() + "_USDT");
+                    return ObjectUtils.getCoin(symbol.getBaseAsset(), NAME, links);
+                })
                 .collect(Collectors.toSet());
 
         return coins;
@@ -91,11 +98,7 @@ public class ApiBinance implements ApiExchange {
             )
             .bodyToMono(BinanceCurrencyResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
@@ -106,27 +109,25 @@ public class ApiBinance implements ApiExchange {
 
         List<BinanceChainResponse> response = getChains().collectList().block();
 
-        if (response == null) return chainsDTOSet;
+        if (response == null || response.isEmpty()) return chainsDTOSet;
 
-        coins.forEach(coin -> {
-            response.forEach(data -> {
-                if (coin.getName().equals(data.getCoin())) {
-                    Set<Chain> chains = new HashSet<>();
-                    List<BinanceNetwork> networks = data.getNetworkList().stream()
-                            .filter(network -> network.getDepositEnable() && network.getWithdrawEnable())
-                            .toList();
+        coins.forEach(coin -> response.forEach(data -> {
+            if (coin.getName().equals(data.getCoin())) {
+                Set<Chain> chains = new HashSet<>();
+                List<BinanceNetwork> networks = data.getNetworkList().stream()
+                        .filter(network -> network.getDepositEnable() && network.getWithdrawEnable())
+                        .toList();
 
-                    networks.forEach(network -> {
-                        Chain chain = new Chain();
-                        chain.setName(coin.getName());
-                        chain.setCommission(new BigDecimal(network.getWithdrawFee()));
-                        chains.add(chain);
-                    });
-                    ChainResponseDTO chainResponseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
-                    chainsDTOSet.add(chainResponseDTO);
-                }
-            });
-        });
+                networks.forEach(network -> {
+                    Chain chain = new Chain();
+                    chain.setName(coin.getName());
+                    chain.setCommission(new BigDecimal(network.getWithdrawFee()));
+                    chains.add(chain);
+                });
+                ChainResponseDTO chainResponseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
+                chainsDTOSet.add(chainResponseDTO);
+            }
+        }));
 
         return chainsDTOSet;
     }
@@ -143,9 +144,7 @@ public class ApiBinance implements ApiExchange {
                 signatureBuilder.getParameters().forEach(uriBuilder::queryParam);
                 return uriBuilder.build();
             })
-            .headers(httpHeaders -> {
-                signatureBuilder.getHeaders().forEach(httpHeaders::add);
-            })
+            .headers(httpHeaders -> signatureBuilder.getHeaders().forEach(httpHeaders::add))
             .retrieve()
             .onStatus(
                     status -> status.is4xxClientError() || status.is5xxServerError(),
@@ -156,11 +155,7 @@ public class ApiBinance implements ApiExchange {
             )
             .bodyToFlux(BinanceChainResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Flux.empty();
             });
     }
@@ -172,7 +167,7 @@ public class ApiBinance implements ApiExchange {
         coins.forEach(coin -> {
             List <BinanceTradingFeeResponse> response = getFee(coin).collectList().block();
 
-            if (response != null) {
+            if (response != null && response.getFirst() != null) {
                 TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
                         exchangeName,
                         coin,
@@ -192,7 +187,7 @@ public class ApiBinance implements ApiExchange {
     }
 
     private Flux<BinanceTradingFeeResponse> getFee(Coin coin) {
-        String symbol = coin.getSymbol() + "USDT";
+        String symbol = coin.getName() + "USDT";
         Map<String, String> params = new HashMap<>();
         params.put("symbol", symbol);
         BinanceSignatureBuilder signatureBuilder = new BinanceSignatureBuilder(key, secret, params);
@@ -205,9 +200,7 @@ public class ApiBinance implements ApiExchange {
                 signatureBuilder.getParameters().forEach(uriBuilder::queryParam);
                 return uriBuilder.build();
             })
-            .headers(httpHeaders -> {
-                signatureBuilder.getHeaders().forEach(httpHeaders::add);
-            })
+            .headers(httpHeaders -> signatureBuilder.getHeaders().forEach(httpHeaders::add))
             .retrieve()
             .onStatus(
                     status -> status.is4xxClientError() || status.is5xxServerError(),
@@ -218,12 +211,8 @@ public class ApiBinance implements ApiExchange {
             )
             .bodyToFlux(BinanceTradingFeeResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
-                return Mono.empty();
+                LogsUtils.createErrorResumeLogs(error, NAME);
+                return Flux.empty();
             });
     }
 
@@ -233,21 +222,19 @@ public class ApiBinance implements ApiExchange {
 
         List<BinanceCoinTickerVolume> response = getCoinTickerVolume(new ArrayList<>(coins)).collectList().block();
 
-        if (response == null) return volume24HSet;
+        if (response == null || response.isEmpty()) return volume24HSet;
 
-        coins.forEach(coin -> {
-            response.forEach(tradingFeeResponse -> {
-                if (coin.getName().equals(tradingFeeResponse.getSymbol().replaceAll("USDT", ""))) {
-                    Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
-                            exchange,
-                            coin,
-                            tradingFeeResponse.getQuoteVolume()
-                    );
+        coins.forEach(coin -> response.forEach(tradingFeeResponse -> {
+            if (coin.getName().equals(tradingFeeResponse.getSymbol().replaceAll("USDT", ""))) {
+                Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                        exchange,
+                        coin,
+                        tradingFeeResponse.getQuoteVolume()
+                );
 
-                    volume24HSet.add(responseDTO);
-                }
-            });
-        });
+                volume24HSet.add(responseDTO);
+            }
+        }));
 
         return volume24HSet;
     }
@@ -273,25 +260,21 @@ public class ApiBinance implements ApiExchange {
                 )
                 .bodyToFlux(BinanceCoinTickerVolume.class)
                 .onErrorResume(error -> {
-                    if (error instanceof ReadTimeoutException) {
-                        log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                    } else {
-                        log.error("Ошибка при запросе к {}.", NAME, error);
-                    }
+                    LogsUtils.createErrorResumeLogs(error, NAME);
                     return Flux.empty();
                 })
             );
     }
 
     @Override
-    public Set<CoinDepth> getOrderBook(Set<String> coins) {
+    public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {
         Set<CoinDepth> coinDepthSet = new HashSet<>();
 
         coins.forEach(coin -> {
             BinanceCoinDepth response = getCoinDepth(coin).block();
 
-            if (response != null) {
-                CoinDepth coinDepth = BinanceCoinDepthBuilder.getCoinDepth(coin, response);
+            if (response != null && (!response.getBids().isEmpty() || !response.getAsks().isEmpty())) {
+                CoinDepth coinDepth = BinanceCoinDepthBuilder.getCoinDepth(coin, response, exchange);
                 coinDepthSet.add(coinDepth);
             }
         });
@@ -299,8 +282,8 @@ public class ApiBinance implements ApiExchange {
         return coinDepthSet;
     }
 
-    private Mono<BinanceCoinDepth> getCoinDepth(String coinName) {
-        String symbol = coinName + "USDT";
+    private Mono<BinanceCoinDepth> getCoinDepth(Coin coin) {
+        String symbol = coin.getName() + "USDT";
 
         return webClient
             .get()
@@ -319,11 +302,7 @@ public class ApiBinance implements ApiExchange {
             )
             .bodyToMono(BinanceCoinDepth.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }

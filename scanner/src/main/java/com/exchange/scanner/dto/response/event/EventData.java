@@ -15,6 +15,10 @@ public class EventData {
 
     private String exchangeForSell;
 
+    private String depositLink;
+
+    private String withdrawLink;
+
     private String fiatVolume;
 
     private String coinVolume;
@@ -51,7 +55,7 @@ public class EventData {
 
     private String transactionConfirmation;
 
-    private String margin;
+    private Boolean margin;
 
     private List<String> futures;
 }

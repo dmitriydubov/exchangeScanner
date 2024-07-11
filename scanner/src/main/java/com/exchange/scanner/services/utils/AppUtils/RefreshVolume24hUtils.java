@@ -21,13 +21,14 @@ public class RefreshVolume24hUtils {
         Set<Volume24HResponseDTO> result = new HashSet<>();
         Set<Exchange> userExchanges = AppServiceUtils.getUsersExchanges(userMarketSettingsRepository, exchangeRepository);
         Set<String> usersCoinsNames = AppServiceUtils.getUsersCoinsNames(userMarketSettingsRepository);
+        if (userExchanges.isEmpty()) return result;
         ExecutorService executorService = Executors.newFixedThreadPool(userExchanges.size());
         List<CompletableFuture<Void>> futures = new CopyOnWriteArrayList<>();
 
         userExchanges.forEach(exchange -> {
             CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                Set<Coin> filteredCoinsNames = AppServiceUtils.getFilteredCoins(exchange, usersCoinsNames);
-                Set<Volume24HResponseDTO> response = apiExchangeAdapter.getCoinVolume24h(exchange.getName(), filteredCoinsNames);
+                Set<Coin> filteredCoins = AppServiceUtils.getFilteredCoins(exchange, usersCoinsNames);
+                Set<Volume24HResponseDTO> response = apiExchangeAdapter.getCoinVolume24h(exchange.getName(), filteredCoins);
                 synchronized (result) {
                     result.addAll(response);
                 }

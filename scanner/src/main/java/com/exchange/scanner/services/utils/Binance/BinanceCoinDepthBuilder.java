@@ -4,6 +4,9 @@ import com.exchange.scanner.dto.response.exchangedata.binance.depth.BinanceCoinD
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthAsk;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthBid;
+import com.exchange.scanner.model.Coin;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.util.Set;
@@ -12,9 +15,13 @@ import java.util.stream.Collectors;
 
 public class BinanceCoinDepthBuilder {
 
-    public static CoinDepth getCoinDepth(String coinName, BinanceCoinDepth depth) {
+    private static final Logger log = LoggerFactory.getLogger(BinanceCoinDepthBuilder.class);
+
+    public static CoinDepth getCoinDepth(Coin coin, BinanceCoinDepth depth, String exchange) {
         CoinDepth coinDepth = new CoinDepth();
-        coinDepth.setCoinName(coinName);
+        coinDepth.setCoin(coin);
+        coinDepth.setExchange(exchange);
+        coinDepth.setSlug(coin.getName() + "-" + exchange);
 
         Set<CoinDepthAsk> coinDepthAskSet = depth.getAsks().stream()
                 .map(ask -> {

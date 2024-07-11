@@ -1,71 +1,87 @@
-package com.exchange.scanner.services.impl.api;
+package com.exchange.scanner.services.impl.api.exchanges;
 
 import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
-import com.exchange.scanner.dto.response.exchangedata.bitget.chains.BitgetChainResponse;
-import com.exchange.scanner.dto.response.exchangedata.bitget.depth.BitgetCoinDepth;
-import com.exchange.scanner.dto.response.exchangedata.bitget.coins.BitgetCurrencyResponse;
-import com.exchange.scanner.dto.response.exchangedata.bitget.tickervolume.BitgetTickerVolume;
-import com.exchange.scanner.dto.response.exchangedata.bitget.tradingfee.BitgetTradingFeeResponse;
-import com.exchange.scanner.dto.response.exchangedata.bitget.tradingfee.Data;
+import com.exchange.scanner.dto.response.exchangedata.bybit.chains.BybitChainsResponse;
+import com.exchange.scanner.dto.response.exchangedata.bybit.depth.BybitCoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.bybit.coins.BybitCurrencyResponse;
+import com.exchange.scanner.dto.response.exchangedata.bybit.tickervolume.BybitCoinTickerVolume;
+import com.exchange.scanner.dto.response.exchangedata.bybit.tradingfee.BybitTradingFeeResponse;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.services.utils.Bitget.BitgetDepthBuilder;
+import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
+import com.exchange.scanner.services.utils.Bybit.BybitCoinDepthBuilder;
+import com.exchange.scanner.services.utils.Bybit.BybitSignatureBuilder;
 import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
-import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
+import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 @Slf4j
-public class ApiBitget implements ApiExchange {
+public class ApiBybit implements ApiExchange {
 
-    private static final String NAME = "Bitget";
+    @Value("${exchanges.apiKeys.Bybit.key}")
+    private String key;
 
-    public final static String BASE_ENDPOINT = "https://api.bitget.com";
+    @Value("${exchanges.apiKeys.Bybit.secret}")
+    private String secret;
+
+    private static final String NAME = "Bybit";
+
+    public static final String BASE_ENDPOINT = "https://api.bybit.com";
 
     private static final int TIMEOUT = 10000;
 
-    private static final int REQUEST_DELAY_DURATION = 100;
+    private static final int REQUEST_DELAY_DURATION = 200;
 
     private static final int DEPTH_REQUEST_LIMIT = 15;
 
     private final WebClient webClient;
 
-    public ApiBitget() {
+    public ApiBybit() {
         this.webClient = WebClientBuilder.buildWebClient(BASE_ENDPOINT, TIMEOUT);
     }
 
     @Override
-    public Set<Coin> getAllCoins() {
+    public Set<Coin> getAllCoins(Exchange exchange) {
         Set<Coin> coins = new HashSet<>();
 
-        BitgetCurrencyResponse response = getCurrencies().block();
+        BybitCurrencyResponse response = getCurrencies().block();
 
-        if (response == null) return coins;
+        if (response == null || response.getResult() == null) return coins;
 
-        coins = response.getData().stream()
-                .filter(symbol -> symbol.getQuoteCoin().equals("USDT") && symbol.getStatus().equals("online"))
-                .map(symbol -> ObjectUtils.getCoin(symbol.getBaseCoin()))
+        coins = response.getResult().getList().stream()
+                .filter(symbol -> symbol.getShowStatus().equals("1") && symbol.getQuoteCoin().equals("USDT"))
+                .map(symbol -> {
+                    LinkDTO links = new LinkDTO();
+                    links.setDepositLink(exchange.getDepositLink());
+                    links.setWithdrawLink(exchange.getWithdrawLink());
+                    links.setTradeLink(exchange.getTradeLink() + symbol.getBaseCoin().toUpperCase() + "/USDT/");
+                    return ObjectUtils.getCoin(symbol.getBaseCoin(), NAME, links);
+                })
                 .collect(Collectors.toSet());
 
         return coins;
     }
 
-    private Mono<BitgetCurrencyResponse> getCurrencies() {
+    private Mono<BybitCurrencyResponse> getCurrencies() {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
-                    .path("/api/v2/spot/public/symbols")
+                    .path("/spot/v3/public/symbols")
                     .build()
             )
             .retrieve()
@@ -76,46 +92,60 @@ public class ApiBitget implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(BitgetCurrencyResponse.class)
+            .bodyToMono(BybitCurrencyResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
 
+    @Override
     public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
         Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
+
         coins.forEach(coin -> {
-            List<Chain> response = getChain(coin).block();
-            if (response != null) {
-                Set<Chain> chains = new HashSet<>(response);
+            BybitChainsResponse response = getChains(coin).block();
+
+            if (response != null && response.getResult() != null) {
+                Set<Chain> chains = new HashSet<>();
+                response.getResult().getRows().getFirst().getChains().forEach(chainResponse -> {
+                    Chain chain = new Chain();
+                    chain.setName(chainResponse.getChain().toUpperCase());
+                    chain.setCommission(new BigDecimal(chainResponse.getWithdrawFee()));
+                    chains.add(chain);
+                });
                 ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
                 chainsDTOSet.add(responseDTO);
-            } else {
-                log.error("При попытке получения списка сетей получен пустой ответ от {}", NAME);
             }
+
             try {
                 Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+            } catch (InterruptedException ex) {
+                throw new RuntimeException();
             }
         });
 
         return chainsDTOSet;
     }
 
-    private Mono<List<Chain>> getChain(Coin coin) {
+    private Mono<BybitChainsResponse> getChains(Coin coin) {
+        String timestamp = Long.toString(ZonedDateTime.now().toInstant().toEpochMilli());
+        String recv = "5000";
+        String paramStr = "coin=" + coin.getName();
+        String stringToSign = timestamp + key + recv + paramStr;
+        String sign = BybitSignatureBuilder.generateBybitSignature(stringToSign, secret);
+
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
-                    .path("/api/v2/spot/public/coins")
+                    .path("/v5/asset/coin/query-info")
                     .queryParam("coin", coin.getName())
                     .build()
             )
+            .header("X-BAPI-SIGN", sign)
+            .header("X-BAPI-API-KEY", key)
+            .header("X-BAPI-TIMESTAMP", timestamp)
+            .header("X-BAPI-RECV-WINDOW", recv)
             .retrieve()
             .onStatus(
                     status -> status.is4xxClientError() || status.is5xxServerError(),
@@ -124,25 +154,11 @@ public class ApiBitget implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(BitgetChainResponse.class)
+            .bodyToMono(BybitChainsResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
-            })
-            .map(data -> data.getData().getFirst().getChains().stream()
-                    .filter(chainDto -> chainDto.getWithdrawable().equals("true") && chainDto.getRechargeable().equals("true"))
-                    .map(filteredChainsDto -> {
-                        Chain chain = new Chain();
-                        chain.setName(filteredChainsDto.getChain());
-                        chain.setCommission(new BigDecimal(filteredChainsDto.getWithdrawFee()));
-                        return chain;
-                    })
-                    .toList()
-            );
+            });
     }
 
     @Override
@@ -150,13 +166,12 @@ public class ApiBitget implements ApiExchange {
         Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
 
         coins.forEach(coin -> {
-            Data response = getFee(coin).block();
-
-            if (response != null) {
+            BybitTradingFeeResponse response = getFee(coin).block();
+            if (response != null && response.getResult() != null) {
                 TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
                         exchangeName,
                         coin,
-                        response.getTakerFeeRate()
+                        response.getResult().getList().getFirst().getTakerFeeRate()
                 );
                 tradingFeeSet.add(responseDTO);
             }
@@ -171,15 +186,26 @@ public class ApiBitget implements ApiExchange {
         return tradingFeeSet;
     }
 
-    private Mono <Data> getFee(Coin coin) {
+    private Mono<BybitTradingFeeResponse> getFee(Coin coin) {
         String symbol = coin.getName() + "USDT";
+        String timestamp = Long.toString(ZonedDateTime.now().toInstant().toEpochMilli());
+        String recv = "5000";
+        String paramStr = "category=spot" + "&" + "symbol=" + symbol;
+        String stringToSign = timestamp + key + recv + paramStr;
+        String sign = BybitSignatureBuilder.generateBybitSignature(stringToSign, secret);
+
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
-                    .path("/api/v2/spot/public/symbols")
+                    .path("/v5/account/fee-rate")
+                    .queryParam("category", "spot")
                     .queryParam("symbol", symbol)
                     .build()
             )
+            .header("X-BAPI-SIGN", sign)
+            .header("X-BAPI-API-KEY", key)
+            .header("X-BAPI-TIMESTAMP", timestamp)
+            .header("X-BAPI-RECV-WINDOW", recv)
             .retrieve()
             .onStatus(
                     status -> status.is4xxClientError() || status.is5xxServerError(),
@@ -188,16 +214,11 @@ public class ApiBitget implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(BitgetTradingFeeResponse.class)
+            .bodyToMono(BybitTradingFeeResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
-            })
-            .map(response -> response.getData().getFirst());
+            });
     }
 
     @Override
@@ -205,13 +226,12 @@ public class ApiBitget implements ApiExchange {
         Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
 
         coins.forEach(coin -> {
-            BitgetTickerVolume response = getCoinTickerVolume(coin).block();
-
-            if (response != null) {
+            BybitCoinTickerVolume response = getCoinTickerVolume(coin).block();
+            if (response != null && response.getResult() != null) {
                 Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
                         exchange,
                         coin,
-                        response.getData().getFirst().getQuoteVolume()
+                        response.getResult().getQv()
                 );
 
                 volume24HSet.add(responseDTO);
@@ -220,20 +240,20 @@ public class ApiBitget implements ApiExchange {
             try {
                 Thread.sleep(REQUEST_DELAY_DURATION);
             } catch (InterruptedException ex) {
-                throw new RuntimeException();
+                throw  new RuntimeException();
             }
         });
 
         return volume24HSet;
     }
 
-    private Mono<BitgetTickerVolume> getCoinTickerVolume(Coin coin) {
-        String symbol = coin.getSymbol() + "USDT";
+    private Mono<BybitCoinTickerVolume> getCoinTickerVolume(Coin coin) {
+        String symbol = coin.getName() + "USDT";
 
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
-                    .path("/api/v2/spot/market/tickers")
+                    .path("/spot/v3/public/quote/ticker/24hr")
                     .queryParam("symbol", symbol)
                     .build()
             )
@@ -245,26 +265,22 @@ public class ApiBitget implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(BitgetTickerVolume.class)
+            .bodyToMono(BybitCoinTickerVolume.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
 
     @Override
-    public Set<CoinDepth> getOrderBook(Set<String> coins) {
+    public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {
         Set<CoinDepth> coinDepthSet = new HashSet<>();
 
         coins.forEach(coin -> {
-            BitgetCoinDepth response = getCoinDepth(coin).block();
+            BybitCoinDepth response = getCoinDepth(coin).block();
 
-            if (response != null) {
-                CoinDepth coinDepth = BitgetDepthBuilder.getCoinDepth(coin, response.getData());
+            if (response != null && response.getResult() != null) {
+                CoinDepth coinDepth = BybitCoinDepthBuilder.getCoinDepth(coin, response.getResult(), exchange);
                 coinDepthSet.add(coinDepth);
             }
 
@@ -278,13 +294,12 @@ public class ApiBitget implements ApiExchange {
         return coinDepthSet;
     }
 
-    private Mono<BitgetCoinDepth> getCoinDepth(String coinName) {
-        String symbol = coinName + "USDT";
+    private Mono<BybitCoinDepth> getCoinDepth(Coin coin) {
+        String symbol = coin.getName() + "USDT";
 
         return webClient
             .get()
-            .uri(uriBuilder -> uriBuilder
-                    .path("/api/v2/spot/market/merge-depth")
+            .uri(uriBuilder -> uriBuilder.path("/spot/v3/public/quote/depth")
                     .queryParam("symbol", symbol)
                     .queryParam("limit", DEPTH_REQUEST_LIMIT)
                     .build()
@@ -293,17 +308,13 @@ public class ApiBitget implements ApiExchange {
             .onStatus(
                     status -> status.is4xxClientError() || status.is5xxServerError(),
                     response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения информации от " + NAME + ". Причина: {}", errorBody);
+                        log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
                         return Mono.empty();
                     })
             )
-            .bodyToMono(BitgetCoinDepth.class)
+            .bodyToMono(BybitCoinDepth.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }

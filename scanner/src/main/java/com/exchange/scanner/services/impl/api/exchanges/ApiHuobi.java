@@ -1,6 +1,7 @@
-package com.exchange.scanner.services.impl.api;
+package com.exchange.scanner.services.impl.api.exchanges;
 
 import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.huobi.chains.HuobiChainsResponse;
@@ -12,6 +13,8 @@ import com.exchange.scanner.dto.response.exchangedata.huobi.tradingfee.HuobiTrad
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
+import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
 import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.AppUtils.ListUtils;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
@@ -19,7 +22,6 @@ import com.exchange.scanner.services.utils.Huobi.HuobiCoinDepthBuilder;
 import com.huobi.client.TradeClient;
 import com.huobi.client.req.trade.FeeRateRequest;
 import com.huobi.constant.HuobiOptions;
-import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -59,16 +61,22 @@ public class ApiHuobi implements ApiExchange {
     }
 
     @Override
-    public Set<Coin> getAllCoins() {
+    public Set<Coin> getAllCoins(Exchange exchange) {
         Set<Coin> coins = new HashSet<>();
 
         HuobiCurrencyResponse response = getCurrencies().block();
 
-        if (response == null) return coins;
+        if (response == null || response.getData() == null) return coins;
 
         coins = response.getData().stream()
                 .filter(symbol -> symbol.getQcdn().equals("USDT") && symbol.getTe())
-                .map(symbol -> ObjectUtils.getCoin(symbol.getBcdn()))
+                .map(symbol -> {
+                    LinkDTO links = new LinkDTO();
+                    links.setDepositLink(exchange.getDepositLink() + symbol.getBcdn().toLowerCase());
+                    links.setWithdrawLink(exchange.getWithdrawLink() + symbol.getBcdn().toLowerCase());
+                    links.setTradeLink(exchange.getTradeLink() + symbol.getBcdn().toLowerCase() + "_usdt" + "?type=spot");
+                    return ObjectUtils.getCoin(symbol.getBcdn(), NAME, links);
+                })
                 .collect(Collectors.toSet());
 
         return coins;
@@ -91,11 +99,7 @@ public class ApiHuobi implements ApiExchange {
             )
             .bodyToMono(HuobiCurrencyResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
@@ -107,7 +111,7 @@ public class ApiHuobi implements ApiExchange {
         coins.forEach(coin -> {
             HuobiChainsResponse response = getChains(coin).block();
 
-            if (response != null) {
+            if (response != null && response.getData() != null) {
                 Set<Chain> chains = new HashSet<>();
                 response.getData().getFirst().getChains().forEach(chainResponse -> {
                     Chain chain = new Chain();
@@ -147,11 +151,7 @@ public class ApiHuobi implements ApiExchange {
             )
             .bodyToMono(HuobiChainsResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
@@ -168,18 +168,16 @@ public class ApiHuobi implements ApiExchange {
         List<HuobiFeeData> data = response.getData().stream()
                 .filter(dataResponse -> symbols.contains(dataResponse.getSymbol()))
                 .toList();
-        coins.forEach(coin -> {
-            data.forEach(feeResponse -> {
-                if (coin.getName().equalsIgnoreCase(feeResponse.getSymbol().replaceAll("usdt", ""))) {
-                    TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
-                            exchangeName,
-                            coin,
-                            feeResponse.getTakerFeeRate()
-                    );
-                    tradingFeeSet.add(responseDTO);
-                }
-            });
-        });
+        coins.forEach(coin -> data.forEach(feeResponse -> {
+            if (coin.getName().equalsIgnoreCase(feeResponse.getSymbol().replaceAll("usdt", ""))) {
+                TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                        exchangeName,
+                        coin,
+                        feeResponse.getTakerFeeRate()
+                );
+                tradingFeeSet.add(responseDTO);
+            }
+        }));
 
         return tradingFeeSet;
     }
@@ -213,7 +211,7 @@ public class ApiHuobi implements ApiExchange {
         coins.forEach(coin -> {
             HuobiVolumeTicker response = getCoinTickerVolume(coin).block();
 
-            if (response != null) {
+            if (response != null && response.getTick() != null) {
                 Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
                         exchange,
                         coin,
@@ -253,24 +251,20 @@ public class ApiHuobi implements ApiExchange {
             )
             .bodyToMono(HuobiVolumeTicker.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
 
     @Override
-    public Set<CoinDepth> getOrderBook(Set<String> coins) {
+    public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {
         Set<CoinDepth> coinDepthSet = new HashSet<>();
 
         coins.forEach(coin -> {
             HuobiCoinDepth response = getCoinDepth(coin).block();
 
-            if (response != null) {
-                CoinDepth coinDepth = HuobiCoinDepthBuilder.getCoinDepth(coin, response.getTick());
+            if (response != null && response.getTick() != null) {
+                CoinDepth coinDepth = HuobiCoinDepthBuilder.getCoinDepth(coin, response.getTick(), exchange);
                 coinDepthSet.add(coinDepth);
             }
 
@@ -284,13 +278,14 @@ public class ApiHuobi implements ApiExchange {
         return coinDepthSet;
     }
 
-    private Mono<HuobiCoinDepth> getCoinDepth(String coinName) {
-        String symbol = coinName.toLowerCase() + "usdt";
+    private Mono<HuobiCoinDepth> getCoinDepth(Coin coin) {
+        String symbol = coin.getName().toLowerCase() + "usdt";
 
         return  webClient
             .get()
             .uri(uriBuilder -> uriBuilder.path("/market/depth")
                     .queryParam("symbol", symbol)
+                    .queryParam("depth", DEPTH_REQUEST_LIMIT)
                     .queryParam("type", AGGREGATION_LEVEL_TYPE)
                     .build()
             )
@@ -304,11 +299,7 @@ public class ApiHuobi implements ApiExchange {
             )
             .bodyToMono(HuobiCoinDepth.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }

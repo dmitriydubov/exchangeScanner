@@ -1,6 +1,7 @@
-package com.exchange.scanner.services.impl.api;
+package com.exchange.scanner.services.impl.api.exchanges;
 
 import com.exchange.scanner.dto.response.ChainResponseDTO;
+import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.bingx.chains.BingXChainResponse;
@@ -11,15 +12,15 @@ import com.exchange.scanner.dto.response.exchangedata.bingx.tradingfee.BingXTrad
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
+import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
 import com.exchange.scanner.services.utils.BingX.BingXCoinDepthBuilder;
 import com.exchange.scanner.services.utils.BingX.BingXSignatureBuilder;
 import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.netty.handler.timeout.ReadTimeoutException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -65,18 +66,22 @@ public class ApiBingX implements ApiExchange {
     }
 
     @Override
-    public Set<Coin> getAllCoins() {
+    public Set<Coin> getAllCoins(Exchange exchange) {
         Set<Coin> coins = new HashSet<>();
 
         BingXCurrencyResponse response = getCurrencies().block();
 
-        if (response == null) return coins;
+        if (response == null || response.getData() == null) return coins;
 
         coins = response.getData().getSymbols().stream()
                 .filter(symbol -> symbol.getSymbol().endsWith("-USDT") && symbol.getStatus() == 1)
                 .map(symbol -> {
                     String coinName = ObjectUtils.refactorToStandardCoinName(symbol.getSymbol(), "-");
-                    return ObjectUtils.getCoin(coinName);
+                    LinkDTO links = new LinkDTO();
+                    links.setDepositLink(exchange.getDepositLink());
+                    links.setWithdrawLink(exchange.getWithdrawLink());
+                    links.setTradeLink(exchange.getTradeLink() + coinName.toUpperCase() + "USDT");
+                    return ObjectUtils.getCoin(coinName, NAME, links);
                 })
                 .collect(Collectors.toSet());
 
@@ -100,11 +105,7 @@ public class ApiBingX implements ApiExchange {
             )
             .bodyToMono(String.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             })
             .handle((response, sink) -> {
@@ -163,9 +164,7 @@ public class ApiBingX implements ApiExchange {
                 signatureBuilder.getParameters().forEach(uriBuilder::queryParam);
                 return uriBuilder.build();
             })
-            .headers(httpHeaders -> {
-                signatureBuilder.getHeaders().forEach(httpHeaders::add);
-            })
+            .headers(httpHeaders -> signatureBuilder.getHeaders().forEach(httpHeaders::add))
             .header("signature", signatureBuilder.getSignature())
             .retrieve()
             .onStatus(
@@ -177,11 +176,7 @@ public class ApiBingX implements ApiExchange {
             )
             .bodyToMono(BingXChainResponse.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
@@ -193,7 +188,7 @@ public class ApiBingX implements ApiExchange {
         coins.forEach(coin -> {
             BingXTradingFeeResponse response = getFee(coin).block();
 
-            if (response != null) {
+            if (response != null && response.getData() != null) {
                 TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
                         exchangeName,
                         coin,
@@ -227,9 +222,7 @@ public class ApiBingX implements ApiExchange {
                 signatureBuilder.getParameters().forEach(uriBuilder::queryParam);
                 return uriBuilder.build();
             })
-            .headers(httpHeaders -> {
-                signatureBuilder.getHeaders().forEach(httpHeaders::add);
-            })
+            .headers(httpHeaders -> signatureBuilder.getHeaders().forEach(httpHeaders::add))
             .header("signature", signatureBuilder.getSignature())
             .retrieve()
             .onStatus(
@@ -241,11 +234,7 @@ public class ApiBingX implements ApiExchange {
             )
             .bodyToMono(String.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             })
             .handle((response, sink) -> {
@@ -265,7 +254,7 @@ public class ApiBingX implements ApiExchange {
         coins.forEach(coin -> {
             BingXVolumeTicker response = getCoinTickerVolume(coin).block();
 
-            if (response != null) {
+            if (response != null && response.getData() != null) {
                 Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
                         exchange,
                         coin,
@@ -306,24 +295,20 @@ public class ApiBingX implements ApiExchange {
             )
             .bodyToMono(BingXVolumeTicker.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
 
     @Override
-    public Set<CoinDepth> getOrderBook(Set<String> coins) {
+    public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {
         Set<CoinDepth> coinDepths = new HashSet<>();
 
         coins.forEach(coin -> {
             BingXCoinDepth response = getCoinDepth(coin).block();
 
-            if (response != null) {
-                CoinDepth coinDepth = BingXCoinDepthBuilder.getCoinDepth(coin, response.getData());
+            if (response != null && response.getData() != null) {
+                CoinDepth coinDepth = BingXCoinDepthBuilder.getCoinDepth(coin, response.getData(), exchange);
                 coinDepths.add(coinDepth);
             }
 
@@ -337,8 +322,8 @@ public class ApiBingX implements ApiExchange {
         return coinDepths;
     }
 
-    private Mono<BingXCoinDepth> getCoinDepth(String coinName) {
-        String symbol = coinName + "_USDT";
+    private Mono<BingXCoinDepth> getCoinDepth(Coin coin) {
+        String symbol = coin.getName() + "_USDT";
 
         return webClient
             .get()
@@ -358,11 +343,7 @@ public class ApiBingX implements ApiExchange {
             )
             .bodyToMono(BingXCoinDepth.class)
             .onErrorResume(error -> {
-                if (error instanceof ReadTimeoutException) {
-                    log.error("Превышен лимит ожидания ответа от {}.", NAME, error);
-                } else {
-                    log.error("Ошибка при запросе к {}.", NAME, error);
-                }
+                LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
             });
     }
