@@ -1,3 +1,7 @@
+html, body {
+    min-height: 1200px;
+}
+
 
 .App-header {
     height: 150px;

@@ -3,8 +3,6 @@ package com.exchange.scanner.model;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import org.hibernate.annotations.OnDelete;
-import org.hibernate.annotations.OnDeleteAction;
 import org.jetbrains.annotations.NotNull;
 
 import java.math.BigDecimal;
@@ -24,7 +22,7 @@ public class Chain implements Comparable<Chain> {
     @Column(nullable = false)
     private String name;
 
-    @Column(nullable = false, precision = 38, scale = 5)
+    @Column(nullable = false, precision = 38, scale = 4)
     private BigDecimal commission;
 
     @ManyToMany(mappedBy = "chains")

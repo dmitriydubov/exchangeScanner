@@ -119,7 +119,7 @@ public class ApiCoinEx implements ApiExchange {
                 Set<Chain> chains = new HashSet<>();
                 data.getChains().forEach(chainResponse -> {
                     Chain chain = new Chain();
-                    chain.setName(chainResponse.getChain());
+                    chain.setName(chainResponse.getChain().toUpperCase());
                     chain.setCommission(new BigDecimal(chainResponse.getWithdrawalFee()));
                     chains.add(chain);
                 });

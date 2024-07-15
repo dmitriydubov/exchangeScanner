@@ -115,7 +115,6 @@ public class ApiBinance implements ApiExchange {
             if (coin.getName().equals(data.getCoin())) {
                 Set<Chain> chains = new HashSet<>();
                 List<BinanceNetwork> networks = data.getNetworkList().stream()
-                        .filter(network -> network.getDepositEnable() && network.getWithdrawEnable())
                         .toList();
 
                 networks.forEach(network -> {

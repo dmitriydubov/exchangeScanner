@@ -99,9 +99,13 @@ public class ApiCoinW implements ApiExchange {
             Set<Chain> chains = new HashSet<>();
 
             response.getData().forEach((symbol, chainResponse) -> {
-                if (coin.getName().equals(symbol) && chainResponse.getRecharge().equals("1") && chainResponse.getWithDraw().equals("1")) {
+                if (coin.getName().equals(symbol)) {
+                    String chainName = chainResponse.getChain();
+                    if (chainName.endsWith("@BSC")) {
+                        chainName = chainName.substring(0, chainName.length() - "@BSC".length());
+                    }
                     Chain chain = new Chain();
-                    chain.setName(chainResponse.getChain());
+                    chain.setName(chainName.toUpperCase());
                     chain.setCommission(new BigDecimal(chainResponse.getTxFee()));
                     chains.add(chain);
                 }

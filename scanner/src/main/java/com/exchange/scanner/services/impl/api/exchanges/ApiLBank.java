@@ -104,8 +104,12 @@ public class ApiLBank implements ApiExchange {
                 Set<Chain> chains = new HashSet<>();
                 response.getData().forEach(data -> {
                     if (data.getChain() != null) {
+                        String chainName = data.getChain();
+                        if (chainName.equalsIgnoreCase("BEP20(BSC)")) {
+                            chainName = "BEP20";
+                        }
                         Chain chain = new Chain();
-                        chain.setName(data.getChain().toUpperCase());
+                        chain.setName(chainName.toUpperCase());
                         if (data.getFee() != null) {
                             chain.setCommission(new BigDecimal(data.getFee()));
                         } else {

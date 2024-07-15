@@ -127,11 +127,21 @@ public class ApiXT implements ApiExchange {
 
             xtChainResultListFiltered.forEach(result -> {
                 if (coin.getName().equals(result.getCurrency().toUpperCase())) {
-                    result.getSupportChains().stream()
-                        .filter(chainResponse -> chainResponse.getDepositEnabled() && chainResponse.getWithdrawEnabled())
+                    result.getSupportChains()
                         .forEach(chainResponse -> {
+                            String chainName = chainResponse.getChain();
+                            if (chainName.equalsIgnoreCase("BNB SMART CHAIN")) {
+                                chainName = "BSC";
+                            }
+                            if (chainName.equalsIgnoreCase("ETHEREUM")) {
+                                chainName = "ETH";
+                            }
+                            if (chainName.equalsIgnoreCase("POLYGON")) {
+                                chainName = "MATIC";
+                            }
+
                             Chain chain = new Chain();
-                            chain.setName(chainResponse.getChain().toUpperCase());
+                            chain.setName(chainName.toUpperCase());
                             chain.setCommission(new BigDecimal(chainResponse.getWithdrawFeeAmount()));
                             chains.add(chain);
                         });

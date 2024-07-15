@@ -148,10 +148,9 @@ public class ApiGateIO implements ApiExchange {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Flux.empty();
             })
-            .filter(chainDTO -> chainDTO.getIsDisabled() == 0 && chainDTO.getIsDepositDisabled() == 0 && chainDTO.getIsWithdrawDisabled() == 0)
             .map(chainDTO -> {
                 Chain chain = new Chain();
-                chain.setName(chainDTO.getChain());
+                chain.setName(chainDTO.getChain().toUpperCase());
                 chain.setCommission(new BigDecimal("0"));
                 return chain;
             });

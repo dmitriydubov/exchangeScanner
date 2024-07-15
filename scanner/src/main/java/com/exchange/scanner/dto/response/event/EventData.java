@@ -19,13 +19,15 @@ public class EventData {
 
     private String withdrawLink;
 
+    private String buyTradingLink;
+
+    private String sellTradingLink;
+
     private String fiatVolume;
 
     private String coinVolume;
 
     private String fiatSpread;
-
-    private String coinSpread;
 
     private String averagePriceForBuy;
 
@@ -47,8 +49,6 @@ public class EventData {
 
     private String chainFee;
 
-    private String arbitrageEventLifetime;
-
     private String chainName;
 
     private String transactionTime;
@@ -58,4 +58,10 @@ public class EventData {
     private Boolean margin;
 
     private List<String> futures;
+
+    private String slug;
+
+    private Boolean isWarning;
+
+    private String lifeCycle;
 }

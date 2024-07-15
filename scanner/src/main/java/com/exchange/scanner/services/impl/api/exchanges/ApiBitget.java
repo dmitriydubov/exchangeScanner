@@ -37,7 +37,7 @@ public class ApiBitget implements ApiExchange {
 
     private static final int TIMEOUT = 10000;
 
-    private static final int REQUEST_DELAY_DURATION = 100;
+    private static final int REQUEST_DELAY_DURATION = 500;
 
     private static final int DEPTH_REQUEST_LIMIT = 15;
 
@@ -49,6 +49,12 @@ public class ApiBitget implements ApiExchange {
 
     @Override
     public Set<Coin> getAllCoins(Exchange exchange) {
+        try {
+            Thread.sleep(REQUEST_DELAY_DURATION);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
         Set<Coin> coins = new HashSet<>();
 
         BitgetCurrencyResponse response = getCurrencies().block();
@@ -92,6 +98,12 @@ public class ApiBitget implements ApiExchange {
     }
 
     public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
+        try {
+            Thread.sleep(REQUEST_DELAY_DURATION);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
         Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
         coins.forEach(coin -> {
             List<Chain> response = getChain(coin).block();
@@ -134,11 +146,14 @@ public class ApiBitget implements ApiExchange {
                 return Mono.empty();
             })
             .map(data -> data.getData().getFirst().getChains().stream()
-                    .filter(chainDto -> chainDto.getWithdrawable().equals("true") && chainDto.getRechargeable().equals("true"))
-                    .map(filteredChainsDto -> {
+                    .map(chainsDTO -> {
+                        String chainName = chainsDTO.getChain();
+                        if (chainName.equalsIgnoreCase("Polygon")) {
+                            chainName = "Matic";
+                        }
                         Chain chain = new Chain();
-                        chain.setName(filteredChainsDto.getChain());
-                        chain.setCommission(new BigDecimal(filteredChainsDto.getWithdrawFee()));
+                        chain.setName(chainName.toUpperCase());
+                        chain.setCommission(new BigDecimal(chainsDTO.getWithdrawFee()));
                         return chain;
                     })
                     .toList()
@@ -147,6 +162,12 @@ public class ApiBitget implements ApiExchange {
 
     @Override
     public Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
+        try {
+            Thread.sleep(REQUEST_DELAY_DURATION);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
         Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
 
         coins.forEach(coin -> {
@@ -198,6 +219,12 @@ public class ApiBitget implements ApiExchange {
 
     @Override
     public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
+        try {
+            Thread.sleep(REQUEST_DELAY_DURATION);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
         Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
 
         coins.forEach(coin -> {
@@ -250,6 +277,12 @@ public class ApiBitget implements ApiExchange {
 
     @Override
     public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {
+        try {
+            Thread.sleep(REQUEST_DELAY_DURATION);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
         Set<CoinDepth> coinDepthSet = new HashSet<>();
 
         coins.forEach(coin -> {

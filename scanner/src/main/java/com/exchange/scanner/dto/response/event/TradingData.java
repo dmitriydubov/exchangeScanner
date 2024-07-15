@@ -24,4 +24,6 @@ public class TradingData {
     private BigDecimal chainFeeAmount;
 
     private Boolean isWarning;
+
+    private String slug;
 }

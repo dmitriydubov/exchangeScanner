@@ -114,8 +114,12 @@ public class ApiHuobi implements ApiExchange {
             if (response != null && response.getData() != null) {
                 Set<Chain> chains = new HashSet<>();
                 response.getData().getFirst().getChains().forEach(chainResponse -> {
+                    String chainName = chainResponse.getDisplayName();
+                    if (chainName.equalsIgnoreCase("PRC20")) {
+                        chainName = "MATIC";
+                    }
                     Chain chain = new Chain();
-                    chain.setName(chainResponse.getDisplayName());
+                    chain.setName(chainName.toUpperCase());
                     chain.setCommission(new BigDecimal(chainResponse.getTransactFeeWithdraw()));
                     chains.add(chain);
                 });

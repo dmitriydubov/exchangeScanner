@@ -117,8 +117,7 @@ public class ApiMEXC implements ApiExchange {
             Set<Chain> chains = new HashSet<>();
             filteredData.forEach(data -> {
                 if (coin.getName().equals(data.getCoin())) {
-                    data.getNetworkList().stream()
-                        .filter(networkList -> networkList.getDepositEnable() && networkList.getWithdrawEnable())
+                    data.getNetworkList()
                         .forEach(networkList -> {
                             Chain chain = new Chain();
                             chain.setName(networkList.getNetWork());

@@ -9,7 +9,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.InvocationTargetException;
-import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -71,7 +70,7 @@ public class ArbitrageUtils {
                 })
                 .filter(pair -> !pair.coin.getIsBlockBySuperuser())
                 .map(pair -> {
-                    OrdersBook ordersBook = ordersBookRepository.findByCoin(pair.coin).orElse(null);
+                    OrdersBook ordersBook = ordersBookRepository.findBySlug(pair.coin.getSlug()).orElse(null);
                     if (ordersBook == null) return null;
                     T tradeEventDTO = getUserTradeEventDTO(pair.market, pair.coin, coinRepository, userMarketSettings, tradeEventDTOClass);
                     if (isBuy) {
@@ -106,9 +105,9 @@ public class ArbitrageUtils {
             tradeEventDTO.setLogoLink(coin.getLogoLink());
             tradeEventDTO.setTakerFee(coin.getTakerFee());
             tradeEventDTO.setVolume24h(coin.getVolume24h());
-            tradeEventDTO.setMinUserTradeAmount(BigDecimal.valueOf(userMarketSettings.getMinVolume()));
-            tradeEventDTO.setMaxUserTradeAmount(BigDecimal.valueOf(userMarketSettings.getMaxVolume()));
-            tradeEventDTO.setUserMinProfit(BigDecimal.valueOf(userMarketSettings.getProfitSpread()));
+            tradeEventDTO.setMinUserTradeAmount(userMarketSettings.getMinVolume());
+            tradeEventDTO.setMaxUserTradeAmount(userMarketSettings.getMaxVolume());
+            tradeEventDTO.setUserMinProfit(userMarketSettings.getProfitSpread());
             tradeEventDTO.setChains(chains);
             return tradeEventDTO;
         } catch (InvocationTargetException | InstantiationException | IllegalAccessException | NoSuchMethodException e) {

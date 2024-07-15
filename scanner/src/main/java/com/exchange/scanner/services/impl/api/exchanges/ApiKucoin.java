@@ -143,7 +143,6 @@ public class ApiKucoin implements ApiExchange {
                 return Flux.empty();
             })
             .map(response -> response.getData().getChains().stream()
-                    .filter(chainDto -> chainDto.getIsDepositEnabled() && chainDto.getIsWithdrawEnabled())
                     .map(dto -> {
                        String chainName = dto.getChainName();
                        if (dto.getChainName().equals("Lightning Network")) {

@@ -12,10 +12,7 @@ import java.util.Set;
 @Entity
 @Getter
 @Setter
-@Table(name = "exchanges", indexes = {
-        @Index(name = "idx_exchange_name", columnList = "name"),
-        @Index(name = "idx_exchange_isBlockBySuperuser", columnList = "is_block_by_superuser")
-})
+@Table(name = "exchanges")
 public class Exchange {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -40,13 +37,10 @@ public class Exchange {
     @Column(name = "trade_link", nullable = false)
     private String tradeLink;
 
-    @Column(name = "has_query_coin_link_param")
-    private Boolean hasQueryCoinLinkParam;
-
     @Column(name = "is_block_by_superuser")
     private Boolean isBlockBySuperuser = false;
 
-    @ManyToMany(cascade = CascadeType.ALL)
+    @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     @JoinTable(
             name = "exchanges_coins",
             joinColumns = @JoinColumn(name = "exchange_id"),

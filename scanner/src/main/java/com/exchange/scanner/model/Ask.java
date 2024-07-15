@@ -20,30 +20,19 @@ public class Ask implements Comparable<Ask> {
     @Column(nullable = false)
     private Long id;
 
-    @Column(precision = 38, scale = 2, nullable = false)
+    @Column(precision = 38, scale = 8, nullable = false)
     private BigDecimal price;
 
-    @Column(precision = 38, scale = 6, nullable = false)
+    @Column(precision = 38, scale = 8, nullable = false)
     private BigDecimal volume;
 
-    @ManyToOne
+    @ManyToOne(cascade = CascadeType.ALL)
+    @JoinColumn(name = "orders_book_id")
+    @OnDelete(action = OnDeleteAction.CASCADE)
     private OrdersBook ordersBook;
 
     @Override
     public int compareTo(Ask ask) {
         return price.compareTo(ask.getPrice());
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        Ask ask = (Ask) o;
-        return Objects.equals(price, ask.price) && Objects.equals(volume, ask.volume);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(price, volume);
     }
 }

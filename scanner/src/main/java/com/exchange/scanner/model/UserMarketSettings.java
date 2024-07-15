@@ -4,6 +4,7 @@ import com.exchange.scanner.security.model.User;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Entity
@@ -24,14 +25,14 @@ public class UserMarketSettings {
     @JoinColumn(name = "user_id", referencedColumnName = "id")
     private User user;
 
-    @Column(name = "min_volume", nullable = false)
-    private Double minVolume;
+    @Column(name = "min_volume", nullable = false, precision = 38, scale = 2)
+    private BigDecimal minVolume;
 
-    @Column(name = "max_volume", nullable = false)
-    private Double maxVolume;
+    @Column(name = "max_volume", nullable = false, precision = 38, scale = 2)
+    private BigDecimal maxVolume;
 
-    @Column(name = "profit_spread", nullable = false)
-    private Double profitSpread;
+    @Column(name = "profit_spread", nullable = false, precision = 38, scale = 2)
+    private BigDecimal profitSpread;
 
     @ElementCollection(fetch = FetchType.EAGER)
     private List<String> coins;

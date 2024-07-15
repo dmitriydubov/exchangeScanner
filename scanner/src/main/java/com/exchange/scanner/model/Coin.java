@@ -40,10 +40,10 @@ public class Coin {
     @Column(name = "is_block_by_superuser")
     private Boolean isBlockBySuperuser = false;
 
-    @Column(name = "taker_fee", nullable = false, precision = 38, scale = 5)
+    @Column(name = "taker_fee", nullable = false, precision = 38, scale = 4)
     private BigDecimal takerFee = new BigDecimal(0);
 
-    @Column(name = "volume24h", nullable = false, precision = 38, scale = 5)
+    @Column(name = "volume24h", nullable = false, precision = 38, scale = 8)
     private BigDecimal volume24h = new BigDecimal(0);
 
     @Column(name = "deposit_link", nullable = false)
@@ -64,7 +64,7 @@ public class Coin {
     private Set<Chain> chains = new HashSet<>();
 
     @OneToOne(cascade = CascadeType.ALL)
-    @JoinColumn(name = "orders_book", referencedColumnName = "id")
+    @JoinColumn(name = "orders_book_id", referencedColumnName = "id")
     private OrdersBook ordersBook;
 
     @ManyToMany(mappedBy = "coins")

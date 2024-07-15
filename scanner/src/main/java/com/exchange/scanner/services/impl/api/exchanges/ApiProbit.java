@@ -114,7 +114,7 @@ public class ApiProbit implements ApiExchange {
                 if (coin.getName().equals(dtoResponseElement.getId())) {
                     dtoResponseElement.getWithdrawalFee().forEach(chainsDto -> {
                         Chain chain = new Chain();
-                        chain.setName(chainsDto.getCurrencyId());
+                        chain.setName(chainsDto.getCurrencyId().toUpperCase());
                         chain.setCommission(new BigDecimal(chainsDto.getAmount()));
                         chains.add(chain);
                     });

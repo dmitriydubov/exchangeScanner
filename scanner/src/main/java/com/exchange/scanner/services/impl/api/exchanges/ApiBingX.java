@@ -129,8 +129,12 @@ public class ApiBingX implements ApiExchange {
                 Set<Chain> chains = new HashSet<>();
 
                 response.getData().getFirst().getNetworkList().forEach(network -> {
+                    String chainName = network.getNetwork();
+                    if (chainName.equalsIgnoreCase("POLYGON")) {
+                        chainName = "MATIC";
+                    }
                     Chain chain = new Chain();
-                    chain.setName(network.getNetwork());
+                    chain.setName(chainName.toUpperCase());
                     chain.setCommission(new BigDecimal(network.getWithdrawFee()));
                     chains.add(chain);
                 });

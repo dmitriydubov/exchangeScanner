@@ -32,6 +32,8 @@ public class CoinMarketCapServiceImpl implements CoinMarketCapService {
 
     private static final int TIMEOUT = 10000;
 
+    private static final int REQUEST_DELAY_DURATION = 200;
+
     private static final String BASE_URL = "https://pro-api.coinmarketcap.com";
 
     private static final String BASE_COIN_TRADE_URL = "https://coinmarketcap.com/currencies";
@@ -42,6 +44,12 @@ public class CoinMarketCapServiceImpl implements CoinMarketCapService {
 
     @Override
     public Set<CoinInfoDTO> getCoinMarketCapCoinsInfo(Set<Coin> coins, String exchange) {
+        try {
+            Thread.sleep(REQUEST_DELAY_DURATION);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
         Set<CoinInfoDTO> coinInfoDTOSet = new HashSet<>();
 
         String response = getCoinInfo(coins).block();

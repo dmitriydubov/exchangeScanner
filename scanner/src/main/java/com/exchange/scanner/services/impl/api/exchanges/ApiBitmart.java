@@ -48,7 +48,7 @@ public class ApiBitmart implements ApiExchange {
 
     private static final int TIMEOUT = 10000;
 
-    private static final int REQUEST_DELAY_DURATION = 200;
+    private static final int REQUEST_DELAY_DURATION = 400;
 
     private static final int REQUEST_FEE_DELAY_DURATION = 1000;
 
@@ -78,6 +78,12 @@ public class ApiBitmart implements ApiExchange {
                     return ObjectUtils.getCoin(symbol.getBaseCurrency(), NAME, links);
                 })
                 .collect(Collectors.toSet());
+
+        try {
+            Thread.sleep(REQUEST_DELAY_DURATION);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
 
         return coins;
     }
@@ -120,7 +126,7 @@ public class ApiBitmart implements ApiExchange {
             chainsCurrencies.forEach(responseChain -> {
                 if (coin.getName().equals(responseChain.getCurrency())) {
                     Chain chain = new Chain();
-                    chain.setName(responseChain.getCurrency());
+                    chain.setName(responseChain.getCurrency().toUpperCase());
                     chain.setCommission(new BigDecimal(responseChain.getWithdrawMinFee()));
                     chains.add(chain);
                 }
@@ -128,6 +134,12 @@ public class ApiBitmart implements ApiExchange {
             ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
             chainsDTOSet.add(responseDTO);
         });
+
+        try {
+            Thread.sleep(REQUEST_DELAY_DURATION);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
 
         return chainsDTOSet;
     }

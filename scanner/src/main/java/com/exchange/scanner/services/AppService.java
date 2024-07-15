@@ -1,5 +1,8 @@
 package com.exchange.scanner.services;
 
+import com.exchange.scanner.dto.request.UserUpdateMarketData;
+import com.exchange.scanner.dto.response.ExchangeData;
+import com.exchange.scanner.dto.response.SimpleResponse;
 import com.exchange.scanner.dto.response.event.ArbitrageEvent;
 import org.springframework.security.core.userdetails.UserDetails;
 
@@ -9,9 +12,9 @@ import java.util.concurrent.CompletableFuture;
 
 public interface AppService {
 
-    CompletableFuture<Set<String>> getExchanges();
+    CompletableFuture<ExchangeData> getExchanges(UserDetails userDetails);
 
-    CompletableFuture<Set<ArbitrageEvent>> getArbitrageOpportunities(UserDetails userDetails);
+    CompletableFuture<Set<ArbitrageEvent>> getArbitrageEvents(UserDetails userDetails);
 
     void refreshCoins();
 
@@ -24,4 +27,6 @@ public interface AppService {
     void getVolume24h();
 
     void getCoinMarketCapCoinInfo();
+
+    CompletableFuture <ExchangeData> updateUserMarketData(UserUpdateMarketData userData, UserDetails userDetails);
 }

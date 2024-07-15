@@ -3,18 +3,19 @@ package com.exchange.scanner.services.utils.AppUtils;
 import com.exchange.scanner.model.UserMarketSettings;
 import com.exchange.scanner.security.model.User;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 public class UserMarketSettingsBuilder {
 
-    private static final double DEFAULT_MAX_VOLUME = 10_000;
-    private static final double DEFAULT_MIN_VOLUME = 10.0;
-    private static final double DEFAULT_PROFIT_SPREAD = 1.0;
+    private static final BigDecimal DEFAULT_MAX_VOLUME = BigDecimal.valueOf(10_000);
+    private static final BigDecimal DEFAULT_MIN_VOLUME = BigDecimal.valueOf(10.0);
+    private static final BigDecimal DEFAULT_PROFIT_SPREAD = BigDecimal.valueOf(1.0);
 
     public static UserMarketSettings getDefaultUserMarketSettings(User user, List<String> exchangesNames) {
         return UserMarketSettings.builder()
                 .user(user)
-                .coins(List.of("BBL", "SD", "XCHNG", "IRON", "CVTX", "WATER", "COK", "CAS", "GROW", "NEOX", "BTC", "ETC"))
+                .coins(List.of("CWIF", "ORNJ", "WOLF", "DIS", "OFN", "STT", "VLX", "HEGIC"))
                 .marketsBuy(exchangesNames)
                 .marketsSell(exchangesNames)
                 .minVolume(DEFAULT_MIN_VOLUME)

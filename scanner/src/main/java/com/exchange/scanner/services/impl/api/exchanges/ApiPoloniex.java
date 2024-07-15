@@ -110,8 +110,12 @@ public class ApiPoloniex implements ApiExchange {
             if (response != null && !response.isEmpty()) {
                 Set<Chain> chains = new HashSet<>();
                 response.forEach((coinKey, responseValue) -> {
+                    String chainName = responseValue.getBlockchain();
+                    if (chainName.equalsIgnoreCase("MATICPOLY")) {
+                        chainName = "MATIC";
+                    }
                     Chain chain = new Chain();
-                    chain.setName(responseValue.getBlockchain());
+                    chain.setName(chainName.toUpperCase());
                     chain.setCommission(new BigDecimal(responseValue.getWithdrawalFee()));
                     chains.add(chain);
                 });
