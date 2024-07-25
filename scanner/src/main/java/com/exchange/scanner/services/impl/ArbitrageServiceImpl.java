@@ -5,7 +5,6 @@ import com.exchange.scanner.model.Ask;
 import com.exchange.scanner.model.Bid;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.services.ArbitrageService;
-import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -22,11 +21,11 @@ public class ArbitrageServiceImpl implements ArbitrageService {
     public Set<ArbitrageOpportunity> getArbitrageOpportunities(UserTradeEvent userTradeEvent) {
         return userTradeEvent.getBuyTradeEventDTO().stream()
                 .flatMap(buyEvent -> userTradeEvent.getSellTradeEventDTO().stream()
+                        .filter(sellEvent -> !buyEvent.getExchange().equals(sellEvent.getExchange()))
+                        .filter(sellEvent -> buyEvent.getCoin().equals(sellEvent.getCoin()))
                         .filter(sellEvent -> isValidArbitrage(buyEvent, sellEvent))
                         .map(sellEvent -> createPossibleOpportunity(buyEvent, sellEvent)))
-                .filter(asksAndBids -> !asksAndBids.buyEvent().getAsks().isEmpty() &&
-                        !asksAndBids.sellEvent().getBids().isEmpty())
-//                .peek(this::printSpreads)
+                .peek(this::printSpreads)
                 .map(this::checkForArbitrage)
                 .filter(arbitrage -> arbitrage.getTradingData() != null)
                 .collect(Collectors.toSet());
@@ -96,7 +95,7 @@ public class ArbitrageServiceImpl implements ArbitrageService {
             eventData.setChainFee(withdrawFee.toPlainString());
             eventData.setChainName(asksAndBids.buyEvent.getMostProfitableChain().getName());
             eventData.setSlug(asksAndBids.buyEvent.getCoin() + "-" + asksAndBids.buyEvent.getExchange() + "-" + asksAndBids.sellEvent.getExchange());
-            eventData.setIsWarning(asksAndBids.buyEvent.getExchange().equals("XT") || asksAndBids.sellEvent.getExchange().equals("XT"));
+            eventData.setIsWarning(withdrawFee.compareTo(BigDecimal.ZERO) <= 0);
             eventData.setMargin(true);
             Map<String, EventData> tradingData = Collections.singletonMap(arbitrageOpportunity.getCoinName(), eventData);
             arbitrageOpportunity.setTradingData(tradingData);
@@ -105,29 +104,28 @@ public class ArbitrageServiceImpl implements ArbitrageService {
         return arbitrageOpportunity;
     }
 
-    private static @NotNull Trade getTrades(BigDecimal maxUserAmount, List<Order> orders, BigDecimal tradeCommission, BigDecimal withdrawCommission) {
+    private static Trade getTrades(BigDecimal maxUserAmount, List<Order> orders, BigDecimal tradeCommission, BigDecimal withdrawCommission) {
         BigDecimal userPriceLimitAmount = BigDecimal.ZERO;
         BigDecimal totalAmount = BigDecimal.ZERO;
         BigDecimal totalCoinVolume = BigDecimal.ZERO;
-        BigDecimal totalCommissionAmount = BigDecimal.ZERO;
-        BigDecimal totalWithdrawCommission = BigDecimal.ZERO;
+        BigDecimal totalCommissionAmount;
+        BigDecimal totalWithdrawCommission;
 
         for (Order order : orders) {
             BigDecimal currentAmount = order.getPrice().multiply(order.getVolume());
-            BigDecimal currentTradeCommission = currentAmount.multiply(tradeCommission);
             BigDecimal newAmount = userPriceLimitAmount.add(currentAmount);
 
             if (newAmount.compareTo(maxUserAmount) < 0) {
                 userPriceLimitAmount = newAmount;
                 totalAmount = totalAmount.add(currentAmount);
                 totalCoinVolume = totalCoinVolume.add(order.getVolume());
-                totalCommissionAmount = totalCommissionAmount.add(currentTradeCommission);
-                BigDecimal currentWithdrawCommission = currentAmount.multiply(withdrawCommission).multiply(order.getPrice());
-                totalWithdrawCommission = totalWithdrawCommission.add(currentWithdrawCommission);
             } else {
                 break;
             }
         }
+
+        totalCommissionAmount = totalAmount.multiply(tradeCommission);
+        totalWithdrawCommission = withdrawCommission.multiply(orders.getFirst().getPrice());
 
         return new Trade(totalAmount, totalCoinVolume, totalCommissionAmount, totalWithdrawCommission);
     }
@@ -228,13 +226,11 @@ public class ArbitrageServiceImpl implements ArbitrageService {
     }
 
     private boolean isValidArbitrage(UserBuyTradeEventDTO buyEvent, UserSellTradeEventDTO sellEvent) {
-        Set<Chain> askChains = buyEvent.getChains();
-        Set<Chain> bidChains = sellEvent.getChains();
-        boolean validChains = bidChains.stream().map(askChains::contains).findFirst().orElse(false);
+        Set<String> askChains = buyEvent.getChains().stream().map(Chain::getName).collect(Collectors.toSet());
+        Set<String> bidChains = sellEvent.getChains().stream().map(Chain::getName).collect(Collectors.toSet());
+        boolean validChains = bidChains.stream().anyMatch(askChains::contains);
 
-        return !buyEvent.getExchange().equals(sellEvent.getExchange()) &&
-                buyEvent.getCoin().equals(sellEvent.getCoin()) &&
-                !buyEvent.getAsks().isEmpty() && !sellEvent.getBids().isEmpty() &&
+        return !buyEvent.getAsks().isEmpty() && !sellEvent.getBids().isEmpty() &&
                 sellEvent.getBids().getFirst().getPrice().compareTo(buyEvent.getAsks().getFirst().getPrice()) > 0 &&
                 validChains;
     }
@@ -266,22 +262,19 @@ public class ArbitrageServiceImpl implements ArbitrageService {
         return new AsksAndBids(buyEvent, sellEvent);
     }
 
-    private static @NotNull TreeSet<Chain> getPossibleTransactionChains(UserBuyTradeEventDTO buyEvent, UserSellTradeEventDTO sellEvent) {
+    private static TreeSet<Chain> getPossibleTransactionChains(UserBuyTradeEventDTO buyEvent, UserSellTradeEventDTO sellEvent) {
         Set<Chain> askChains = buyEvent.getChains();
         Set<Chain> bidChains = sellEvent.getChains();
         TreeSet<Chain> possibleTransactionChains = new TreeSet<>();
         askChains.forEach(ask -> bidChains.forEach(bid -> {
             if (ask.getName().equalsIgnoreCase(bid.getName())) {
-                ask.setCommission(
-                        ask.getCommission().compareTo(BigDecimal.ZERO) > 0 ? ask.getCommission() : bid.getCommission()
-                );
                 possibleTransactionChains.add(ask);
             }
         }));
         return possibleTransactionChains;
     }
 
-    private static @NotNull Order createOrder(BigDecimal price, BigDecimal tradeVolume, String orderType) {
+    private static Order createOrder(BigDecimal price, BigDecimal tradeVolume, String orderType) {
         Order order = new Order();
         order.setPrice(price.setScale(5, RoundingMode.CEILING));
         order.setVolume(tradeVolume);

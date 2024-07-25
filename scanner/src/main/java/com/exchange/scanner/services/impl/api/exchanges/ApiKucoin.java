@@ -148,6 +148,9 @@ public class ApiKucoin implements ApiExchange {
                        if (dto.getChainName().equals("Lightning Network")) {
                            chainName = "LIGHTNING";
                        }
+                       if (dto.getChainName().equals("BTC")) {
+                           chainName = "BRC20";
+                       }
                        Chain chain = new Chain();
                        chain.setName(chainName);
                        chain.setCommission(new BigDecimal(dto.getWithdrawalMinFee()));

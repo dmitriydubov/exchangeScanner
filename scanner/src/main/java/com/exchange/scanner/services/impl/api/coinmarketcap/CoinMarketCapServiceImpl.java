@@ -43,7 +43,7 @@ public class CoinMarketCapServiceImpl implements CoinMarketCapService {
     }
 
     @Override
-    public Set<CoinInfoDTO> getCoinMarketCapCoinsInfo(Set<Coin> coins, String exchange) {
+    public Set<CoinInfoDTO> getCoinMarketCapCoinsInfo(Set<String> coins) {
         try {
             Thread.sleep(REQUEST_DELAY_DURATION);
         } catch (InterruptedException e) {
@@ -60,9 +60,8 @@ public class CoinMarketCapServiceImpl implements CoinMarketCapService {
             CoinMarketCapCurrencyResponse dataResponse = objectMapper.readValue(response, CoinMarketCapCurrencyResponse.class);
             coins.forEach(coin -> {
                 dataResponse.getData().forEach((key, value) ->{
-                    if (coin.getName().equals(key)) {
+                    if (coin.equals(key)) {
                         CoinInfoDTO coinInfoDTO = new CoinInfoDTO();
-                        coinInfoDTO.setExchange(exchange);
                         coinInfoDTO.setCoin(coin);
                         coinInfoDTO.setCoinMarketCapLink(BASE_COIN_TRADE_URL);
                         coinInfoDTO.setSlug(value.getFirst().getSlug());
@@ -78,7 +77,7 @@ public class CoinMarketCapServiceImpl implements CoinMarketCapService {
         return coinInfoDTOSet;
     }
 
-    private Mono<String> getCoinInfo(Set<Coin> coins) {
+    private Mono<String> getCoinInfo(Set<String> coins) {
         String symbolParams = generateSymbolsParameters(coins);
 
         return webClient
@@ -105,11 +104,11 @@ public class CoinMarketCapServiceImpl implements CoinMarketCapService {
                 });
     }
 
-    private static String generateSymbolsParameters(Set<Coin> coins) {
+    private static String generateSymbolsParameters(Set<String> coins) {
         if (coins.isEmpty()) return "";
         String parameters;
         StringBuilder sb = new StringBuilder();
-        coins.forEach(coin -> sb.append(coin.getName()).append(","));
+        coins.forEach(coin -> sb.append(coin).append(","));
         sb.deleteCharAt(sb.length() - 1);
         parameters = sb.toString();
 

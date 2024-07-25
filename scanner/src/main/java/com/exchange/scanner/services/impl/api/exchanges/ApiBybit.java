@@ -109,8 +109,12 @@ public class ApiBybit implements ApiExchange {
             if (response != null && response.getResult() != null) {
                 Set<Chain> chains = new HashSet<>();
                 response.getResult().getRows().getFirst().getChains().forEach(chainResponse -> {
+                    String chainName = chainResponse.getChain().toUpperCase();
+                    if (chainName.equalsIgnoreCase("ETH")) {
+                        chainName = "ERC20";
+                    }
                     Chain chain = new Chain();
-                    chain.setName(chainResponse.getChain().toUpperCase());
+                    chain.setName(chainName);
                     chain.setCommission(new BigDecimal(chainResponse.getWithdrawFee()));
                     chains.add(chain);
                 });

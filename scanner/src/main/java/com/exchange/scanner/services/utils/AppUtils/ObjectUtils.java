@@ -6,7 +6,6 @@ import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
-import org.jetbrains.annotations.NotNull;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -45,7 +44,7 @@ public class ObjectUtils {
         return responseDTO;
     }
 
-    public static @NotNull TradingFeeResponseDTO getTradingFeeResponseDTO(String exchangeName, Coin coin, String commission) {
+    public static TradingFeeResponseDTO getTradingFeeResponseDTO(String exchangeName, Coin coin, String commission) {
         TradingFeeResponseDTO responseDTO = new TradingFeeResponseDTO();
         responseDTO.setExchange(exchangeName);
         responseDTO.setCoin(coin);
@@ -53,7 +52,7 @@ public class ObjectUtils {
         return responseDTO;
     }
 
-    public static @NotNull Volume24HResponseDTO getVolume24HResponseDTO(String exchange, Coin coin, String volume24H) {
+    public static Volume24HResponseDTO getVolume24HResponseDTO(String exchange, Coin coin, String volume24H) {
         Volume24HResponseDTO responseDTO = new Volume24HResponseDTO();
         responseDTO.setExchange(exchange);
         responseDTO.setCoin(coin);

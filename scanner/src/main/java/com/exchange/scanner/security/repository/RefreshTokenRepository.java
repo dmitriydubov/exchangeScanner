@@ -1,6 +1,7 @@
 package com.exchange.scanner.security.repository;
 
 import com.exchange.scanner.security.model.RefreshToken;
+import org.springframework.data.keyvalue.repository.KeyValueRepository;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.stereotype.Repository;
 

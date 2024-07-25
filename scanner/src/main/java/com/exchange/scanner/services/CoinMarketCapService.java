@@ -7,5 +7,5 @@ import java.util.Set;
 
 public interface CoinMarketCapService {
 
-    Set<CoinInfoDTO> getCoinMarketCapCoinsInfo(Set<Coin> coins, String exchange);
+    Set<CoinInfoDTO> getCoinMarketCapCoinsInfo(Set<String> coins);
 }

@@ -6,7 +6,6 @@ import com.exchange.scanner.repositories.CoinRepository;
 import com.exchange.scanner.repositories.ExchangeRepository;
 import com.exchange.scanner.repositories.OrdersBookRepository;
 import lombok.extern.slf4j.Slf4j;
-import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.HashSet;
@@ -84,7 +83,7 @@ public class ArbitrageUtils {
                 .collect(Collectors.toSet());
     }
 
-    private static @NotNull <T extends TradeEventDTO> T getUserTradeEventDTO(
+    private static <T extends TradeEventDTO> T getUserTradeEventDTO(
             Exchange exchange,
             Coin coin,
             CoinRepository coinRepository,

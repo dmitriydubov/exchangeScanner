@@ -18,8 +18,6 @@ import com.exchange.scanner.services.CoinMarketCapService;
 import com.exchange.scanner.services.utils.AppUtils.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.jetbrains.annotations.NotNull;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -68,8 +66,20 @@ public class AppServiceImpl implements AppService {
 
     private static final int SCHEDULED_RATE_TIME_FOR_GET_COIN_INFO = 1000 * 60 * 60 * 24;
 
+    private static final int SCHEDULED_DELAY_TIME_FOR_REFRESH_COINS = 1000000000;
+
+    private static final int SCHEDULED_DELAY_TIME_FOR_GET_CHAINS = 1000000000;
+
+    private static final int SCHEDULED_DELAY_TIME_FOR_GET_TRADING_FEE = 1000000000;
+
+    private static final int SCHEDULED_DELAY_TIME_FOR_GET_COIN_VOLUME24H = 1000000000;
+
+    private static final int SCHEDULED_DELAY_TIME_FOR_GET_ORDERS_BOOK = 1000000000;
+
+    private static final int SCHEDULED_DELAY_TIME_FOR_GET_COIN_INFO = 1000000000;
+
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_REFRESH_COINS)
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_REFRESH_COINS, initialDelay = SCHEDULED_DELAY_TIME_FOR_REFRESH_COINS)
     public void refreshCoins() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи refreshCoins", Thread.currentThread().getName());
@@ -87,7 +97,7 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_CHAINS)
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_CHAINS, initialDelay = SCHEDULED_DELAY_TIME_FOR_GET_CHAINS)
     public void getCoinsChains() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи getCoinsChains", Thread.currentThread().getName());
@@ -108,7 +118,7 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_TRADING_FEE)
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_TRADING_FEE, initialDelay = SCHEDULED_DELAY_TIME_FOR_GET_TRADING_FEE)
     public void getTradingFee() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи getTradingFee", Thread.currentThread().getName());
@@ -128,7 +138,7 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H)
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H, initialDelay = SCHEDULED_DELAY_TIME_FOR_GET_COIN_VOLUME24H)
     public void getVolume24h() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи getVolume24h", Thread.currentThread().getName());
@@ -148,7 +158,7 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_INFO)
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_INFO, initialDelay = SCHEDULED_DELAY_TIME_FOR_GET_COIN_INFO)
     public void getCoinMarketCapCoinInfo() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи getCoinMarketCapCoinInfo", Thread.currentThread().getName());
@@ -160,9 +170,12 @@ public class AppServiceImpl implements AppService {
                 userMarketSettingsRepository);
 
         response.forEach(coinResponse -> {
-            Coin coin = coinResponse.getCoin();
-            coin.setCoinMarketCapLink(coinResponse.getCoinMarketCapLink() + "/" + coinResponse.getSlug() + "/");
-            coin.setLogoLink(coinResponse.getLogoLink());
+            List<Coin> coins = coinRepository.findByName(coinResponse.getCoin());
+            coins.forEach(coin -> {
+                coin.setCoinMarketCapLink(coinResponse.getCoinMarketCapLink() + "/" + coinResponse.getSlug() + "/");
+                coin.setLogoLink(coinResponse.getLogoLink());
+            });
+            coinRepository.saveAll(coins);
         });
 
         long end = System.currentTimeMillis() - start;
@@ -170,10 +183,10 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_ORDERS_BOOK)
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_ORDERS_BOOK, initialDelay = SCHEDULED_DELAY_TIME_FOR_GET_ORDERS_BOOK)
     public void getOrderBooks() {
-        long start = System.currentTimeMillis();
-        log.info("{} приступил к выполнению задачи getOrderBooks", Thread.currentThread().getName());
+//        long start = System.currentTimeMillis();
+//        log.info("{} приступил к выполнению задачи getOrderBooks", Thread.currentThread().getName());
 
         ordersBookRepository.deleteAll();
 
@@ -192,8 +205,8 @@ public class AppServiceImpl implements AppService {
         });
 
 
-        long end = System.currentTimeMillis() - start;
-        log.info("Операция обновления стакана цен выполнена. Время выполнения: {}s", end / 1000);
+//        long end = System.currentTimeMillis() - start;
+//        log.info("Операция обновления стакана цен выполнена. Время выполнения: {}s", end / 1000);
     }
 
     protected void updateCoins(Map<String, Set<Coin>> coinsMap) {
@@ -269,7 +282,7 @@ public class AppServiceImpl implements AppService {
         });
     }
 
-    private @NotNull ExchangeData getExchangeData(UserMarketSettings userMarketSettings) {
+    private ExchangeData getExchangeData(UserMarketSettings userMarketSettings) {
         Set<Exchange> exchanges = new HashSet<>(exchangeRepository.findAll());
         ExchangeData exchangeData = new ExchangeData();
         Set<String> exchangesNames = exchanges.stream().map(Exchange::getName).collect(Collectors.toSet());

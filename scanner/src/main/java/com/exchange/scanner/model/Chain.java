@@ -3,7 +3,6 @@ package com.exchange.scanner.model;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import org.jetbrains.annotations.NotNull;
 
 import java.math.BigDecimal;
 import java.util.HashSet;
@@ -42,7 +41,7 @@ public class Chain implements Comparable<Chain> {
     }
 
     @Override
-    public int compareTo(@NotNull Chain o) {
+    public int compareTo(Chain o) {
         return this.commission.compareTo(o.commission);
     }
 }

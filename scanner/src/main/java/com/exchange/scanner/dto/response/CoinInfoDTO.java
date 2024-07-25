@@ -1,6 +1,5 @@
 package com.exchange.scanner.dto.response;
 
-import com.exchange.scanner.model.Coin;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -8,9 +7,7 @@ import lombok.Setter;
 @Setter
 public class CoinInfoDTO {
 
-    private String exchange;
-
-    private Coin coin;
+    private String coin;
 
     private String slug;
 

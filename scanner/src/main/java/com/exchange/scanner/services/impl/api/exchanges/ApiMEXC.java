@@ -119,8 +119,12 @@ public class ApiMEXC implements ApiExchange {
                 if (coin.getName().equals(data.getCoin())) {
                     data.getNetworkList()
                         .forEach(networkList -> {
+                            String chainName = networkList.getNetWork();
+                            if (chainName.equalsIgnoreCase("ETH")) {
+                                chainName = "ERC20";
+                            }
                             Chain chain = new Chain();
-                            chain.setName(networkList.getNetWork());
+                            chain.setName(chainName);
                             chain.setCommission(new BigDecimal(networkList.getWithdrawFee()));
                             chains.add(chain);
                         });

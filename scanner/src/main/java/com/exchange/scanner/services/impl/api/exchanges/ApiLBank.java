@@ -108,6 +108,9 @@ public class ApiLBank implements ApiExchange {
                         if (chainName.equalsIgnoreCase("BEP20(BSC)")) {
                             chainName = "BEP20";
                         }
+                        if (chainName.equalsIgnoreCase("SOLANA")) {
+                            chainName = "SOL";
+                        }
                         Chain chain = new Chain();
                         chain.setName(chainName.toUpperCase());
                         if (data.getFee() != null) {

@@ -15,7 +15,7 @@ public class UserMarketSettingsBuilder {
     public static UserMarketSettings getDefaultUserMarketSettings(User user, List<String> exchangesNames) {
         return UserMarketSettings.builder()
                 .user(user)
-                .coins(List.of("CWIF", "ORNJ", "WOLF", "DIS", "OFN", "STT", "VLX", "HEGIC"))
+                .coins(List.of("C98"))
                 .marketsBuy(exchangesNames)
                 .marketsSell(exchangesNames)
                 .minVolume(DEFAULT_MIN_VOLUME)

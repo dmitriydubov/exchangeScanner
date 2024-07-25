@@ -149,8 +149,12 @@ public class ApiGateIO implements ApiExchange {
                 return Flux.empty();
             })
             .map(chainDTO -> {
+                String chainName = chainDTO.getChain().toUpperCase();
+                if (chainName.equalsIgnoreCase("BTC")) {
+                    chainName = "BRC20";
+                }
                 Chain chain = new Chain();
-                chain.setName(chainDTO.getChain().toUpperCase());
+                chain.setName(chainName);
                 chain.setCommission(new BigDecimal("0"));
                 return chain;
             });

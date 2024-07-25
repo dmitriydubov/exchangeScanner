@@ -2,7 +2,6 @@ package com.exchange.scanner.dto.response.exchangedata.depth.coindepth;
 
 import lombok.Getter;
 import lombok.Setter;
-import org.jetbrains.annotations.NotNull;
 
 import java.math.BigDecimal;
 
@@ -15,7 +14,7 @@ public class CoinDepthAsk implements Comparable<CoinDepthAsk> {
     private BigDecimal volume;
 
     @Override
-    public int compareTo(@NotNull CoinDepthAsk ask) {
+    public int compareTo(CoinDepthAsk ask) {
         return price.compareTo(ask.price);
     }
 }

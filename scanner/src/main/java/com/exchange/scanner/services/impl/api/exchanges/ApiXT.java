@@ -134,10 +134,16 @@ public class ApiXT implements ApiExchange {
                                 chainName = "BSC";
                             }
                             if (chainName.equalsIgnoreCase("ETHEREUM")) {
-                                chainName = "ETH";
+                                chainName = "ERC20";
+                            }
+                            if (chainName.equalsIgnoreCase("ETH")) {
+                                chainName = "ERC20";
                             }
                             if (chainName.equalsIgnoreCase("POLYGON")) {
                                 chainName = "MATIC";
+                            }
+                            if (chainName.equalsIgnoreCase("BTC_BRC20")) {
+                                chainName = "BRC20";
                             }
 
                             Chain chain = new Chain();
