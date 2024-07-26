@@ -5,6 +5,7 @@ import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.bybit.chains.BybitChainsResponse;
+import com.exchange.scanner.dto.response.exchangedata.bybit.chains.BybitChainsRows;
 import com.exchange.scanner.dto.response.exchangedata.bybit.depth.BybitCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.bybit.coins.BybitCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.bybit.tickervolume.BybitCoinTickerVolume;
@@ -13,6 +14,7 @@ import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.CoinChainUtils;
 import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
 import com.exchange.scanner.services.utils.Bybit.BybitCoinDepthBuilder;
 import com.exchange.scanner.services.utils.Bybit.BybitSignatureBuilder;
@@ -70,7 +72,7 @@ public class ApiBybit implements ApiExchange {
                     links.setDepositLink(exchange.getDepositLink());
                     links.setWithdrawLink(exchange.getWithdrawLink());
                     links.setTradeLink(exchange.getTradeLink() + symbol.getBaseCoin().toUpperCase() + "/USDT/");
-                    return ObjectUtils.getCoin(symbol.getBaseCoin(), NAME, links);
+                    return ObjectUtils.getCoin(symbol.getBaseCoin(), NAME, links, false);
                 })
                 .collect(Collectors.toSet());
 
@@ -102,48 +104,48 @@ public class ApiBybit implements ApiExchange {
     @Override
     public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
         Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
+        BybitChainsResponse response = getChains().block();
+        if (response == null || response.getResult() == null) return chainsDTOSet;
+        List<String> coinsNames = coins.stream().map(Coin::getName).toList();
+        List<BybitChainsRows> chainsRows = response.getResult().getRows().stream()
+                .filter(row -> coinsNames.contains(row.getCoin()))
+                .filter(row -> row.getChains().stream()
+                        .allMatch(chain -> chain.getChainDeposit().equals("1") && chain.getChainWithdraw().equals("1"))
+                )
+                .toList();
 
         coins.forEach(coin -> {
-            BybitChainsResponse response = getChains(coin).block();
+            Set<Chain> chains = new HashSet<>();
 
-            if (response != null && response.getResult() != null) {
-                Set<Chain> chains = new HashSet<>();
-                response.getResult().getRows().getFirst().getChains().forEach(chainResponse -> {
-                    String chainName = chainResponse.getChain().toUpperCase();
-                    if (chainName.equalsIgnoreCase("ETH")) {
-                        chainName = "ERC20";
-                    }
-                    Chain chain = new Chain();
-                    chain.setName(chainName);
-                    chain.setCommission(new BigDecimal(chainResponse.getWithdrawFee()));
-                    chains.add(chain);
-                });
-                ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
-                chainsDTOSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
+            chainsRows.forEach(chainRow -> {
+                if (chainRow.getCoin().equalsIgnoreCase(coin.getName())) {
+                    chainRow.getChains().forEach(chainResponse -> {
+                        String chainName = CoinChainUtils.unifyChainName(chainResponse.getChain().toUpperCase());
+                        Chain chain = new Chain();
+                        chain.setName(chainName);
+                        chain.setCommission(new BigDecimal(chainResponse.getWithdrawFee()));
+                        chain.setMinConfirm(Integer.valueOf(chainResponse.getConfirmation()));
+                        chains.add(chain);
+                    });
+                }
+            });
+            ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
+            chainsDTOSet.add(responseDTO);
         });
 
         return chainsDTOSet;
     }
 
-    private Mono<BybitChainsResponse> getChains(Coin coin) {
+    private Mono<BybitChainsResponse> getChains() {
         String timestamp = Long.toString(ZonedDateTime.now().toInstant().toEpochMilli());
         String recv = "5000";
-        String paramStr = "coin=" + coin.getName();
-        String stringToSign = timestamp + key + recv + paramStr;
+        String stringToSign = timestamp + key + recv;
         String sign = BybitSignatureBuilder.generateBybitSignature(stringToSign, secret);
 
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
                     .path("/v5/asset/coin/query-info")
-                    .queryParam("coin", coin.getName())
                     .build()
             )
             .header("X-BAPI-SIGN", sign)

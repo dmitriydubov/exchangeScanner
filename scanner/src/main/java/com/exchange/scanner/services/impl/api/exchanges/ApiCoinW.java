@@ -13,6 +13,7 @@ import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.CoinChainUtils;
 import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
 import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.CoinW.CoinWCoinDepthBuilder;
@@ -59,7 +60,7 @@ public class ApiCoinW implements ApiExchange {
                     links.setDepositLink(exchange.getDepositLink());
                     links.setWithdrawLink(exchange.getWithdrawLink());
                     links.setTradeLink(exchange.getTradeLink() + currency.getCurrencyBase().toUpperCase() + "USDT");
-                    return ObjectUtils.getCoin(currency.getCurrencyBase(), NAME, links);
+                    return ObjectUtils.getCoin(currency.getCurrencyBase(), NAME, links, false);
                 })
                 .collect(Collectors.toSet());
 
@@ -99,14 +100,19 @@ public class ApiCoinW implements ApiExchange {
             Set<Chain> chains = new HashSet<>();
 
             response.getData().forEach((symbol, chainResponse) -> {
-                if (coin.getName().equals(symbol)) {
+                if (coin.getName().equals(symbol) &&
+                        !chainResponse.getChain().equals("1") &&
+                        chainResponse.getRecharge().equals("1") &&
+                        chainResponse.getWithDraw().equals("1")
+                ) {
                     String chainName = chainResponse.getChain();
                     if (chainName.endsWith("@BSC")) {
                         chainName = chainName.substring(0, chainName.length() - "@BSC".length());
                     }
                     Chain chain = new Chain();
-                    chain.setName(chainName.toUpperCase());
+                    chain.setName(CoinChainUtils.unifyChainName(chainName.toUpperCase()));
                     chain.setCommission(new BigDecimal(chainResponse.getTxFee()));
+                    chain.setMinConfirm(0);
                     chains.add(chain);
                 }
             });

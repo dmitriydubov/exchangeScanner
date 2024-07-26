@@ -96,7 +96,7 @@ public class ArbitrageServiceImpl implements ArbitrageService {
             eventData.setChainName(asksAndBids.buyEvent.getMostProfitableChain().getName());
             eventData.setSlug(asksAndBids.buyEvent.getCoin() + "-" + asksAndBids.buyEvent.getExchange() + "-" + asksAndBids.sellEvent.getExchange());
             eventData.setIsWarning(withdrawFee.compareTo(BigDecimal.ZERO) <= 0);
-            eventData.setMargin(true);
+            eventData.setMargin(asksAndBids.sellEvent.getIsMargin());
             Map<String, EventData> tradingData = Collections.singletonMap(arbitrageOpportunity.getCoinName(), eventData);
             arbitrageOpportunity.setTradingData(tradingData);
         }

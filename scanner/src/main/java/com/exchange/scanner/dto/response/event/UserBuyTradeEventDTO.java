@@ -48,6 +48,8 @@ public class UserBuyTradeEventDTO implements TradeEventDTO {
 
     private BigDecimal totalTradeVolume;
 
+    private Boolean isMargin;
+
     @Override
     public void setBids(TreeSet<Bid> bids) {
         this.bids = null;

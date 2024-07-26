@@ -14,4 +14,6 @@ public class NetworkList {
     private Boolean depositEnable;
 
     private String withdrawFee;
+
+    private Integer minConfirm;
 }

@@ -14,6 +14,7 @@ import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.CoinChainUtils;
 import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
 import com.exchange.scanner.services.utils.Bitmart.BitmartCoinDepthBuilder;
 import com.exchange.scanner.services.utils.Bitmart.BitmartSignatureBuilder;
@@ -75,7 +76,7 @@ public class ApiBitmart implements ApiExchange {
                     links.setDepositLink(exchange.getDepositLink());
                     links.setWithdrawLink(exchange.getWithdrawLink());
                     links.setTradeLink(exchange.getTradeLink() + symbol.getBaseCurrency().toUpperCase() + "_USDT");
-                    return ObjectUtils.getCoin(symbol.getBaseCurrency(), NAME, links);
+                    return ObjectUtils.getCoin(symbol.getBaseCurrency(), NAME, links, false);
                 })
                 .collect(Collectors.toSet());
 
@@ -118,16 +119,21 @@ public class ApiBitmart implements ApiExchange {
         if (response == null || response.getData() == null) return chainsDTOSet;
         Set<String> coinsNames = coins.stream().map(Coin::getName).collect(Collectors.toSet());
         List<BitmartChainsCurrencies> chainsCurrencies = response.getData().getCurrencies().stream()
-                .filter(chainResponse -> coinsNames.contains(chainResponse.getCurrency()))
+                .filter(chainResponse -> coinsNames.contains(chainResponse.getCurrency()) &&
+                        chainResponse.getDepositEnabled() &&
+                        chainResponse.getWithdrawEnabled()
+                )
                 .toList();
 
         coins.forEach(coin -> {
             Set<Chain> chains = new HashSet<>();
             chainsCurrencies.forEach(responseChain -> {
                 if (coin.getName().equals(responseChain.getCurrency())) {
+                    String chainName = CoinChainUtils.unifyChainName(responseChain.getNetwork().toUpperCase());
                     Chain chain = new Chain();
-                    chain.setName(responseChain.getCurrency().toUpperCase());
+                    chain.setName(chainName);
                     chain.setCommission(new BigDecimal(responseChain.getWithdrawMinFee()));
+                    chain.setMinConfirm(0);
                     chains.add(chain);
                 }
             });

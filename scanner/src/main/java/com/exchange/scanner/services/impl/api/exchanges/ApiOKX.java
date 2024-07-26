@@ -15,12 +15,9 @@ import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
-import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
-import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
-import com.exchange.scanner.services.utils.AppUtils.ListUtils;
+import com.exchange.scanner.services.utils.AppUtils.*;
 import com.exchange.scanner.services.utils.OKX.OKXDepthBuilder;
 import com.exchange.scanner.services.utils.OKX.OKXSignatureBuilder;
-import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -77,7 +74,7 @@ public class ApiOKX implements ApiExchange {
                     links.setDepositLink(exchange.getDepositLink());
                     links.setWithdrawLink(exchange.getWithdrawLink());
                     links.setTradeLink(exchange.getTradeLink() + symbol.getBaseCcy().toLowerCase() + "-usdt");
-                    return ObjectUtils.getCoin(symbol.getBaseCcy(), NAME, links);
+                    return ObjectUtils.getCoin(symbol.getBaseCcy(), NAME, links, false);
                 })
                 .collect(Collectors.toSet());
 
@@ -110,24 +107,23 @@ public class ApiOKX implements ApiExchange {
     @Override
     public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
         Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
-        OKXChainsResponse response = getChains(coins).blockLast();
+        OKXChainsResponse response = getChains().block();
 
         if (response == null || response.getData() == null) return chainsDTOSet;
         Set<String> coinsNames = coins.stream().map(Coin::getName).collect(Collectors.toSet());
         List<OKXChainData> okxChainData = response.getData().stream()
-                .filter(data -> coinsNames.contains(data.getCcy()))
-                        .toList();
+                .filter(data -> coinsNames.contains(data.getCcy()) && data.getCanWd() && data.getCanDep())
+                .toList();
+
         coins.forEach(coin -> {
             Set<Chain> chains = new HashSet<>();
             okxChainData.forEach(chainResponse -> {
                if (coin.getName().equals(chainResponse.getCcy())) {
-                   String chainName = chainResponse.getChain().replaceAll("-.*", "");
-                   if (chainResponse.getChain().equals("BTC-Lightning")) {
-                       chainName = "LIGHTNING";
-                   }
+                   String chainName = CoinChainUtils.unifyChainName(chainResponse.getChain().replaceAll("-.*", ""));
                    Chain chain = new Chain();
                    chain.setName(chainName);
                    chain.setCommission(new BigDecimal(chainResponse.getMaxFee()));
+                   chain.setMinConfirm(Integer.valueOf(chainResponse.getMinWdUnlockConfirm()));
                    chains.add(chain);
                }
             });
@@ -138,41 +134,33 @@ public class ApiOKX implements ApiExchange {
         return chainsDTOSet;
     }
 
-    private Flux<OKXChainsResponse> getChains(Set<Coin> coins) {
-        int maxSymbolRequestSize= 20;
-        List<List<Coin>> partitions = ListUtils.partition(new ArrayList<>(coins), maxSymbolRequestSize);
-
-        return Flux.fromIterable(partitions)
-            .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
-            .flatMap(partition -> {
-                String requestPath = "/api/v5/asset/currencies";
-                OKXSignatureBuilder signatureBuilder = new OKXSignatureBuilder(secret);
-                signatureBuilder.createSignature("GET", requestPath, Collections.singletonMap("ccy", generateSymbolsParameters(partition)));
-                return webClient
-                    .get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path(requestPath)
-                            .queryParam("ccy", generateSymbolsParameters(partition))
-                            .build()
-                    )
-                    .header("OK-ACCESS-KEY", key)
-                    .header("OK-ACCESS-SIGN", signatureBuilder.getSignature())
-                    .header("OK-ACCESS-TIMESTAMP", signatureBuilder.getTimestamp())
-                    .header("OK-ACCESS-PASSPHRASE", passphrase)
-                    .retrieve()
-                    .onStatus(
-                            status -> status.is4xxClientError() || status.is5xxServerError(),
-                            response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                                log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
-                                return Mono.empty();
-                            })
-                    )
-                    .bodyToFlux(OKXChainsResponse.class)
-                    .onErrorResume(error -> {
-                        LogsUtils.createErrorResumeLogs(error, NAME);
-                        return Flux.empty();
-                    });
-            });
+    private Mono<OKXChainsResponse> getChains() {
+        String requestPath = "/api/v5/asset/currencies";
+        OKXSignatureBuilder signatureBuilder = new OKXSignatureBuilder(secret);
+        signatureBuilder.createSignature("GET", requestPath, new HashMap<>());
+        return webClient
+                .get()
+                .uri(uriBuilder -> uriBuilder
+                        .path(requestPath)
+                        .build()
+                )
+                .header("OK-ACCESS-KEY", key)
+                .header("OK-ACCESS-SIGN", signatureBuilder.getSignature())
+                .header("OK-ACCESS-TIMESTAMP", signatureBuilder.getTimestamp())
+                .header("OK-ACCESS-PASSPHRASE", passphrase)
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                            log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
+                            return Mono.empty();
+                        })
+                )
+                .bodyToMono(OKXChainsResponse.class)
+                .onErrorResume(error -> {
+                    LogsUtils.createErrorResumeLogs(error, NAME);
+                    return Mono.empty();
+                });
     }
 
     @Override

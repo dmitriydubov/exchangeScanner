@@ -4,6 +4,7 @@ import com.exchange.scanner.dto.response.ChainResponseDTO;
 import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
+import com.exchange.scanner.dto.response.exchangedata.huobi.chains.HuobiChainsData;
 import com.exchange.scanner.dto.response.exchangedata.huobi.chains.HuobiChainsResponse;
 import com.exchange.scanner.dto.response.exchangedata.huobi.depth.HuobiCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.huobi.coins.HuobiCurrencyResponse;
@@ -14,10 +15,7 @@ import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
-import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
-import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
-import com.exchange.scanner.services.utils.AppUtils.ListUtils;
-import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
+import com.exchange.scanner.services.utils.AppUtils.*;
 import com.exchange.scanner.services.utils.Huobi.HuobiCoinDepthBuilder;
 import com.huobi.client.TradeClient;
 import com.huobi.client.req.trade.FeeRateRequest;
@@ -75,7 +73,7 @@ public class ApiHuobi implements ApiExchange {
                     links.setDepositLink(exchange.getDepositLink() + symbol.getBcdn().toLowerCase());
                     links.setWithdrawLink(exchange.getWithdrawLink() + symbol.getBcdn().toLowerCase());
                     links.setTradeLink(exchange.getTradeLink() + symbol.getBcdn().toLowerCase() + "_usdt" + "?type=spot");
-                    return ObjectUtils.getCoin(symbol.getBcdn(), NAME, links);
+                    return ObjectUtils.getCoin(symbol.getBcdn(), NAME, links, false);
                 })
                 .collect(Collectors.toSet());
 
@@ -107,42 +105,48 @@ public class ApiHuobi implements ApiExchange {
     @Override
     public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
         Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
+        HuobiChainsResponse response = getChains().block();
+        if (response == null || response.getData() == null) return chainsDTOSet;
+        List<String> coinsNames = coins.stream().map(Coin::getName).toList();
+        List<HuobiChainsData> chainsData = response.getData().stream()
+                .filter(data -> coinsNames.contains(data.getCurrency().toUpperCase()))
+                .filter(data -> data.getChains().stream()
+                        .allMatch(chain -> chain.getDepositStatus().equals("allowed") &&
+                                chain.getWithdrawStatus().equals("allowed"))
+                )
+                .toList();
 
         coins.forEach(coin -> {
-            HuobiChainsResponse response = getChains(coin).block();
+            Set<Chain> chains = new HashSet<>();
+            chainsData.forEach(data -> {
+                if (data.getCurrency().equalsIgnoreCase(coin.getName())) {
+                    data.getChains().forEach(chainResponse -> {
+                        String chainName = CoinChainUtils.unifyChainName(chainResponse.getDisplayName());
+                        Chain chain = new Chain();
+                        chain.setName(chainName.toUpperCase());
+                        if (chainResponse.getTransactFeeWithdraw() == null) {
+                            chain.setCommission(new BigDecimal(chainResponse.getTransactFeeRateWithdraw()));
+                        } else {
+                            chain.setCommission(new BigDecimal(chainResponse.getTransactFeeWithdraw()));
+                        }
+                        chain.setMinConfirm(chainResponse.getNumOfConfirmations());
+                        chains.add(chain);
+                    });
+                }
+            });
 
-            if (response != null && response.getData() != null) {
-                Set<Chain> chains = new HashSet<>();
-                response.getData().getFirst().getChains().forEach(chainResponse -> {
-                    String chainName = chainResponse.getDisplayName();
-                    if (chainName.equalsIgnoreCase("PRC20")) {
-                        chainName = "MATIC";
-                    }
-                    Chain chain = new Chain();
-                    chain.setName(chainName.toUpperCase());
-                    chain.setCommission(new BigDecimal(chainResponse.getTransactFeeWithdraw()));
-                    chains.add(chain);
-                });
-                ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
-                chainsDTOSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
+            ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
+            chainsDTOSet.add(responseDTO);
         });
 
         return chainsDTOSet;
     }
 
-    private Mono<HuobiChainsResponse> getChains(Coin coin) {
+    private Mono<HuobiChainsResponse> getChains() {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
                     .path("/v2/reference/currencies")
-                    .queryParam("currency", coin.getName().toLowerCase())
                     .build()
             )
             .retrieve()

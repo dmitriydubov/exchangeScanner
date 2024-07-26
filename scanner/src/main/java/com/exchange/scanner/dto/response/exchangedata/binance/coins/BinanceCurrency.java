@@ -14,4 +14,6 @@ public class BinanceCurrency {
     private String quoteAsset;
 
     private Boolean isSpotTradingAllowed;
+
+    private Boolean isMarginTradingAllowed;
 }

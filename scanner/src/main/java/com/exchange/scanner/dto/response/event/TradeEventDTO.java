@@ -42,4 +42,6 @@ public interface TradeEventDTO {
     void setMostProfitableChain(Chain mostProfitableChain);
 
     void setTotalTradeVolume(BigDecimal totalTradeVolume);
+
+    void setIsMargin(Boolean isMargin);
 }

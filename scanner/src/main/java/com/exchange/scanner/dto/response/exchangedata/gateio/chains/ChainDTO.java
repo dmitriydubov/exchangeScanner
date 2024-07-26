@@ -8,14 +8,13 @@ import lombok.Setter;
 @Setter
 public class ChainDTO {
 
+    private String currency;
+
     private String chain;
 
-    @JsonProperty("is_disabled")
-    private Integer isDisabled;
+    @JsonProperty("withdraw_disabled")
+    private Boolean withdrawDisabled;
 
-    @JsonProperty("is_deposit_disabled")
-    private Integer isDepositDisabled;
-
-    @JsonProperty("is_withdraw_disabled")
-    private Integer isWithdrawDisabled;
+    @JsonProperty("deposit_disabled")
+    private Boolean depositDisabled;
 }

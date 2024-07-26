@@ -5,7 +5,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class Chain {
+public class BitgetChain {
 
     private String chain;
 
@@ -14,4 +14,6 @@ public class Chain {
     private String rechargeable;
 
     private String withdrawFee;
+
+    private String withdrawConfirm;
 }

@@ -11,14 +11,12 @@ import com.exchange.scanner.dto.response.exchangedata.binance.tickervolume.Binan
 import com.exchange.scanner.dto.response.exchangedata.binance.coins.BinanceCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.binance.tradingfee.BinanceTradingFeeResponse;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.mexc.chains.NetworkList;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
-import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
+import com.exchange.scanner.services.utils.AppUtils.*;
 import com.exchange.scanner.services.utils.Binance.BinanceCoinDepthBuilder;
-import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
-import com.exchange.scanner.services.utils.AppUtils.ListUtils;
-import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 import com.exchange.scanner.services.utils.Binance.BinanceSignatureBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -74,7 +72,7 @@ public class ApiBinance implements ApiExchange {
                     links.setDepositLink(exchange.getDepositLink() + symbol.getBaseAsset().toUpperCase());
                     links.setWithdrawLink(exchange.getWithdrawLink() + symbol.getBaseAsset().toUpperCase());
                     links.setTradeLink(exchange.getTradeLink() + symbol.getBaseAsset().toUpperCase() + "_USDT");
-                    return ObjectUtils.getCoin(symbol.getBaseAsset(), NAME, links);
+                    return ObjectUtils.getCoin(symbol.getBaseAsset(), NAME, links, symbol.getIsMarginTradingAllowed());
                 })
                 .collect(Collectors.toSet());
 
@@ -111,16 +109,23 @@ public class ApiBinance implements ApiExchange {
 
         if (response == null || response.isEmpty()) return chainsDTOSet;
 
-        coins.forEach(coin -> response.forEach(data -> {
+        List<String> coinsNames = coins.stream().map(Coin::getName).toList();
+        List<BinanceChainResponse> chainResponse = response.stream()
+                .filter(binanceChainResponse -> coinsNames.contains(binanceChainResponse.getCoin().toUpperCase()))
+                .filter(binanceChainResponse -> binanceChainResponse.getNetworkList().stream()
+                        .allMatch(binanceNetwork -> binanceNetwork.getDepositEnable() && binanceNetwork.getWithdrawEnable()))
+                .toList();
+
+        coins.forEach(coin -> chainResponse.forEach(data -> {
             if (coin.getName().equals(data.getCoin())) {
                 Set<Chain> chains = new HashSet<>();
-                List<BinanceNetwork> networks = data.getNetworkList().stream()
-                        .toList();
 
-                networks.forEach(network -> {
+                data.getNetworkList().forEach(network -> {
+                    String chainName = CoinChainUtils.unifyChainName(network.getNetwork());
                     Chain chain = new Chain();
-                    chain.setName(coin.getName());
+                    chain.setName(chainName);
                     chain.setCommission(new BigDecimal(network.getWithdrawFee()));
+                    chain.setMinConfirm(network.getMinConfirm());
                     chains.add(chain);
                 });
                 ChainResponseDTO chainResponseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);

@@ -11,6 +11,8 @@ public class XTChain {
 
     private String withdrawFeeAmount;
 
+    private String depositFeeRate;
+
     private Boolean depositEnabled;
 
     private Boolean withdrawEnabled;

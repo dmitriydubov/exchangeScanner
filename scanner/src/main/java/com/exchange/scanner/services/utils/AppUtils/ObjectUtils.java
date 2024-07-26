@@ -15,13 +15,14 @@ import java.util.regex.Pattern;
 
 public class ObjectUtils {
 
-    public static Coin getCoin(String coinName, String exchangeName, LinkDTO links) {
+    public static Coin getCoin(String coinName, String exchangeName, LinkDTO links, boolean isMargin) {
         Coin coin = new Coin();
         coin.setName(coinName);
         coin.setSlug(coinName + "-" + exchangeName);
         coin.setDepositLink(links.getDepositLink());
         coin.setWithdrawLink(links.getWithdrawLink());
         coin.setTradeLink(links.getTradeLink());
+        coin.setIsMarginTradingAllowed(isMargin);
         return coin;
     }
 

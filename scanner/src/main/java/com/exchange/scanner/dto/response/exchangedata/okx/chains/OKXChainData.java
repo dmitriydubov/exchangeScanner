@@ -12,4 +12,10 @@ public class OKXChainData {
     private String chain;
 
     private String maxFee;
+
+    private Boolean canDep;
+
+    private Boolean canWd;
+
+    private String minWdUnlockConfirm;
 }

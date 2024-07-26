@@ -40,7 +40,7 @@ public class Coin {
     @Column(name = "is_block_by_superuser")
     private Boolean isBlockBySuperuser = false;
 
-    @Column(name = "taker_fee", nullable = false, precision = 38, scale = 4)
+    @Column(name = "taker_fee", nullable = false, precision = 38, scale = 8)
     private BigDecimal takerFee = new BigDecimal(0);
 
     @Column(name = "volume24h", nullable = false, precision = 38, scale = 8)
@@ -54,6 +54,9 @@ public class Coin {
 
     @Column(name = "trade_link", nullable = false)
     private String tradeLink;
+
+    @Column(name = "is_margin_trading_allowed", nullable = false)
+    private Boolean isMarginTradingAllowed = false;
 
     @ManyToMany(cascade = CascadeType.ALL)
     @JoinTable(

@@ -13,6 +13,7 @@ import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.CoinChainUtils;
 import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
 import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.GateIO.GateIOCoinDepthBuilder;
@@ -68,7 +69,7 @@ public class ApiGateIO implements ApiExchange {
                     links.setDepositLink(exchange.getDepositLink() + currency.getBase().toUpperCase());
                     links.setWithdrawLink(exchange.getWithdrawLink() + currency.getBase().toUpperCase());
                     links.setTradeLink(exchange.getTradeLink() + currency.getBase().toUpperCase() + "_USDT");
-                    return ObjectUtils.getCoin(currency.getBase(), NAME, links);
+                    return ObjectUtils.getCoin(currency.getBase(), NAME, links, false);
                 })
                 .collect(Collectors.toSet());
 
@@ -101,40 +102,45 @@ public class ApiGateIO implements ApiExchange {
     @Override
     public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
         Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
-        coins.forEach(coin -> {
-            List<Chain> response = getChains(coin).collectList().block();
+        List<ChainDTO> response = getChains().collectList().block();
+        if (response == null || response.isEmpty()) return chainsDTOSet;
 
-            if (response != null && response.getFirst() != null) {
-                Set<Chain> chains = new HashSet<>(response);
-                ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
-                chainsDTOSet.add(responseDTO);
-            } else {
-                log.error("При попытке получения списка сетей получен пустой ответ от {}", NAME);
-            }
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
+        List<String> coinsNames = coins.stream().map(Coin::getName).toList();
+        List<ChainDTO> filteredChainDTO = response.stream()
+                .filter(data -> coinsNames.contains(data.getCurrency()) &&
+                        !data.getDepositDisabled() &&
+                        !data.getWithdrawDisabled()
+                )
+                .toList();
+
+        coins.forEach(coin -> {
+            Set<Chain> chains = new HashSet<>();
+
+            filteredChainDTO.forEach(chainDTO -> {
+                if (chainDTO.getCurrency().equals(coin.getName())) {
+                    String chainName = CoinChainUtils.unifyChainName(chainDTO.getChain());
+                    Chain chain = new Chain();
+                    chain.setName(chainName);
+                    chain.setCommission(BigDecimal.ZERO);
+                    chain.setMinConfirm(0);
+                    chains.add(chain);
+                }
+            });
+
+            ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
+            chainsDTOSet.add(responseDTO);
         });
 
         return chainsDTOSet;
     }
 
-    private Flux<Chain> getChains(Coin coin) {
-        String endpoint = "/wallet/currency_chains";
-        String requestUrl = BASE_ENDPOINT + endpoint + "?currency" + coin.getName();
-        String signature =  GateIOSignatureBuilder.generateGateIOSignature(secret, requestUrl);
-
+    private Flux<ChainDTO> getChains() {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
-                    .path(endpoint)
-                    .queryParam("currency", coin.getName())
+                    .path("/spot/currencies")
                     .build()
             )
-            .header("KEY", key)
-            .header("SIGN", signature)
             .retrieve()
             .onStatus(
                     status -> status.is4xxClientError() || status.is5xxServerError(),
@@ -147,16 +153,6 @@ public class ApiGateIO implements ApiExchange {
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Flux.empty();
-            })
-            .map(chainDTO -> {
-                String chainName = chainDTO.getChain().toUpperCase();
-                if (chainName.equalsIgnoreCase("BTC")) {
-                    chainName = "BRC20";
-                }
-                Chain chain = new Chain();
-                chain.setName(chainName);
-                chain.setCommission(new BigDecimal("0"));
-                return chain;
             });
     }
 

@@ -12,4 +12,8 @@ public class MexcCurrencySymbols {
     private String baseAsset;
 
     private String quoteAsset;
+
+    private Boolean isSpotTradingAllowed;
+
+    private Boolean isMarginTradingAllowed;
 }

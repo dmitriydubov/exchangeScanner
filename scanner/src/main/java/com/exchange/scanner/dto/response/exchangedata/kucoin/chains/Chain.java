@@ -14,4 +14,6 @@ public class Chain {
     private Boolean isWithdrawEnabled;
 
     private Boolean isDepositEnabled;
+
+    private Integer confirms;
 }

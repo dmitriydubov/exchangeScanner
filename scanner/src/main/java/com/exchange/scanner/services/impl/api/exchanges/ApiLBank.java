@@ -4,6 +4,7 @@ import com.exchange.scanner.dto.response.ChainResponseDTO;
 import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
+import com.exchange.scanner.dto.response.exchangedata.lbank.chains.LBankChainsData;
 import com.exchange.scanner.dto.response.exchangedata.lbank.chains.LBankChainsResponse;
 import com.exchange.scanner.dto.response.exchangedata.lbank.depth.LBankCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.lbank.coins.LBankCurrencyResponse;
@@ -13,6 +14,7 @@ import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.CoinChainUtils;
 import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
 import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.LBank.LBankCoinDepthBuilder;
@@ -71,7 +73,7 @@ public class ApiLBank implements ApiExchange {
                     links.setDepositLink(exchange.getDepositLink() + coinName.toLowerCase());
                     links.setWithdrawLink(exchange.getWithdrawLink() + coinName.toLowerCase());
                     links.setTradeLink(exchange.getTradeLink() + coinName.toLowerCase() + "_usdt");
-                    return ObjectUtils.getCoin(coinName, NAME, links);
+                    return ObjectUtils.getCoin(coinName, NAME, links, false);
                 })
                 .collect(Collectors.toSet());
 
@@ -96,53 +98,46 @@ public class ApiLBank implements ApiExchange {
     @Override
     public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
         Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
+        LBankChainsResponse response = getChains().block();
+        if (response == null || response.getData() == null) return chainsDTOSet;
+        List<String> coinsNames = coins.stream().map(Coin::getName).toList();
+        List<LBankChainsData> chainsData = response.getData().stream()
+                .filter(chainDTO -> coinsNames.contains(chainDTO.getAssetCode().toUpperCase()) &&
+                        chainDTO.getCanWithdraw()
+                )
+                .toList();
 
         coins.forEach(coin -> {
-            LBankChainsResponse response = getChains(coin).block();
-
-            if (response != null && response.getData() != null) {
-                Set<Chain> chains = new HashSet<>();
-                response.getData().forEach(data -> {
-                    if (data.getChain() != null) {
-                        String chainName = data.getChain();
-                        if (chainName.equalsIgnoreCase("BEP20(BSC)")) {
-                            chainName = "BEP20";
-                        }
-                        if (chainName.equalsIgnoreCase("SOLANA")) {
-                            chainName = "SOL";
-                        }
+            Set<Chain> chains = new HashSet<>();
+            chainsData.forEach(data -> {
+                    if (data.getAssetCode().equalsIgnoreCase(coin.getName()) && data.getChain() != null) {
+                        String chainName = CoinChainUtils.unifyChainName(data.getChain().toUpperCase());
                         Chain chain = new Chain();
-                        chain.setName(chainName.toUpperCase());
+                        chain.setName(chainName);
                         if (data.getFee() != null) {
                             chain.setCommission(new BigDecimal(data.getFee()));
                         } else {
                             chain.setCommission(new BigDecimal(BigInteger.ZERO));
                         }
+                        chain.setMinConfirm(0);
                         chains.add(chain);
                     }
-                });
-                ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
-                chainsDTOSet.add(responseDTO);
-            }
+            });
 
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException(ex);
-            }
+            ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
+            chainsDTOSet.add(responseDTO);
         });
 
         return chainsDTOSet;
     }
 
-    private Mono<LBankChainsResponse> getChains(Coin coin) {
+    private Mono<LBankChainsResponse> getChains() {
         String requestPath = "/v2/withdrawConfigs.do";
 
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
                     .path(requestPath)
-                    .queryParam("assetCode", coin.getName().toLowerCase())
                     .build()
             )
             .retrieve()

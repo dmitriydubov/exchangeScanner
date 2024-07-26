@@ -11,5 +11,11 @@ public class HuobiChains {
 
     private String transactFeeWithdraw;
 
+    private String transactFeeRateWithdraw;
+
     private Integer numOfConfirmations;
+
+    private String withdrawStatus;
+
+    private String depositStatus;
 }

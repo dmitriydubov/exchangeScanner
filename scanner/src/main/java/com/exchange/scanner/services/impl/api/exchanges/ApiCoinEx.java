@@ -14,12 +14,9 @@ import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
-import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
-import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
+import com.exchange.scanner.services.utils.AppUtils.*;
 import com.exchange.scanner.services.utils.Coinex.CoinExCoinDepthBuilder;
 import com.exchange.scanner.services.utils.Coinex.CoinexSignatureBuilder;
-import com.exchange.scanner.services.utils.AppUtils.ListUtils;
-import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -75,7 +72,7 @@ public class ApiCoinEx implements ApiExchange {
                     links.setDepositLink(exchange.getDepositLink());
                     links.setWithdrawLink(exchange.getWithdrawLink());
                     links.setTradeLink(exchange.getTradeLink() + symbol.getBaseCcy().toLowerCase() + "-usdt" + "#spot");
-                    return ObjectUtils.getCoin(symbol.getBaseCcy(), NAME, links);
+                    return ObjectUtils.getCoin(symbol.getBaseCcy(), NAME, links, symbol.getIsMarginAvailable());
                 })
                 .collect(Collectors.toSet());
 
@@ -113,14 +110,20 @@ public class ApiCoinEx implements ApiExchange {
         Set<String> coinsNames = coins.stream().map(Coin::getName).collect(Collectors.toSet());
         List<CoinexChainsData> filteredData = response.getData().stream()
                 .filter(data -> coinsNames.contains(data.getAsset().getCcy()))
+                .filter(data -> data.getChains().stream()
+                        .allMatch(chain -> chain.getDepositEnabled() && chain.getWithdrawEnabled())
+                )
                 .toList();
+
         coins.forEach(coin -> filteredData.forEach(data -> {
             if (coin.getName().equals(data.getAsset().getCcy())) {
                 Set<Chain> chains = new HashSet<>();
                 data.getChains().forEach(chainResponse -> {
+                    String chainName = CoinChainUtils.unifyChainName(chainResponse.getChain().toUpperCase());
                     Chain chain = new Chain();
-                    chain.setName(chainResponse.getChain().toUpperCase());
+                    chain.setName(chainName);
                     chain.setCommission(new BigDecimal(chainResponse.getWithdrawalFee()));
+                    chain.setMinConfirm(chainResponse.getIrreversibleConfirmations());
                     chains.add(chain);
                 });
                 ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);

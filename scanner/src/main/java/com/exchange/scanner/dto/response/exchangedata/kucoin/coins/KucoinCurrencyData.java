@@ -12,4 +12,6 @@ public class KucoinCurrencyData {
     private String quoteCurrency;
 
     private Boolean enableTrading;
+
+    private Boolean isMarginEnabled;
 }

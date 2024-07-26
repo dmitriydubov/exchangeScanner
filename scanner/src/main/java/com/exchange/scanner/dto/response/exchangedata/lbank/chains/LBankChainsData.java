@@ -8,9 +8,15 @@ import lombok.Setter;
 @Setter
 public class LBankChainsData {
 
+    @JsonProperty("assetCode")
+    private String assetCode;
+
     @JsonProperty("chain")
     private String chain;
 
     @JsonProperty("fee")
     private String fee;
+
+    @JsonProperty("canWithDraw")
+    private Boolean canWithdraw;
 }

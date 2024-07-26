@@ -7,9 +7,9 @@ import java.util.List;
 
 @Getter
 @Setter
-public class Data {
+public class BitgetChainData {
 
     private String coin;
 
-    private List<Chain> chains;
+    private List<BitgetChain> chains;
 }

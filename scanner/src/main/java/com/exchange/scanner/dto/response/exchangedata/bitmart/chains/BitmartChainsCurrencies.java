@@ -14,4 +14,10 @@ public class BitmartChainsCurrencies {
 
     @JsonProperty("withdraw_minfee")
     private String withdrawMinFee;
+
+    @JsonProperty("withdraw_enabled")
+    private Boolean withdrawEnabled;
+
+    @JsonProperty("deposit_enabled")
+    private Boolean depositEnabled;
 }

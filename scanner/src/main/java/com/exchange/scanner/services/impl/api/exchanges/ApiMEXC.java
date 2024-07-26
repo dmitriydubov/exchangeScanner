@@ -13,6 +13,7 @@ import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.CoinChainUtils;
 import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
 import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.Mexc.MexcCoinDepthBuilder;
@@ -64,13 +65,16 @@ public class ApiMEXC implements ApiExchange {
         if (response == null || response.getSymbols() == null) return coins;
 
         coins = response.getSymbols().stream()
-                .filter(symbol -> symbol.getStatus().equals("ENABLED") && symbol.getQuoteAsset().equals("USDT"))
+                .filter(symbol -> symbol.getStatus().equals("ENABLED") &&
+                        symbol.getQuoteAsset().equals("USDT") &&
+                        symbol.getIsSpotTradingAllowed()
+                )
                 .map(symbol -> {
                     LinkDTO links = new LinkDTO();
                     links.setDepositLink(exchange.getDepositLink() + symbol.getBaseAsset().toUpperCase());
                     links.setWithdrawLink(exchange.getWithdrawLink() + symbol.getBaseAsset().toUpperCase());
                     links.setTradeLink(exchange.getTradeLink() + symbol.getBaseAsset().toUpperCase() + "_USDT");
-                    return ObjectUtils.getCoin(symbol.getBaseAsset(), NAME, links);
+                    return ObjectUtils.getCoin(symbol.getBaseAsset(), NAME, links, symbol.getIsMarginTradingAllowed());
                 })
                 .collect(Collectors.toSet());
 
@@ -111,6 +115,9 @@ public class ApiMEXC implements ApiExchange {
         }
         Set<MexcChainResponse> filteredData = response.stream()
                 .filter(data -> coinsNames.contains(data.getCoin()))
+                .filter(data -> data.getNetworkList().stream()
+                        .allMatch(network -> network.getDepositEnable() && network.getWithdrawEnable())
+                )
                 .collect(Collectors.toSet());
 
         coins.forEach(coin -> {
@@ -119,13 +126,11 @@ public class ApiMEXC implements ApiExchange {
                 if (coin.getName().equals(data.getCoin())) {
                     data.getNetworkList()
                         .forEach(networkList -> {
-                            String chainName = networkList.getNetWork();
-                            if (chainName.equalsIgnoreCase("ETH")) {
-                                chainName = "ERC20";
-                            }
+                            String chainName = CoinChainUtils.unifyChainName(networkList.getNetWork());
                             Chain chain = new Chain();
                             chain.setName(chainName);
                             chain.setCommission(new BigDecimal(networkList.getWithdrawFee()));
+                            chain.setMinConfirm(networkList.getMinConfirm());
                             chains.add(chain);
                         });
                 }

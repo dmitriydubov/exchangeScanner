@@ -9,5 +9,7 @@ import java.util.List;
 @Setter
 public class HuobiChainsData {
 
+    private String currency;
+
     private List<HuobiChains> chains;
 }

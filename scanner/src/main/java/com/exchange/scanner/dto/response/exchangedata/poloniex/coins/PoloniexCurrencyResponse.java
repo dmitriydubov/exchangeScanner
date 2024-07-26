@@ -12,4 +12,6 @@ public class PoloniexCurrencyResponse {
     private String quoteCurrencyName;
 
     private String state;
+
+    private PoloniexCrossMargin crossMargin;
 }

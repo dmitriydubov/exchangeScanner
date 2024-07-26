@@ -15,11 +15,8 @@ import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
-import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
-import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
-import com.exchange.scanner.services.utils.AppUtils.ListUtils;
+import com.exchange.scanner.services.utils.AppUtils.*;
 import com.exchange.scanner.services.utils.Probit.ProbitCoinDepthBuilder;
-import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -66,7 +63,7 @@ public class ApiProbit implements ApiExchange {
                 links.setDepositLink(exchange.getDepositLink() + symbol.getBaseCurrencyId().toUpperCase());
                 links.setWithdrawLink(exchange.getWithdrawLink() + symbol.getBaseCurrencyId().toUpperCase());
                 links.setTradeLink(exchange.getTradeLink() + symbol.getBaseCurrencyId().toUpperCase() + "-USDT");
-                return ObjectUtils.getCoin(symbol.getBaseCurrencyId(), NAME, links);
+                return ObjectUtils.getCoin(symbol.getBaseCurrencyId(), NAME, links, false);
             })
             .collect(Collectors.toSet());
 
@@ -105,7 +102,10 @@ public class ApiProbit implements ApiExchange {
             return chainsDTOSet;
         }
         List<Data> data = response.getData().stream()
-                .filter(coinResponse -> coinsNames.contains(coinResponse.getId()))
+                .filter(coinResponse -> coinsNames.contains(coinResponse.getId()) &&
+                        !coinResponse.getDepositSuspended() &&
+                        !coinResponse.getWithdrawalSuspended()
+                )
                 .toList();
 
         coins.forEach(coin -> {
@@ -113,9 +113,11 @@ public class ApiProbit implements ApiExchange {
             data.forEach(dtoResponseElement -> {
                 if (coin.getName().equals(dtoResponseElement.getId())) {
                     dtoResponseElement.getWithdrawalFee().forEach(chainsDto -> {
+                        String chainName = CoinChainUtils.unifyChainName(dtoResponseElement.getPlatform().toUpperCase());
                         Chain chain = new Chain();
-                        chain.setName(chainsDto.getCurrencyId().toUpperCase());
-                        chain.setCommission(new BigDecimal(chainsDto.getAmount()));
+                        chain.setName(chainName);
+                        chain.setCommission(new BigDecimal(chainsDto.getAmount().trim()));
+                        chain.setMinConfirm(dtoResponseElement.getMinConfirmationCount());
                         chains.add(chain);
                     });
                 }

@@ -9,5 +9,5 @@ import java.util.List;
 @Setter
 public class BitgetChainResponse {
 
-    private List<Data> data;
+    private List<BitgetChainData> data;
 }

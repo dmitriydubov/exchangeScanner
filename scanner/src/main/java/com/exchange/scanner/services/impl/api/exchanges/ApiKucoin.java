@@ -4,6 +4,7 @@ import com.exchange.scanner.dto.response.ChainResponseDTO;
 import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
+import com.exchange.scanner.dto.response.exchangedata.kucoin.chains.KucoinChainData;
 import com.exchange.scanner.dto.response.exchangedata.kucoin.chains.KucoinChainResponse;
 import com.exchange.scanner.dto.response.exchangedata.kucoin.depth.KucoinCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.kucoin.tradingfee.KucoinTradingFeeResponse;
@@ -13,12 +14,9 @@ import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
-import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
-import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
+import com.exchange.scanner.services.utils.AppUtils.*;
 import com.exchange.scanner.services.utils.Kucoin.KucoinCoinDepthBuilder;
 import com.exchange.scanner.services.utils.Kucoin.KucoinSignatureBuilder;
-import com.exchange.scanner.services.utils.AppUtils.ListUtils;
-import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -74,7 +72,7 @@ public class ApiKucoin implements ApiExchange {
                     links.setDepositLink(exchange.getDepositLink() + currency.getBaseCurrency().toUpperCase());
                     links.setWithdrawLink(exchange.getWithdrawLink() + currency.getBaseCurrency().toUpperCase());
                     links.setTradeLink(exchange.getTradeLink() + currency.getBaseCurrency().toUpperCase() + "-USDT");
-                    return ObjectUtils.getCoin(currency.getBaseCurrency(), NAME, links);
+                    return ObjectUtils.getCoin(currency.getBaseCurrency(), NAME, links, currency.getIsMarginEnabled());
                 })
                 .collect(Collectors.toSet());
 
@@ -106,28 +104,44 @@ public class ApiKucoin implements ApiExchange {
     @Override
     public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
         Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
-        coins.forEach(coin -> {
-            List<List<Chain>> response = getChain(coin).collectList().block();
+        KucoinChainResponse response = getChain().block();
+        if (response == null) return chainsDTOSet;
+        List<String> coinsNames = coins.stream().map(Coin::getName).toList();
+        List<KucoinChainData> chainData = response.getData().stream()
+                .filter(data -> coinsNames.contains(data.getCurrency()))
+                .filter(data -> data.getChains().stream()
+                        .allMatch(chain -> chain.getIsDepositEnabled() && chain.getIsWithdrawEnabled())
+                )
+                .toList();
 
-            if (response != null && response.getFirst() != null) {
-                Set<Chain> chains = new HashSet<>();
-                response.forEach(chains::addAll);
-                ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
-                chainsDTOSet.add(responseDTO);
-            } else {
-                log.error("При попытке получения списка сетей получен пустой ответ от {}", NAME);
-            }
+        coins.forEach(coin -> {
+            Set<Chain> chains = new HashSet<>();
+
+            chainData.forEach(data -> {
+                if (data.getCurrency().equalsIgnoreCase(coin.getName())) {
+                    data.getChains().forEach(chainDTO -> {
+                        String chainName = CoinChainUtils.unifyChainName(chainDTO.getChainName());
+                        Chain chain = new Chain();
+                        chain.setName(chainName);
+                        chain.setCommission(new BigDecimal(chainDTO.getWithdrawalMinFee()));
+                        chain.setMinConfirm(chainDTO.getConfirms());
+                        chains.add(chain);
+                    });
+                }
+            });
+            ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
+            chainsDTOSet.add(responseDTO);
         });
 
         return chainsDTOSet;
     }
 
-    private Flux<List<Chain>> getChain(Coin coin) {
+    private Mono<KucoinChainResponse> getChain() {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
-                    .path("/api/v3/currencies/{currency}")
-                    .build(coin.getName())
+                    .path("/api/v3/currencies")
+                    .build()
             )
             .retrieve()
             .onStatus(
@@ -137,27 +151,11 @@ public class ApiKucoin implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToFlux(KucoinChainResponse.class)
+            .bodyToMono(KucoinChainResponse.class)
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
-                return Flux.empty();
-            })
-            .map(response -> response.getData().getChains().stream()
-                    .map(dto -> {
-                       String chainName = dto.getChainName();
-                       if (dto.getChainName().equals("Lightning Network")) {
-                           chainName = "LIGHTNING";
-                       }
-                       if (dto.getChainName().equals("BTC")) {
-                           chainName = "BRC20";
-                       }
-                       Chain chain = new Chain();
-                       chain.setName(chainName);
-                       chain.setCommission(new BigDecimal(dto.getWithdrawalMinFee()));
-                       return chain;
-                    })
-                    .toList()
-            );
+                return Mono.empty();
+            });
     }
 
     @Override

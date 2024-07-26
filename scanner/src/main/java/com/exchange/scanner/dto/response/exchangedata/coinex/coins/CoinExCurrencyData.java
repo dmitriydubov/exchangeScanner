@@ -13,4 +13,7 @@ public class CoinExCurrencyData {
 
     @JsonProperty("quote_ccy")
     private String quoteCcy;
+
+    @JsonProperty("is_margin_available")
+    private Boolean isMarginAvailable;
 }

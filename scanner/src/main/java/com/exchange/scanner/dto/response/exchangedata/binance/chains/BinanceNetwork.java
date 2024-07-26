@@ -11,6 +11,8 @@ public class BinanceNetwork {
 
     private String network;
 
+    private Integer minConfirm;
+
     private Boolean depositEnable;
 
     private Boolean withdrawEnable;

@@ -12,6 +12,7 @@ import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.CoinChainUtils;
 import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
 import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.Poloniex.PoloniexCoinDepthBuilder;
@@ -71,7 +72,7 @@ public class ApiPoloniex implements ApiExchange {
                     links.setDepositLink(exchange.getDepositLink());
                     links.setWithdrawLink(exchange.getWithdrawLink());
                     links.setTradeLink(exchange.getTradeLink() + symbol.getBaseCurrencyName().toUpperCase() + "_USDT" + "/?type=spot");
-                    return ObjectUtils.getCoin(symbol.getBaseCurrencyName(), NAME, links);
+                    return ObjectUtils.getCoin(symbol.getBaseCurrencyName(), NAME, links, symbol.getCrossMargin().getSupportCrossMargin());
                 })
                 .collect(Collectors.toSet());
 
@@ -103,42 +104,44 @@ public class ApiPoloniex implements ApiExchange {
     @Override
     public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
         Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
+        Map<String, PoloniexChain> response = getChains().collectList().block().stream()
+                .filter(responseList -> !responseList.isEmpty())
+                .flatMap(responseList -> responseList.entrySet().stream())
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        List<String> coinNames = coins.stream().map(Coin::getName).toList();
+        Map<String, PoloniexChain> filteredResponse = response.entrySet().stream()
+                .filter(entry -> coinNames.contains(entry.getKey().toUpperCase()))
+                .filter(entry -> entry.getValue().getWalletDepositState().equalsIgnoreCase("ENABLED") &&
+                        entry.getValue().getWalletWithdrawalState().equalsIgnoreCase("ENABLED")
+                )
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
         coins.forEach(coin -> {
-            Map<String, PoloniexChain> response = getChains(coin).block();
-
-            if (response != null && !response.isEmpty()) {
-                Set<Chain> chains = new HashSet<>();
-                response.forEach((coinKey, responseValue) -> {
-                    String chainName = responseValue.getBlockchain();
-                    if (chainName.equalsIgnoreCase("MATICPOLY")) {
-                        chainName = "MATIC";
-                    }
+            Set<Chain> chains = new HashSet<>();
+            filteredResponse.forEach((key, value) -> {
+                if (key.equalsIgnoreCase(coin.getName())) {
+                    String chainName = CoinChainUtils.unifyChainName(value.getBlockchain());
                     Chain chain = new Chain();
                     chain.setName(chainName.toUpperCase());
-                    chain.setCommission(new BigDecimal(responseValue.getWithdrawalFee()));
+                    chain.setCommission(new BigDecimal(value.getWithdrawalFee()));
+                    chain.setMinConfirm(value.getMinConf());
                     chains.add(chain);
-                });
-                ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
-                chainsDTOSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
+                }
+            });
+            ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
+            chainsDTOSet.add(responseDTO);
         });
 
         return chainsDTOSet;
     }
 
-    private Mono<Map<String, PoloniexChain>> getChains(Coin coin) {
+    private Flux<Map<String, PoloniexChain>> getChains() {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
-                    .path("/currencies/{currency}")
-                    .build(coin.getName())
+                    .path("/currencies")
+                    .build()
             )
             .retrieve()
             .onStatus(
@@ -148,7 +151,7 @@ public class ApiPoloniex implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(new ParameterizedTypeReference<Map<String, PoloniexChain>>() {})
+            .bodyToFlux(new ParameterizedTypeReference<Map<String, PoloniexChain>>() {})
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();

@@ -4,15 +4,18 @@ import com.exchange.scanner.dto.response.ChainResponseDTO;
 import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
+import com.exchange.scanner.dto.response.exchangedata.bingx.chains.BingXChainData;
 import com.exchange.scanner.dto.response.exchangedata.bingx.chains.BingXChainResponse;
 import com.exchange.scanner.dto.response.exchangedata.bingx.depth.BingXCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.bingx.tickervolume.BingXVolumeTicker;
 import com.exchange.scanner.dto.response.exchangedata.bingx.coins.BingXCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.bingx.tradingfee.BingXTradingFeeResponse;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.okx.chains.OKXChainData;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.CoinChainUtils;
 import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
 import com.exchange.scanner.services.utils.BingX.BingXCoinDepthBuilder;
 import com.exchange.scanner.services.utils.BingX.BingXSignatureBuilder;
@@ -81,7 +84,7 @@ public class ApiBingX implements ApiExchange {
                     links.setDepositLink(exchange.getDepositLink());
                     links.setWithdrawLink(exchange.getWithdrawLink());
                     links.setTradeLink(exchange.getTradeLink() + coinName.toUpperCase() + "USDT");
-                    return ObjectUtils.getCoin(coinName, NAME, links);
+                    return ObjectUtils.getCoin(coinName, NAME, links, false);
                 })
                 .collect(Collectors.toSet());
 
@@ -121,43 +124,39 @@ public class ApiBingX implements ApiExchange {
     @Override
     public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
         Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
+        BingXChainResponse response = getChains().block();
+        if (response == null || response.getData() == null) return chainsDTOSet;
+        Set<String> coinsNames = coins.stream().map(Coin::getName).collect(Collectors.toSet());
+        List<BingXChainData> okxChainData = response.getData().stream()
+                .filter(data -> coinsNames.contains(data.getCoin()))
+                .filter(data -> data.getNetworkList().stream()
+                        .allMatch(network -> network.getDepositEnable() && network.getWithdrawEnable()))
+                .toList();
 
         coins.forEach(coin -> {
-            BingXChainResponse response = getChains(coin).block();
-
-            if (response != null && response.getData() != null && !response.getData().isEmpty()) {
-                Set<Chain> chains = new HashSet<>();
-
-                response.getData().getFirst().getNetworkList().forEach(network -> {
-                    String chainName = network.getNetwork();
-                    if (chainName.equalsIgnoreCase("POLYGON")) {
-                        chainName = "MATIC";
-                    }
-                    Chain chain = new Chain();
-                    chain.setName(chainName.toUpperCase());
-                    chain.setCommission(new BigDecimal(network.getWithdrawFee()));
-                    chains.add(chain);
-                });
-
-                ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
-                chainsDTOSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(500);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException(ex);
-            }
+            Set<Chain> chains = new HashSet<>();
+            okxChainData.forEach(chainData -> {
+                if (chainData.getCoin().equals(coin.getName())) {
+                    chainData.getNetworkList().forEach(network -> {
+                        String chainName = CoinChainUtils.unifyChainName(network.getNetwork());
+                        Chain chain = new Chain();
+                        chain.setName(chainName.toUpperCase());
+                        chain.setCommission(new BigDecimal(network.getWithdrawFee()));
+                        chain.setMinConfirm(network.getMinConfirm());
+                        chains.add(chain);
+                    });
+                }
+            });
+            ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
+            chainsDTOSet.add(responseDTO);
         });
 
         return chainsDTOSet;
     }
 
-    private Mono<BingXChainResponse> getChains(Coin coin) {
-        String symbol = coin.getName();
+    private Mono<BingXChainResponse> getChains() {
         String requestPath = "/openApi/wallets/v1/capital/config/getall";
         TreeMap<String, String> params = new TreeMap<>();
-        params.put("coin", symbol);
         BingXSignatureBuilder signatureBuilder = new BingXSignatureBuilder(key, secret, params);
         signatureBuilder.createSignature();
 

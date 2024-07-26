@@ -108,6 +108,7 @@ public class ArbitrageUtils {
             tradeEventDTO.setMaxUserTradeAmount(userMarketSettings.getMaxVolume());
             tradeEventDTO.setUserMinProfit(userMarketSettings.getProfitSpread());
             tradeEventDTO.setChains(chains);
+            tradeEventDTO.setIsMargin(coin.getIsMarginTradingAllowed());
             return tradeEventDTO;
         } catch (InvocationTargetException | InstantiationException | IllegalAccessException | NoSuchMethodException e) {
             log.info("Ошибка в методе getUserTradeEventDTO");

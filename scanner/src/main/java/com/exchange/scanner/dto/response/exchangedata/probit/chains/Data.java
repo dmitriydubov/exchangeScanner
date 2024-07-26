@@ -12,6 +12,17 @@ public class Data {
 
     private String id;
 
+    private String platform;
+
     @JsonProperty("withdrawal_fee")
     private List<WithdrawalFee> withdrawalFee;
+
+    @JsonProperty("deposit_suspended")
+    private Boolean depositSuspended;
+
+    @JsonProperty("withdrawal_suspended")
+    private Boolean withdrawalSuspended;
+
+    @JsonProperty("min_confirmation_count")
+    private Integer minConfirmationCount;
 }

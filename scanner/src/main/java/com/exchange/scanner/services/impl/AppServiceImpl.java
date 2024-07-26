@@ -68,7 +68,7 @@ public class AppServiceImpl implements AppService {
 
     private static final int SCHEDULED_DELAY_TIME_FOR_REFRESH_COINS = 1000000000;
 
-    private static final int SCHEDULED_DELAY_TIME_FOR_GET_CHAINS = 1000000000;
+    private static final int SCHEDULED_DELAY_TIME_FOR_GET_CHAINS = 0;
 
     private static final int SCHEDULED_DELAY_TIME_FOR_GET_TRADING_FEE = 1000000000;
 
@@ -273,7 +273,6 @@ public class AppServiceImpl implements AppService {
             userMarketSettings.setMaxVolume(new BigDecimal(userData.getMaxDealAmount()));
             userMarketSettingsRepository.save(userMarketSettings);
 
-            getCoinsChains();
             getTradingFee();
             getVolume24h();
             getCoinMarketCapCoinInfo();

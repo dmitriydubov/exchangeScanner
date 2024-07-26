@@ -10,4 +10,10 @@ public class BybitChains {
     private String chain;
 
     private String withdrawFee;
+
+    private String chainDeposit;
+
+    private String chainWithdraw;
+
+    private String confirmation;
 }

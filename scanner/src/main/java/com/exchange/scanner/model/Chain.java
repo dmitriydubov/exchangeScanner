@@ -24,6 +24,9 @@ public class Chain implements Comparable<Chain> {
     @Column(nullable = false, precision = 38, scale = 4)
     private BigDecimal commission;
 
+    @Column(name = "min_confirm", nullable = false)
+    private Integer minConfirm;
+
     @ManyToMany(mappedBy = "chains")
     private Set<Coin> coins = new HashSet<>();
 

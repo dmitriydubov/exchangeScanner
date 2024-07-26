@@ -4,6 +4,7 @@ import com.exchange.scanner.dto.response.ChainResponseDTO;
 import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
+import com.exchange.scanner.dto.response.exchangedata.bitget.chains.BitgetChainData;
 import com.exchange.scanner.dto.response.exchangedata.bitget.chains.BitgetChainResponse;
 import com.exchange.scanner.dto.response.exchangedata.bitget.depth.BitgetCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.bitget.coins.BitgetCurrencyResponse;
@@ -14,6 +15,7 @@ import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.services.utils.AppUtils.CoinChainUtils;
 import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
 import com.exchange.scanner.services.utils.Bitget.BitgetDepthBuilder;
 import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
@@ -68,7 +70,7 @@ public class ApiBitget implements ApiExchange {
                     links.setDepositLink(exchange.getDepositLink());
                     links.setWithdrawLink(exchange.getWithdrawLink());
                     links.setTradeLink(exchange.getTradeLink() + symbol.getBaseCoin().toUpperCase() + "USDT");
-                    return ObjectUtils.getCoin(symbol.getBaseCoin(), NAME, links);
+                    return ObjectUtils.getCoin(symbol.getBaseCoin(), NAME, links, false);
                 })
                 .collect(Collectors.toSet());
 
@@ -98,38 +100,46 @@ public class ApiBitget implements ApiExchange {
     }
 
     public Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName) {
-        try {
-            Thread.sleep(REQUEST_DELAY_DURATION);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-
         Set<ChainResponseDTO> chainsDTOSet = new HashSet<>();
+        BitgetChainResponse response = getChain().block();
+        if (response == null || response.getData().isEmpty()) return chainsDTOSet;
+        List<String> coinsNames = coins.stream().map(Coin::getName).toList();
+        List<BitgetChainData> chainData = response.getData().stream()
+                .filter(data -> coinsNames.contains(data.getCoin()))
+                .filter(data -> data.getChains().stream()
+                    .allMatch(chain -> chain.getWithdrawable().equalsIgnoreCase("true") &&
+                            chain.getRechargeable().equalsIgnoreCase("false")
+                    )
+                )
+                .toList();
+
         coins.forEach(coin -> {
-            List<Chain> response = getChain(coin).block();
-            if (response != null && response.getFirst() != null) {
-                Set<Chain> chains = new HashSet<>(response);
-                ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
-                chainsDTOSet.add(responseDTO);
-            } else {
-                log.error("При попытке получения списка сетей получен пустой ответ от {}", NAME);
-            }
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
+            Set<Chain> chains = new HashSet<>();
+            chainData.forEach(data -> {
+                if (data.getCoin().equals(coin.getName())) {
+                    data.getChains().forEach(chainsDTO -> {
+                        String chainName = CoinChainUtils.unifyChainName(chainsDTO.getChain());
+                        Chain chain = new Chain();
+                        chain.setName(chainName.toUpperCase());
+                        chain.setCommission(new BigDecimal(chainsDTO.getWithdrawFee()));
+                        chain.setMinConfirm(Integer.valueOf(chainsDTO.getWithdrawConfirm()));
+                        chains.add(chain);
+                    });
+                }
+            });
+
+            ChainResponseDTO responseDTO = ObjectUtils.getChainResponseDTO(exchangeName, coin, chains);
+            chainsDTOSet.add(responseDTO);
         });
 
         return chainsDTOSet;
     }
 
-    private Mono<List<Chain>> getChain(Coin coin) {
+    private Mono<BitgetChainResponse> getChain() {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
                     .path("/api/v2/spot/public/coins")
-                    .queryParam("coin", coin.getName())
                     .build()
             )
             .retrieve()
@@ -144,20 +154,7 @@ public class ApiBitget implements ApiExchange {
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
-            })
-            .map(data -> data.getData().getFirst().getChains().stream()
-                    .map(chainsDTO -> {
-                        String chainName = chainsDTO.getChain();
-                        if (chainName.equalsIgnoreCase("Polygon")) {
-                            chainName = "Matic";
-                        }
-                        Chain chain = new Chain();
-                        chain.setName(chainName.toUpperCase());
-                        chain.setCommission(new BigDecimal(chainsDTO.getWithdrawFee()));
-                        return chain;
-                    })
-                    .toList()
-            );
+            });
     }
 
     @Override

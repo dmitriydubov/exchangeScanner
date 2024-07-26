@@ -10,4 +10,10 @@ public class BingXNetwork {
     private String network;
 
     private String withdrawFee;
+
+    private Boolean withdrawEnable;
+
+    private Boolean depositEnable;
+
+    private Integer minConfirm;
 }

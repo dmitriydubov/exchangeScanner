@@ -49,6 +49,8 @@ public class UserSellTradeEventDTO implements TradeEventDTO {
 
     private TreeSet<Ask> asks;
 
+    private Boolean isMargin;
+
     @Override
     public void setAsks(TreeSet<Ask> asks) {
         this.asks = null;

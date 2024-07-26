@@ -13,10 +13,7 @@ import com.exchange.scanner.dto.response.exchangedata.xt.tickervolume.XTVolumeTi
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
-import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
-import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
-import com.exchange.scanner.services.utils.AppUtils.ListUtils;
-import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
+import com.exchange.scanner.services.utils.AppUtils.*;
 import com.exchange.scanner.services.utils.XT.XTCoinDepthBuilder;
 import com.exchange.scanner.services.utils.XT.XTSignatureBuilder;
 import lombok.extern.slf4j.Slf4j;
@@ -77,7 +74,7 @@ public class ApiXT implements ApiExchange {
                     links.setDepositLink(exchange.getDepositLink());
                     links.setWithdrawLink(exchange.getWithdrawLink());
                     links.setTradeLink(exchange.getTradeLink() + coinName.toLowerCase() + "_usdt");
-                    return ObjectUtils.getCoin(coinName, NAME, links);
+                    return ObjectUtils.getCoin(coinName, NAME, links, false);
                 })
                 .collect(Collectors.toSet());
 
@@ -120,6 +117,9 @@ public class ApiXT implements ApiExchange {
 
         List<XTChainResult> xtChainResultListFiltered = response.getResult().stream()
                 .filter(result -> coinsNames.contains(result.getCurrency().toUpperCase()))
+                .filter(result -> result.getSupportChains().stream()
+                        .allMatch(chain -> chain.getWithdrawEnabled() && chain.getDepositEnabled())
+                )
                 .toList();
 
         coins.forEach(coin -> {
@@ -129,26 +129,11 @@ public class ApiXT implements ApiExchange {
                 if (coin.getName().equals(result.getCurrency().toUpperCase())) {
                     result.getSupportChains()
                         .forEach(chainResponse -> {
-                            String chainName = chainResponse.getChain();
-                            if (chainName.equalsIgnoreCase("BNB SMART CHAIN")) {
-                                chainName = "BSC";
-                            }
-                            if (chainName.equalsIgnoreCase("ETHEREUM")) {
-                                chainName = "ERC20";
-                            }
-                            if (chainName.equalsIgnoreCase("ETH")) {
-                                chainName = "ERC20";
-                            }
-                            if (chainName.equalsIgnoreCase("POLYGON")) {
-                                chainName = "MATIC";
-                            }
-                            if (chainName.equalsIgnoreCase("BTC_BRC20")) {
-                                chainName = "BRC20";
-                            }
-
+                            String chainName = CoinChainUtils.unifyChainName(chainResponse.getChain());
                             Chain chain = new Chain();
                             chain.setName(chainName.toUpperCase());
                             chain.setCommission(new BigDecimal(chainResponse.getWithdrawFeeAmount()));
+                            chain.setMinConfirm(0);
                             chains.add(chain);
                         });
                 }

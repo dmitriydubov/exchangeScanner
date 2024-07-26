@@ -12,4 +12,13 @@ public class CoinexChain {
 
     @JsonProperty("withdrawal_fee")
     private String withdrawalFee;
+
+    @JsonProperty("deposit_enabled")
+    private Boolean depositEnabled;
+
+    @JsonProperty("withdraw_enabled")
+    private Boolean withdrawEnabled;
+
+    @JsonProperty("irreversible_confirmations")
+    private Integer irreversibleConfirmations;
 }

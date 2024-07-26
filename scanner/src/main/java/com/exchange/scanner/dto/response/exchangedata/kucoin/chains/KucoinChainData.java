@@ -7,7 +7,7 @@ import java.util.List;
 
 @Getter
 @Setter
-public class Symbol {
+public class KucoinChainData {
 
     private String currency;
 
