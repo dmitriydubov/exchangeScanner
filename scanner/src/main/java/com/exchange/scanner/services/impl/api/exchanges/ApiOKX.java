@@ -22,11 +22,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -166,35 +164,25 @@ public class ApiOKX implements ApiExchange {
     @Override
     public Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
         Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
+        OKXTradingFeeResponse response = getFee().block();
+        if (response == null || response.getData() == null) return tradingFeeSet;
 
         coins.forEach(coin -> {
-            OKXTradingFeeResponse response = getFee(coin).block();
-
-            if (response != null && response.getData() != null) {
-                TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
-                        exchangeName,
-                        coin,
-                        String.valueOf(new BigDecimal(response.getData().getFirst().getTaker()).abs())
-                );
-                tradingFeeSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException(ex);
-            }
+            TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                    exchangeName,
+                    coin,
+                    String.valueOf(new BigDecimal(response.getData().getFirst().getTaker()).abs())
+            );
+            tradingFeeSet.add(responseDTO);
         });
 
         return tradingFeeSet;
     }
 
-    private Mono<OKXTradingFeeResponse> getFee(Coin coin) {
-        String symbol = coin.getName() + "-USDT";
+    private Mono<OKXTradingFeeResponse> getFee() {
         String requestPath = "/api/v5/account/trade-fee";
         Map<String, String> params = new HashMap<>();
         params.put("instType", "SPOT");
-        params.put("instId", symbol);
         OKXSignatureBuilder signatureBuilder = new OKXSignatureBuilder(secret);
         signatureBuilder.createSignature("GET", requestPath, params);
 
@@ -203,7 +191,6 @@ public class ApiOKX implements ApiExchange {
             .uri(uriBuilder -> uriBuilder
                     .path(requestPath)
                     .queryParam("instType", "SPOT")
-                    .queryParam("instId", symbol)
                     .build()
             )
             .header("OK-ACCESS-KEY", key)
@@ -214,7 +201,7 @@ public class ApiOKX implements ApiExchange {
             .onStatus(
                     status -> status.is4xxClientError() || status.is5xxServerError(),
                     response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Для торговой пары {}. Причина: {}", symbol, errorBody);
+                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Причина: {}", errorBody);
                         return Mono.empty();
                     })
             )
@@ -228,42 +215,35 @@ public class ApiOKX implements ApiExchange {
     @Override
     public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
         Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
+        OKXVolumeTicker response = getCoinTickerVolume().block();
+        if (response == null || response.getData() == null) return volume24HSet;
+        List<String> symbols = coins.stream().map(coin -> coin.getName().toUpperCase() + "-USDT").toList();
+        List<OKXDataVolumeTicker> dataVolume = response.getData().stream()
+                .filter(data -> symbols.contains(data.getInstId()))
+                .toList();
 
         coins.forEach(coin -> {
-            OKXVolumeTicker response = getCoinTickerVolume(coin).block();
-            if (response != null && response.getData() != null) {
-                OKXDataVolumeTicker volumeTicker = response.getData().stream()
-                        .filter(dataResponse -> dataResponse.getInstType().equals("SPOT"))
-                        .findFirst().orElse(null);
-                if (volumeTicker != null) {
+            dataVolume.forEach(data -> {
+                if (data.getInstId().equalsIgnoreCase(coin.getName() + "-USDT")) {
                     Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
                             exchange,
                             coin,
-                            volumeTicker.getVolCcy24h()
+                            data.getVolCcy24h()
                     );
-
                     volume24HSet.add(responseDTO);
                 }
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
+            });
         });
 
         return volume24HSet;
     }
 
-    private Mono<OKXVolumeTicker> getCoinTickerVolume(Coin coin) {
-        String symbol = coin.getName() + "-USDT";
-
+    private Mono<OKXVolumeTicker> getCoinTickerVolume() {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
-                    .path("/api/v5/market/ticker")
-                    .queryParam("instId", symbol)
+                    .path("/api/v5/market/tickers")
+                    .queryParam("instType", "SPOT")
                     .build()
             )
             .retrieve()

@@ -8,7 +8,9 @@ import com.exchange.scanner.dto.response.exchangedata.lbank.chains.LBankChainsDa
 import com.exchange.scanner.dto.response.exchangedata.lbank.chains.LBankChainsResponse;
 import com.exchange.scanner.dto.response.exchangedata.lbank.depth.LBankCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.lbank.coins.LBankCurrencyResponse;
-import com.exchange.scanner.dto.response.exchangedata.lbank.tickervolume.LBankVolumeTicker;
+import com.exchange.scanner.dto.response.exchangedata.lbank.tickervolume.LBankVolumeTickerData;
+import com.exchange.scanner.dto.response.exchangedata.lbank.tickervolume.LBankVolumeTickerResponse;
+import com.exchange.scanner.dto.response.exchangedata.lbank.tradingfee.LBankFeeData;
 import com.exchange.scanner.dto.response.exchangedata.lbank.tradingfee.LBankTradingFeeResponse;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
@@ -158,33 +160,32 @@ public class ApiLBank implements ApiExchange {
     @Override
     public Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
         Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
+        LBankTradingFeeResponse response = getFee().block();
+        if (response == null) return tradingFeeSet;
+        List<String> symbols = coins.stream().map(coin -> coin.getName().toLowerCase() + "_usdt").toList();
+        List<LBankFeeData> data = response.getData().stream()
+                .filter(fee -> symbols.contains(fee.getSymbol()))
+                .toList();
 
         coins.forEach(coin -> {
-           LBankTradingFeeResponse response = getFee(coin).block();
-
-           if (response != null && response.getData() != null) {
-               TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
-                       exchangeName,
-                       coin,
-                       response.getData().getFirst().getTakerCommission()
-               );
-               tradingFeeSet.add(responseDTO);
-           }
-           try {
-               Thread.sleep(REQUEST_DELAY_DURATION);
-           } catch (InterruptedException ex) {
-               throw new RuntimeException(ex);
-           }
+            data.forEach(fee -> {
+                if (fee.getSymbol().equalsIgnoreCase(coin.getName().toLowerCase() + "_usdt")) {
+                    TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                            exchangeName,
+                            coin,
+                            fee.getTakerCommission()
+                    );
+                    tradingFeeSet.add(responseDTO);
+                }
+            });
         });
 
         return tradingFeeSet;
     }
 
-    private Mono<LBankTradingFeeResponse> getFee(Coin coin) {
+    private Mono<LBankTradingFeeResponse> getFee() {
         String requestPath = "/v2/supplement/customer_trade_fee.do";
-        String symbol = coin.getName().toLowerCase() + "_usdt";
         TreeMap<String, String> initialParams = new TreeMap<>();
-        initialParams.put("category", symbol);
         LBankSignatureBuilder signatureBuilder = new LBankSignatureBuilder(key, secret, initialParams);
         signatureBuilder.createSignature();
         TreeMap<String, String> params = signatureBuilder.getRequestParams();
@@ -204,7 +205,7 @@ public class ApiLBank implements ApiExchange {
             .onStatus(
                     status -> status.is4xxClientError() || status.is5xxServerError(),
                     response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Для торговой пары {}. Причина: {}", symbol, errorBody);
+                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Причина: {}", errorBody);
                         return Mono.empty();
                     })
             )
@@ -218,38 +219,35 @@ public class ApiLBank implements ApiExchange {
     @Override
     public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
         Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
+        LBankVolumeTickerResponse response = getCoinTicker().block();
+        if (response == null || response.getData() == null) return volume24HSet;
+        List<String> symbols = coins.stream().map(coin -> coin.getName().toLowerCase() + "_usdt").toList();
+        List<LBankVolumeTickerData> volumeData = response.getData().stream()
+                .filter(data -> symbols.contains(data.getSymbol()))
+                .toList();
 
         coins.forEach(coin -> {
-            LBankVolumeTicker response = getCoinTicker(coin).block();
-
-            if (response != null && response.getData() != null) {
-                Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
-                        exchange,
-                        coin,
-                        response.getData().getFirst().getTicker().getTurnover()
-                );
-
-                volume24HSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
+            volumeData.forEach(data -> {
+                if (data.getSymbol().equalsIgnoreCase(coin.getName() + "_usdt")) {
+                    Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                            exchange,
+                            coin,
+                            data.getTicker().getTurnover()
+                    );
+                    volume24HSet.add(responseDTO);
+                }
+            });
         });
 
         return volume24HSet;
     }
 
-    private Mono<LBankVolumeTicker> getCoinTicker(Coin coin) {
-        String symbol = coin.getName().toLowerCase() + "_usdt";
-
+    private Mono<LBankVolumeTickerResponse> getCoinTicker() {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
                     .path("/v2/ticker/24hr.do")
-                    .queryParam("symbol", symbol)
+                    .queryParam("symbol", "all")
                     .build()
             )
             .retrieve()
@@ -260,7 +258,7 @@ public class ApiLBank implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(LBankVolumeTicker.class)
+            .bodyToMono(LBankVolumeTickerResponse.class)
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();

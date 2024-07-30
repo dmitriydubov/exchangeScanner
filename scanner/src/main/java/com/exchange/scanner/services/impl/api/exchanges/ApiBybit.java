@@ -8,7 +8,9 @@ import com.exchange.scanner.dto.response.exchangedata.bybit.chains.BybitChainsRe
 import com.exchange.scanner.dto.response.exchangedata.bybit.chains.BybitChainsRows;
 import com.exchange.scanner.dto.response.exchangedata.bybit.depth.BybitCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.bybit.coins.BybitCurrencyResponse;
+import com.exchange.scanner.dto.response.exchangedata.bybit.tickervolume.BybitCoinTickerList;
 import com.exchange.scanner.dto.response.exchangedata.bybit.tickervolume.BybitCoinTickerVolume;
+import com.exchange.scanner.dto.response.exchangedata.bybit.tradingfee.BybitTradingFeeList;
 import com.exchange.scanner.dto.response.exchangedata.bybit.tradingfee.BybitTradingFeeResponse;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
@@ -170,33 +172,33 @@ public class ApiBybit implements ApiExchange {
     @Override
     public Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
         Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
+        BybitTradingFeeResponse response = getFee().block();
+        if (response == null || response.getResult() == null) return tradingFeeSet;
+        List<String> symbols = coins.stream().map(coin -> coin.getName() + "USDT").toList();
+        List<BybitTradingFeeList> tradingFeeList = response.getResult().getList().stream()
+                .filter(result -> symbols.contains(result.getSymbol()))
+                .toList();
 
         coins.forEach(coin -> {
-            BybitTradingFeeResponse response = getFee(coin).block();
-            if (response != null && response.getResult() != null) {
-                TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
-                        exchangeName,
-                        coin,
-                        response.getResult().getList().getFirst().getTakerFeeRate()
-                );
-                tradingFeeSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
+            tradingFeeList.forEach(result -> {
+                if (result.getSymbol().equalsIgnoreCase(coin.getName() + "USDT")) {
+                    TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                            exchangeName,
+                            coin,
+                            result.getTakerFeeRate()
+                    );
+                    tradingFeeSet.add(responseDTO);
+                }
+            });
         });
 
         return tradingFeeSet;
     }
 
-    private Mono<BybitTradingFeeResponse> getFee(Coin coin) {
-        String symbol = coin.getName() + "USDT";
+    private Mono<BybitTradingFeeResponse> getFee() {
         String timestamp = Long.toString(ZonedDateTime.now().toInstant().toEpochMilli());
         String recv = "5000";
-        String paramStr = "category=spot" + "&" + "symbol=" + symbol;
+        String paramStr = "category=spot";
         String stringToSign = timestamp + key + recv + paramStr;
         String sign = BybitSignatureBuilder.generateBybitSignature(stringToSign, secret);
 
@@ -205,7 +207,6 @@ public class ApiBybit implements ApiExchange {
             .uri(uriBuilder -> uriBuilder
                     .path("/v5/account/fee-rate")
                     .queryParam("category", "spot")
-                    .queryParam("symbol", symbol)
                     .build()
             )
             .header("X-BAPI-SIGN", sign)
@@ -216,7 +217,7 @@ public class ApiBybit implements ApiExchange {
             .onStatus(
                     status -> status.is4xxClientError() || status.is5xxServerError(),
                     response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Для торговой пары {}. Причина: {}", symbol, errorBody);
+                        log.error("Ошибка получения торговой комиссии от " + NAME + ".Причина: {}", errorBody);
                         return Mono.empty();
                     })
             )
@@ -230,37 +231,34 @@ public class ApiBybit implements ApiExchange {
     @Override
     public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
         Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
+        BybitCoinTickerVolume response = getCoinTickerVolume().block();
+        if (response == null || response.getResult() == null) return volume24HSet;
+        List<String> symbols = coins.stream().map(coin -> coin.getName() + "USDT").toList();
+        List<BybitCoinTickerList> tickerList = response.getResult().getList().stream()
+                .filter(data -> symbols.contains(data.getS()))
+                .toList();
 
         coins.forEach(coin -> {
-            BybitCoinTickerVolume response = getCoinTickerVolume(coin).block();
-            if (response != null && response.getResult() != null) {
-                Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
-                        exchange,
-                        coin,
-                        response.getResult().getQv()
-                );
-
-                volume24HSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw  new RuntimeException();
-            }
+            tickerList.forEach(data -> {
+                if (data.getS().equalsIgnoreCase(coin.getName() + "USDT")) {
+                    Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                            exchange,
+                            coin,
+                            data.getQv()
+                    );
+                    volume24HSet.add(responseDTO);
+                }
+            });
         });
 
         return volume24HSet;
     }
 
-    private Mono<BybitCoinTickerVolume> getCoinTickerVolume(Coin coin) {
-        String symbol = coin.getName() + "USDT";
-
+    private Mono<BybitCoinTickerVolume> getCoinTickerVolume() {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
                     .path("/spot/v3/public/quote/ticker/24hr")
-                    .queryParam("symbol", symbol)
                     .build()
             )
             .retrieve()

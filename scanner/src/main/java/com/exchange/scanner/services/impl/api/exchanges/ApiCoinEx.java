@@ -9,6 +9,8 @@ import com.exchange.scanner.dto.response.exchangedata.coinex.chains.CoinexChains
 import com.exchange.scanner.dto.response.exchangedata.coinex.depth.CoinExCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.coinex.tickervolume.CoinExVolumeTicker;
 import com.exchange.scanner.dto.response.exchangedata.coinex.coins.CoinExCurrencyResponse;
+import com.exchange.scanner.dto.response.exchangedata.coinex.tickervolume.CoinExVolumeTickerData;
+import com.exchange.scanner.dto.response.exchangedata.coinex.tradingfee.CoinexFeeData;
 import com.exchange.scanner.dto.response.exchangedata.coinex.tradingfee.CoinexTradingFeeResponse;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
@@ -21,11 +23,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -167,44 +167,41 @@ public class ApiCoinEx implements ApiExchange {
     @Override
     public Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
         Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
+        CoinexTradingFeeResponse response = getFee().block();
+        if (response == null || response.getData() == null) return tradingFeeSet;
+        List<String> symbols = coins.stream().map(Coin::getName).toList();
+        List<CoinexFeeData> data = response.getData().stream()
+                .filter(fee -> fee.getQuoteCcy().equalsIgnoreCase("USDT") && symbols.contains(fee.getBaseCcy()))
+                .toList();
 
         coins.forEach(coin -> {
-            CoinexTradingFeeResponse response = getFee(coin).block();
-
-            if (response != null && response.getData() != null) {
-                TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
-                        exchangeName,
-                        coin,
-                        response.getData().getFirst().getTakerFeeRate()
-                );
-                tradingFeeSet.add(responseDTO);
-            }
+            data.forEach(fee -> {
+                if (fee.getBaseCcy().equalsIgnoreCase(coin.getName())) {
+                    TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                            exchangeName,
+                            coin,
+                            fee.getTakerFeeRate()
+                    );
+                    tradingFeeSet.add(responseDTO);
+                }
+            });
         });
-
-        try {
-            Thread.sleep(REQUEST_DELAY_DURATION);
-        } catch (InterruptedException ex) {
-            throw new RuntimeException(ex);
-        }
 
         return tradingFeeSet;
     }
 
-    private Mono<CoinexTradingFeeResponse> getFee(Coin coin) {
-        String symbol = coin.getName() + "USDT";
-
+    private Mono<CoinexTradingFeeResponse> getFee() {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
                     .path("/spot/market")
-                    .queryParam("market", symbol)
                     .build()
             )
             .retrieve()
             .onStatus(
                     status -> status.is4xxClientError() || status.is5xxServerError(),
                     response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Для торговой пары {}. Причина: {}", symbol, errorBody);
+                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Причина: {}", errorBody);
                         return Mono.empty();
                     })
             )
@@ -218,16 +215,19 @@ public class ApiCoinEx implements ApiExchange {
     @Override
     public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
         Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
-
-        CoinExVolumeTicker response = getCoinTicker(new ArrayList<>(coins)).blockLast();
-
+        CoinExVolumeTicker response = getCoinTicker().block();
         if (response == null || response.getData() == null) return volume24HSet;
-        coins.forEach(coin -> response.getData().forEach(responseData -> {
-            if (coin.getName().equals(responseData.getMarket().replaceAll("USDT", ""))) {
+        List<String> symbols = coins.stream().map(coin -> coin.getName() + "USDT").toList();
+        List<CoinExVolumeTickerData> dataVolume = response.getData().stream()
+                .filter(data -> symbols.contains(data.getMarket()))
+                .toList();
+
+        coins.forEach(coin -> dataVolume.forEach(data -> {
+            if (data.getMarket().equalsIgnoreCase(coin.getName() + "USDT")) {
                 Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
                         exchange,
                         coin,
-                        responseData.getValue()
+                        data.getValue()
                 );
 
                 volume24HSet.add(responseDTO);
@@ -237,16 +237,10 @@ public class ApiCoinEx implements ApiExchange {
         return volume24HSet;
     }
 
-    private Flux<CoinExVolumeTicker> getCoinTicker(List<Coin> coins) {
-        int maxSymbolPerRequest = 100;
-        List<List<Coin>> partitions = ListUtils.partition(coins, maxSymbolPerRequest);
-
-        return Flux.fromIterable(partitions)
-            .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
-            .flatMap(partition -> webClient
+    private Mono<CoinExVolumeTicker> getCoinTicker() {
+        return webClient
                 .get()
                 .uri(uriBuilder -> uriBuilder.path("/spot/ticker")
-                        .queryParam("market", generateParameters(partition))
                         .build()
                 )
                 .retrieve()
@@ -257,10 +251,10 @@ public class ApiCoinEx implements ApiExchange {
                             return Mono.empty();
                         })
                 )
-                .bodyToFlux(CoinExVolumeTicker.class))
+                .bodyToMono(CoinExVolumeTicker.class)
                 .onErrorResume(error -> {
                     LogsUtils.createErrorResumeLogs(error, NAME);
-                    return Flux.empty();
+                    return Mono.empty();
                 });
     }
 

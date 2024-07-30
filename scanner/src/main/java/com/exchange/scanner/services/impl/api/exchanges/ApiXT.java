@@ -10,6 +10,7 @@ import com.exchange.scanner.dto.response.exchangedata.xt.chains.XTChainResult;
 import com.exchange.scanner.dto.response.exchangedata.xt.depth.XTCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.xt.coins.XTCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.xt.tickervolume.XTVolumeTicker;
+import com.exchange.scanner.dto.response.exchangedata.xt.tickervolume.XTVolumeTickerResult;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
@@ -181,7 +182,7 @@ public class ApiXT implements ApiExchange {
             TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
                     exchangeName,
                     coin,
-                    "0"
+                    "0.002"
             );
             tradingFeeSet.add(responseDTO);
         });
@@ -192,52 +193,48 @@ public class ApiXT implements ApiExchange {
     @Override
     public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
         Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
-
-        XTVolumeTicker response = getCoinTickerVolume(new ArrayList<>(coins)).blockLast();
-
+        XTVolumeTicker response = getCoinTickerVolume().block();
         if (response == null || response.getResult() == null) return volume24HSet;
-        coins.forEach(coin -> response.getResult().stream()
-            .filter(responseData -> responseData.getS().endsWith("_usdt"))
-            .forEach(responseData -> {
-                if (coin.getName().equals(responseData.getS().replaceAll("_usdt", "").toUpperCase())) {
-                    Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
-                            exchange,
-                            coin,
-                            responseData.getV()
-                    );
+        List<String> symbols = coins.stream().map(coin -> coin.getName().toLowerCase() + "_usdt").toList();
+        List<XTVolumeTickerResult> volumeTicker = response.getResult().stream()
+                .filter(data -> symbols.contains(data.getS()))
+                .toList();
 
-                    volume24HSet.add(responseDTO);
-                }
-            }));
+        coins.forEach(coin -> {
+           volumeTicker.forEach(ticker -> {
+               if (ticker.getS().equalsIgnoreCase(coin.getName() + "_usdt")) {
+                   Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                           exchange,
+                           coin,
+                           ticker.getV()
+                   );
+                   volume24HSet.add(responseDTO);
+               }
+           });
+        });
 
         return volume24HSet;
     }
 
-    private Flux<XTVolumeTicker> getCoinTickerVolume(List<Coin> coins) {
-        int maxSymbolPerRequest = 100;
-        List<List<Coin>> partitions = ListUtils.partition(coins, maxSymbolPerRequest);
-
-        return Flux.fromIterable(partitions)
-            .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
-            .flatMap(partition -> webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder.path("/v4/public/ticker")
-                        .queryParam("symbols", generateParameters(partition))
-                        .build()
-                )
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToFlux(XTVolumeTicker.class))
-                .onErrorResume(error -> {
-                    LogsUtils.createErrorResumeLogs(error, NAME);
-                    return Flux.empty();
-                });
+    private Mono<XTVolumeTicker> getCoinTickerVolume() {
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder.path("/v4/public/ticker")
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(XTVolumeTicker.class)
+            .onErrorResume(error -> {
+                LogsUtils.createErrorResumeLogs(error, NAME);
+                return Mono.empty();
+            });
     }
 
     @Override

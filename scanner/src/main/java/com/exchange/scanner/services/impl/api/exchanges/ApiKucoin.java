@@ -7,6 +7,7 @@ import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.kucoin.chains.KucoinChainData;
 import com.exchange.scanner.dto.response.exchangedata.kucoin.chains.KucoinChainResponse;
 import com.exchange.scanner.dto.response.exchangedata.kucoin.depth.KucoinCoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.kucoin.tickervolume.KucoinTicker;
 import com.exchange.scanner.dto.response.exchangedata.kucoin.tradingfee.KucoinTradingFeeResponse;
 import com.exchange.scanner.dto.response.exchangedata.kucoin.coins.KucoinCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.kucoin.tickervolume.KucoinTickerVolumeResponse;
@@ -25,7 +26,6 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -161,100 +161,87 @@ public class ApiKucoin implements ApiExchange {
     @Override
     public Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
         Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
-        KucoinTradingFeeResponse response = getFee(coins).blockLast();
+        KucoinTradingFeeResponse response = getFee().blockLast();
 
         if (response == null || response.getData() == null) return tradingFeeSet;
 
-        coins.forEach(coin -> response.getData().forEach(responseFee -> {
-            if (coin.getName().equals(responseFee.getSymbol().replaceAll("-USDT", ""))) {
-                TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
-                        exchangeName,
-                        coin,
-                        responseFee.getTakerFeeRate()
-                );
-                tradingFeeSet.add(responseDTO);
-            }
-        }));
+        coins.forEach(coin -> {
+            TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                    exchangeName,
+                    coin,
+                    response.getData().getTakerFeeRate()
+            );
+            tradingFeeSet.add(responseDTO);
+        });
 
         return tradingFeeSet;
     }
 
-    private Flux<KucoinTradingFeeResponse> getFee(Set<Coin> coins) {
-        int maxSymbolsSizePerRequest = 10;
-        List<Coin> coinList = new ArrayList<>(coins);
-        List<List<Coin>> partitions = ListUtils.partition(coinList, maxSymbolsSizePerRequest);
-        String endpoint = "/api/v1/trade-fees";
+    private Flux<KucoinTradingFeeResponse> getFee() {
+        String endpoint = "/api/v1/base-fee";
 
-        return Flux.fromIterable(partitions)
-            .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
-            .flatMap(partition -> {
-                String timestamp = String.valueOf(System.currentTimeMillis());
-                String strToSign = timestamp + "GET" + endpoint + "?symbols=" + generateParameters(partition);
-                String signature = KucoinSignatureBuilder.generateKucoinSignature(secret, strToSign);
-                String encodedPassphrase = KucoinSignatureBuilder.generateKucoinPassphrase(secret, passphrase);
-                return webClient
-                    .get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path(endpoint)
-                            .queryParam("symbols", generateParameters(partition))
-                            .build()
-                    )
-                    .header("KC-API-KEY", key)
-                    .header("KC-API-SIGN", signature)
-                    .header("KC-API-TIMESTAMP", timestamp)
-                    .header("KC-API-PASSPHRASE", encodedPassphrase)
-                    .header("KC-API-KEY-VERSION", "3")
-                    .retrieve()
-                    .onStatus(
-                            status -> status.is4xxClientError() || status.is5xxServerError(),
-                            response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                                log.error("Ошибка получения торговых комиссии от " + NAME + ". Причина: {}", errorBody);
-                                return Mono.empty();
-                            })
-                    )
-                    .bodyToFlux(KucoinTradingFeeResponse.class)
-                    .onErrorResume(error -> {
-                        LogsUtils.createErrorResumeLogs(error, NAME);
-                        return Flux.empty();
-                    });
-            });
+        String timestamp = String.valueOf(System.currentTimeMillis());
+        String strToSign = timestamp + "GET" + endpoint;
+        String signature = KucoinSignatureBuilder.generateKucoinSignature(secret, strToSign);
+        String encodedPassphrase = KucoinSignatureBuilder.generateKucoinPassphrase(secret, passphrase);
+        return webClient
+                .get()
+                .uri(uriBuilder -> uriBuilder
+                        .path(endpoint)
+                        .build()
+                )
+                .header("KC-API-KEY", key)
+                .header("KC-API-SIGN", signature)
+                .header("KC-API-TIMESTAMP", timestamp)
+                .header("KC-API-PASSPHRASE", encodedPassphrase)
+                .header("KC-API-KEY-VERSION", "3")
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                            log.error("Ошибка получения торговых комиссии от " + NAME + ". Причина: {}", errorBody);
+                            return Mono.empty();
+                        })
+                )
+                .bodyToFlux(KucoinTradingFeeResponse.class)
+                .onErrorResume(error -> {
+                    LogsUtils.createErrorResumeLogs(error, NAME);
+                    return Flux.empty();
+                });
     }
 
     @Override
     public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
         Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
+        KucoinTickerVolumeResponse response = getCoinTickerVolume().block();
+        if (response == null || response.getData() == null) return volume24HSet;
+        List<String> symbols = coins.stream().map(coin -> coin.getName().toUpperCase() + "-USDT").toList();
+        List<KucoinTicker> ticker = response.getData().getTicker().stream()
+                .filter(data -> symbols.contains(data.getSymbol()))
+                .toList();
 
         coins.forEach(coin -> {
-            KucoinTickerVolumeResponse response = getCoinTickerVolume(coin).block();
+            ticker.forEach(data -> {
+                if (data.getSymbol().equalsIgnoreCase(coin.getName() + "-USDT")) {
+                    Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                            exchange,
+                            coin,
+                            data.getVolValue()
+                    );
 
-            if (response != null && response.getData() != null) {
-                Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
-                        exchange,
-                        coin,
-                        response.getData().getVolValue()
-                );
-
-                volume24HSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw  new RuntimeException();
-            }
+                    volume24HSet.add(responseDTO);
+                }
+            });
         });
 
         return volume24HSet;
     }
 
-    private Mono<KucoinTickerVolumeResponse> getCoinTickerVolume(Coin coin) {
-        String symbol = coin.getName() + "-USDT";
-
+    private Mono<KucoinTickerVolumeResponse> getCoinTickerVolume() {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
-                    .path("/api/v1/market/stats")
-                    .queryParam("symbol", symbol)
+                    .path("/api/v1/market/allTickers")
                     .build()
             )
             .retrieve()

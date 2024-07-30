@@ -8,6 +8,6 @@ import lombok.Setter;
 @Setter
 public class BitmartTradingFeeData {
 
-    @JsonProperty("buy_taker_fee_rate")
+    @JsonProperty("taker_fee_rate_B")
     private String takerFee;
 }

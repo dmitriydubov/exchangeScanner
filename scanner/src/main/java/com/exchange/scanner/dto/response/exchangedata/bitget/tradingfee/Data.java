@@ -7,7 +7,7 @@ import lombok.Setter;
 @Setter
 public class Data {
 
-    private String baseCoin;
+    private String symbol;
 
     private String takerFeeRate;
 }

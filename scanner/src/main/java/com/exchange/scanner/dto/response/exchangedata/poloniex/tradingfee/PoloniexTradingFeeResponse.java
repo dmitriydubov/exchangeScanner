@@ -9,5 +9,7 @@ import java.util.List;
 @Setter
 public class PoloniexTradingFeeResponse {
 
+    private String takerRate;
+
     private List<PoloniexFeeRate> specialFeeRates;
 }

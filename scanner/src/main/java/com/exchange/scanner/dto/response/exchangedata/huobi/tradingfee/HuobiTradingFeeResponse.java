@@ -9,5 +9,7 @@ import java.util.List;
 @Setter
 public class HuobiTradingFeeResponse {
 
+    private Integer code;
+
     private List<HuobiFeeData> data;
 }

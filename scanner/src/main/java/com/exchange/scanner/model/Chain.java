@@ -21,7 +21,7 @@ public class Chain implements Comparable<Chain> {
     @Column(nullable = false)
     private String name;
 
-    @Column(nullable = false, precision = 38, scale = 4)
+    @Column(nullable = false, precision = 38, scale = 8)
     private BigDecimal commission;
 
     @Column(name = "min_confirm", nullable = false)
@@ -29,19 +29,6 @@ public class Chain implements Comparable<Chain> {
 
     @ManyToMany(mappedBy = "chains")
     private Set<Coin> coins = new HashSet<>();
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        Chain chain = (Chain) o;
-        return Objects.equals(name, chain.name);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hashCode(name);
-    }
 
     @Override
     public int compareTo(Chain o) {

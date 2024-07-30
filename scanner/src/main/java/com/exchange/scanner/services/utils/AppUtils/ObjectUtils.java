@@ -49,7 +49,7 @@ public class ObjectUtils {
         TradingFeeResponseDTO responseDTO = new TradingFeeResponseDTO();
         responseDTO.setExchange(exchangeName);
         responseDTO.setCoin(coin);
-        responseDTO.setTradingFee(new BigDecimal(commission).setScale(4, RoundingMode.CEILING));
+        responseDTO.setTradingFee(new BigDecimal(commission).setScale(8, RoundingMode.CEILING));
         return responseDTO;
     }
 

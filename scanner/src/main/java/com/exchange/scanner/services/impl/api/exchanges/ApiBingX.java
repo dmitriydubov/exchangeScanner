@@ -9,9 +9,8 @@ import com.exchange.scanner.dto.response.exchangedata.bingx.chains.BingXChainRes
 import com.exchange.scanner.dto.response.exchangedata.bingx.depth.BingXCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.bingx.tickervolume.BingXVolumeTicker;
 import com.exchange.scanner.dto.response.exchangedata.bingx.coins.BingXCurrencyResponse;
-import com.exchange.scanner.dto.response.exchangedata.bingx.tradingfee.BingXTradingFeeResponse;
+import com.exchange.scanner.dto.response.exchangedata.bingx.tickervolume.BingXVolumeTickerData;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
-import com.exchange.scanner.dto.response.exchangedata.okx.chains.OKXChainData;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
@@ -189,102 +188,46 @@ public class ApiBingX implements ApiExchange {
         Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
 
         coins.forEach(coin -> {
-            BingXTradingFeeResponse response = getFee(coin).block();
-
-            if (response != null && response.getData() != null) {
-                TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
-                        exchangeName,
-                        coin,
-                        response.getData().getTakerCommissionRate()
-                );
-                tradingFeeSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(500);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
+            TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                    exchangeName,
+                    coin,
+                    "0.001"
+            );
+            tradingFeeSet.add(responseDTO);
         });
 
         return tradingFeeSet;
     }
 
-    private Mono<BingXTradingFeeResponse> getFee(Coin coin) {
-        String symbol = coin.getName() + "-USDT";
-        String requestPath = "/openApi/spot/v1/user/commissionRate";
-        TreeMap<String, String> params = new TreeMap<>();
-        params.put("symbol", symbol);
-        BingXSignatureBuilder signatureBuilder = new BingXSignatureBuilder(key, secret, params);
-        signatureBuilder.createSignature();
-
-        return webClient
-            .get()
-            .uri(uriBuilder -> {
-                uriBuilder.path(requestPath);
-                signatureBuilder.getParameters().forEach(uriBuilder::queryParam);
-                return uriBuilder.build();
-            })
-            .headers(httpHeaders -> signatureBuilder.getHeaders().forEach(httpHeaders::add))
-            .header("signature", signatureBuilder.getSignature())
-            .retrieve()
-            .onStatus(
-                    status -> status.is4xxClientError() || status.is5xxServerError(),
-                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Для торговой пары {}. Причина: {}", symbol, errorBody);
-                        return Mono.empty();
-                    })
-            )
-            .bodyToMono(String.class)
-            .onErrorResume(error -> {
-                LogsUtils.createErrorResumeLogs(error, NAME);
-                return Mono.empty();
-            })
-            .handle((response, sink) -> {
-                try {
-                    sink.next(objectMapper.readValue(response, BingXTradingFeeResponse.class));
-                } catch (IOException ex) {
-                    log.error("Ошибка десериализации ответа при получении торговой комиссии от BingX", ex);
-                    sink.error(new RuntimeException());
-                }
-            });
-    }
-
     @Override
     public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
         Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
+        BingXVolumeTicker response = getCoinTickerVolume().block();
+        if (response == null || response.getData() == null) return volume24HSet;
+        List<String> symbols = coins.stream().map(coin -> coin.getName() + "-USDT").toList();
+        List<BingXVolumeTickerData> volumeData = response.getData().stream()
+                .filter(data -> symbols.contains(data.getSymbol()))
+                .toList();
 
-        coins.forEach(coin -> {
-            BingXVolumeTicker response = getCoinTickerVolume(coin).block();
-
-            if (response != null && response.getData() != null) {
+        coins.forEach(coin -> volumeData.forEach(data -> {
+            if (data.getSymbol().equalsIgnoreCase(coin.getName() + "-USDT")) {
                 Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
                         exchange,
                         coin,
-                        response.getData().getFirst().getQuoteVolume()
+                        data.getQuoteVolume()
                 );
-
                 volume24HSet.add(responseDTO);
             }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
-        });
+        }));
 
         return volume24HSet;
     }
 
-    private Mono<BingXVolumeTicker> getCoinTickerVolume(Coin coin) {
-        String symbol = coin.getName() + "-USDT";
-
+    private Mono<BingXVolumeTicker> getCoinTickerVolume() {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
                     .path("/openApi/spot/v1/ticker/24hr")
-                    .queryParam("symbol", symbol)
                     .queryParam("timestamp", new Timestamp(System.currentTimeMillis()).getTime())
                     .build()
             )

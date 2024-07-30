@@ -8,10 +8,7 @@ import com.exchange.scanner.repositories.OrdersBookRepository;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.InvocationTargetException;
-import java.util.HashSet;
-import java.util.Objects;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -29,23 +26,25 @@ public class ArbitrageUtils {
         Set<Exchange> usersMarketsForBuy = exchangeRepository.findAllByNameIn(userMarketSettings.getMarketsBuy());
         Set<Exchange> userMarketsForSell = exchangeRepository.findAllByNameIn(userMarketSettings.getMarketsSell());
 
-        userTradeEvent.setBuyTradeEventDTO(generateTradeEvents(
+        Set<UserBuyTradeEventDTO> buyTradeEventDTO = generateTradeEvents(
                 usersMarketsForBuy,
                 userCoinNames,
                 userMarketSettings,
                 ordersBookRepository,
                 coinRepository,
-                UserBuyTradeEventDTO.class, true)
-        );
-        userTradeEvent.setSellTradeEventDTO(generateTradeEvents(
+                UserBuyTradeEventDTO.class, true);
+
+        Set<UserSellTradeEventDTO> sellTradeEventDTO = generateTradeEvents(
                 userMarketsForSell,
                 userCoinNames,
                 userMarketSettings,
                 ordersBookRepository,
                 coinRepository,
                 UserSellTradeEventDTO.class,
-                false)
-        );
+                false);
+
+        userTradeEvent.setBuyTradeEventDTO(new TreeSet<>(buyTradeEventDTO));
+        userTradeEvent.setSellTradeEventDTO(new TreeSet<>(sellTradeEventDTO));
 
         return userTradeEvent;
     }
@@ -59,28 +58,33 @@ public class ArbitrageUtils {
             Class<T> tradeEventDTOClass,
             boolean isBuy
     ) {
-        return markets.parallelStream()
-                .filter(market -> !market.getIsBlockBySuperuser())
-                .flatMap(market -> {
-                    Set<Coin> filteredCoins = AppServiceUtils.getFilteredCoins(market, userCoinNames);
-                    return filteredCoins != null ?
-                            filteredCoins.stream().map(coin -> new MarketCoinPair(market, coin)) :
-                            Stream.empty();
-                })
-                .filter(pair -> !pair.coin.getIsBlockBySuperuser())
-                .map(pair -> {
+        return markets.stream()
+            .filter(market -> !market.getIsBlockBySuperuser())
+            .flatMap(market -> {
+                Set<Coin> filteredCoins = AppServiceUtils.getFilteredCoins(market, userCoinNames);
+                return filteredCoins != null ?
+                        filteredCoins.stream().map(coin -> new MarketCoinPair(market, coin)) :
+                        Stream.empty();
+            })
+            .filter(pair -> !pair.coin.getIsBlockBySuperuser())
+            .map(pair -> {
+                synchronized (ordersBookRepository) {
                     OrdersBook ordersBook = ordersBookRepository.findBySlug(pair.coin.getSlug()).orElse(null);
                     if (ordersBook == null) return null;
-                    T tradeEventDTO = getUserTradeEventDTO(pair.market, pair.coin, coinRepository, userMarketSettings, tradeEventDTOClass);
+                    T tradeEventDTO = getUserTradeEventDTO(
+                            pair.market, pair.coin, coinRepository, userMarketSettings, tradeEventDTOClass
+                    );
                     if (isBuy) {
                         tradeEventDTO.setAsks(new TreeSet<>(ordersBook.getAsks()));
                     } else {
                         tradeEventDTO.setBids(new TreeSet<>(ordersBook.getBids()));
                     }
+
                     return tradeEventDTO;
-                })
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+                }
+            })
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
     }
 
     private static <T extends TradeEventDTO> T getUserTradeEventDTO(
@@ -92,7 +96,7 @@ public class ArbitrageUtils {
     ) {
         try {
             T tradeEventDTO = classDTO.getConstructor().newInstance();
-            Coin coinEntity = coinRepository.findBySlug(coin.getSlug()).orElse(null);
+            Coin coinEntity = coinRepository.findBySlug(coin.getSlug());
             if (coinEntity == null) return tradeEventDTO;
             Set<Chain> chains = coinEntity.getChains();
             tradeEventDTO.setExchange(exchange.getName());

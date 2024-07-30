@@ -19,16 +19,14 @@ public class TradingFeeUtils {
                                                     UserMarketSettingsRepository userMarketSettingsRepository
     ) {
         Set<TradingFeeResponseDTO> result = Collections.synchronizedSet(new HashSet<>());
-        Set<Exchange> userExchanges = AppServiceUtils.getUsersExchanges(userMarketSettingsRepository, exchangeRepository);
-        if (userExchanges.isEmpty()) return result;
-        Set<String> usersCoinsNames = AppServiceUtils.getUsersCoinsNames(userMarketSettingsRepository);
-        ExecutorService executorService = Executors.newFixedThreadPool(userExchanges.size());
+        Set<Exchange> exchanges = new HashSet<>(exchangeRepository.findAll());
+        ExecutorService executorService = Executors.newFixedThreadPool(exchanges.size());
         List<CompletableFuture<Void>> futures = new CopyOnWriteArrayList<>();
 
-        userExchanges.forEach(exchange -> {
+        exchanges.forEach(exchange -> {
             CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                Set<Coin> filteredCoinsNames = AppServiceUtils.getFilteredCoins(exchange, usersCoinsNames);
-                Set<TradingFeeResponseDTO> response = apiExchangeAdapter.getTradingFee(exchange.getName(), filteredCoinsNames);
+                Set<Coin> coins = exchange.getCoins();
+                Set<TradingFeeResponseDTO> response = apiExchangeAdapter.getTradingFee(exchange.getName(), coins);
                 synchronized (result) {
                     result.addAll(response);
                 }

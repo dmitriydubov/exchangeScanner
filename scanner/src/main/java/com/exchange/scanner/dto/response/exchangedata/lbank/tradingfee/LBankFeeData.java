@@ -8,6 +8,9 @@ import lombok.Setter;
 @Setter
 public class LBankFeeData {
 
+    @JsonProperty("symbol")
+    private String symbol;
+
     @JsonProperty("takerCommission")
     private String takerCommission;
 }

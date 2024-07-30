@@ -7,7 +7,7 @@ import lombok.Setter;
 @Setter
 public class OKXDataVolumeTicker {
 
-    private String instType;
+    private String instId;
 
     private String volCcy24h;
 }

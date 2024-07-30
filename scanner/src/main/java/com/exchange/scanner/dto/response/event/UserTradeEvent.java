@@ -4,12 +4,13 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.Set;
+import java.util.TreeSet;
 
 @Getter
 @Setter
 public class UserTradeEvent {
 
-    private Set<UserBuyTradeEventDTO> buyTradeEventDTO;
+    private TreeSet<UserBuyTradeEventDTO> buyTradeEventDTO;
 
-    private Set<UserSellTradeEventDTO> sellTradeEventDTO;
+    private TreeSet<UserSellTradeEventDTO> sellTradeEventDTO;
 }

@@ -10,6 +10,7 @@ import com.exchange.scanner.dto.response.exchangedata.mexc.tradingfee.MexcTradin
 import com.exchange.scanner.dto.response.exchangedata.mexc.coins.MexcCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.mexc.tickervolume.MexcCoinTicker;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.mexc.tradingfee.MexcTradingFeeSymbol;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
@@ -173,42 +174,39 @@ public class ApiMEXC implements ApiExchange {
     @Override
     public Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
         Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
+        MexcTradingFeeResponse response = getFee().block();
+        if (response == null || response.getSymbols().isEmpty()) return tradingFeeSet;
+
+        List<String> coinsNames = coins.stream().map(coin -> coin.getName().toUpperCase() + "USDT").toList();
+        List<MexcTradingFeeSymbol> symbols = response.getSymbols().stream()
+                .filter(symbol -> symbol.getQuoteAsset().equalsIgnoreCase("USDT") &&
+                        coinsNames.contains(symbol.getSymbol())
+                )
+                .toList();
 
         coins.forEach(coin -> {
-            MexcTradingFeeResponse response = getFee(coin).block();
-
-            if (response != null && response.getData() != null) {
-                TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
-                        exchangeName,
-                        coin,
-                        response.getData().getTakerCommission()
-                );
-                tradingFeeSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
+            symbols.forEach(symbol -> {
+                if (symbol.getSymbol().equalsIgnoreCase(coin.getName() + "USDT")) {
+                    TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                            exchangeName,
+                            coin,
+                            symbol.getTakerCommission()
+                    );
+                    tradingFeeSet.add(responseDTO);
+                }
+            });
         });
 
         return tradingFeeSet;
     }
 
-    private Mono<MexcTradingFeeResponse> getFee(Coin coin) {
-        Map<String, String> params = new HashMap<>();
-        params.put("symbol", coin.getName() + "USDT");
-        String signature = MexcSignatureBuilder.generateMexcSignature(params, secret);
-        params.put("signature", signature);
+    private Mono<MexcTradingFeeResponse> getFee() {
         return webClient
             .get()
-            .uri(uriBuilder -> {
-                uriBuilder.path("api/v3/tradeFee");
-                params.forEach(uriBuilder::queryParam);
-                return uriBuilder.build();
-            })
-            .header("X-MEXC-APIKEY", key)
+            .uri(uriBuilder -> uriBuilder
+                .path("/api/v3/exchangeInfo")
+                .build()
+            )
             .retrieve()
             .onStatus(
                     status -> status.is4xxClientError() || status.is5xxServerError(),
@@ -227,39 +225,35 @@ public class ApiMEXC implements ApiExchange {
     @Override
     public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
         Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
+        List<MexcCoinTicker> response = getCoinTickerVolume().collectList().block();
+        if (response == null) return volume24HSet;
+        List<String> symbols = coins.stream().map(coin -> coin.getName().toUpperCase() + "USDT").toList();
+        List<MexcCoinTicker> filteredResponse = response.stream()
+                .filter(data -> symbols.contains(data.getSymbol()))
+                .toList();
 
         coins.forEach(coin -> {
-            MexcCoinTicker response = getCoinTickerVolume(coin).block();
+            filteredResponse.forEach(data -> {
+                if (data.getSymbol().equalsIgnoreCase(coin.getName() + "USDT")) {
+                    Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                            exchange,
+                            coin,
+                            data.getQuoteVolume()
+                    );
 
-            if (response != null && response.getQuoteVolume() != null) {
-                Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
-                        exchange,
-                        coin,
-                        response.getQuoteVolume()
-                );
-
-                volume24HSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
+                    volume24HSet.add(responseDTO);
+                }
+            });
         });
-
 
         return volume24HSet;
     }
 
-    private Mono<MexcCoinTicker> getCoinTickerVolume(Coin coin) {
-        String symbol = coin.getName() + "USDT";
-
+    private Flux<MexcCoinTicker> getCoinTickerVolume() {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
                     .path("/api/v3/ticker/24hr")
-                    .queryParam("symbol", symbol)
                     .build()
             )
             .retrieve()
@@ -270,7 +264,7 @@ public class ApiMEXC implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(MexcCoinTicker.class)
+            .bodyToFlux(MexcCoinTicker.class)
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();

@@ -9,5 +9,5 @@ public class BitgetTickerVolumeData {
 
     private String symbol;
 
-    private String quoteVolume;
+    private String usdtVolume;
 }

@@ -44,12 +44,6 @@ public class CoinMarketCapServiceImpl implements CoinMarketCapService {
 
     @Override
     public Set<CoinInfoDTO> getCoinMarketCapCoinsInfo(Set<String> coins) {
-        try {
-            Thread.sleep(REQUEST_DELAY_DURATION);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-
         Set<CoinInfoDTO> coinInfoDTOSet = new HashSet<>();
 
         String response = getCoinInfo(coins).block();

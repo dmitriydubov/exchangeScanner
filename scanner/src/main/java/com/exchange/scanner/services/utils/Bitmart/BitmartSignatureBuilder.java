@@ -32,7 +32,7 @@ public class BitmartSignatureBuilder {
     }
 
     public void createSignature(String method, Map<String, String> parameters) {
-        String paramsString = createParamsString(parameters);
+        String paramsString = !parameters.isEmpty() ? createParamsString(parameters) : "";
         String preSignString = timestamp + "#" + memo + "#" + paramsString;
         generateSignature(preSignString);
     }

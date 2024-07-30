@@ -8,6 +8,7 @@ import com.exchange.scanner.dto.response.exchangedata.coinw.chains.CoinWChainsRe
 import com.exchange.scanner.dto.response.exchangedata.coinw.coins.CoinWCoinAvailableResponse;
 import com.exchange.scanner.dto.response.exchangedata.coinw.depth.CoinWCoinDepthResponse;
 import com.exchange.scanner.dto.response.exchangedata.coinw.tickervolume.CoinWVolumeResponse;
+import com.exchange.scanner.dto.response.exchangedata.coinw.tickervolume.CoinWVolumeTickerData;
 import com.exchange.scanner.dto.response.exchangedata.coinw.tradingfee.CoinWTradingFeeResponse;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
@@ -192,19 +193,20 @@ public class ApiCoinW implements ApiExchange {
     @Override
     public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
         Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
-
         CoinWVolumeResponse response = getCoinTickerVolume().block();
-
         if (response == null || response.getData() == null) return volume24HSet;
+        List<String> symbols = coins.stream().map(coin -> coin.getName().toUpperCase() + "_USDT").toList();
+        Map<String, CoinWVolumeTickerData> data = response.getData().entrySet().stream()
+                .filter(entry -> symbols.contains(entry.getKey()))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
-        coins.forEach(coin -> response.getData().forEach((coinName, data) -> {
-            if (coin.getName().equals(coinName.replaceAll("_USDT", ""))) {
+        coins.forEach(coin -> data.forEach((coinName, volume) -> {
+            if (coinName.equalsIgnoreCase(coin.getName() + "_USDT")) {
                 Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
                         exchange,
                         coin,
-                        data.getBaseVolume()
+                        volume.getBaseVolume()
                 );
-
                 volume24HSet.add(responseDTO);
             }
         }));
@@ -213,7 +215,6 @@ public class ApiCoinW implements ApiExchange {
     }
 
     private Mono<CoinWVolumeResponse> getCoinTickerVolume() {
-
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder

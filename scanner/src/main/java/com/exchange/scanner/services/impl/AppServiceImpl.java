@@ -26,6 +26,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -56,30 +61,19 @@ public class AppServiceImpl implements AppService {
 
     private static final int SCHEDULED_RATE_TIME_FOR_REFRESH_COINS = 1000 * 60 * 60;
 
-    private static final int SCHEDULED_RATE_TIME_FOR_GET_CHAINS = 1000 * 60 * 60 * 24;
+    private static final int SCHEDULED_RATE_TIME_FOR_GET_CHAINS = 1000 * 60 * 60;
 
-    private static final int SCHEDULED_RATE_TIME_FOR_GET_TRADING_FEE = 1000 * 60 * 60 * 24;
+    private static final int SCHEDULED_RATE_TIME_FOR_GET_TRADING_FEE = 1000 * 60 * 60;
 
-    private static final int SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H = 1000 * 60 * 60 * 24;
+    private static final int SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H = 1000 * 60 * 60;
 
     private static final int SCHEDULED_RATE_TIME_FOR_GET_ORDERS_BOOK = 5000;
 
-    private static final int SCHEDULED_RATE_TIME_FOR_GET_COIN_INFO = 1000 * 60 * 60 * 24;
+    private static final int SCHEDULED_RATE_TIME_FOR_GET_COIN_INFO = 1000 * 60 * 60;
 
-    private static final int SCHEDULED_DELAY_TIME_FOR_REFRESH_COINS = 1000000000;
-
-    private static final int SCHEDULED_DELAY_TIME_FOR_GET_CHAINS = 0;
-
-    private static final int SCHEDULED_DELAY_TIME_FOR_GET_TRADING_FEE = 1000000000;
-
-    private static final int SCHEDULED_DELAY_TIME_FOR_GET_COIN_VOLUME24H = 1000000000;
-
-    private static final int SCHEDULED_DELAY_TIME_FOR_GET_ORDERS_BOOK = 1000000000;
-
-    private static final int SCHEDULED_DELAY_TIME_FOR_GET_COIN_INFO = 1000000000;
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_REFRESH_COINS, initialDelay = SCHEDULED_DELAY_TIME_FOR_REFRESH_COINS)
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_REFRESH_COINS)
     public void refreshCoins() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи refreshCoins", Thread.currentThread().getName());
@@ -97,7 +91,7 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_CHAINS, initialDelay = SCHEDULED_DELAY_TIME_FOR_GET_CHAINS)
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_CHAINS, initialDelay = 15000)
     public void getCoinsChains() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи getCoinsChains", Thread.currentThread().getName());
@@ -118,7 +112,7 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_TRADING_FEE, initialDelay = SCHEDULED_DELAY_TIME_FOR_GET_TRADING_FEE)
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_TRADING_FEE, initialDelay = 15000)
     public void getTradingFee() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи getTradingFee", Thread.currentThread().getName());
@@ -138,7 +132,7 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H, initialDelay = SCHEDULED_DELAY_TIME_FOR_GET_COIN_VOLUME24H)
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H, initialDelay = 15000)
     public void getVolume24h() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи getVolume24h", Thread.currentThread().getName());
@@ -158,7 +152,7 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_INFO, initialDelay = SCHEDULED_DELAY_TIME_FOR_GET_COIN_INFO)
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_INFO, initialDelay = 15000)
     public void getCoinMarketCapCoinInfo() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи getCoinMarketCapCoinInfo", Thread.currentThread().getName());
@@ -183,12 +177,14 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_ORDERS_BOOK, initialDelay = SCHEDULED_DELAY_TIME_FOR_GET_ORDERS_BOOK)
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_ORDERS_BOOK, initialDelay = 15000)
     public void getOrderBooks() {
 //        long start = System.currentTimeMillis();
 //        log.info("{} приступил к выполнению задачи getOrderBooks", Thread.currentThread().getName());
 
-        ordersBookRepository.deleteAll();
+        synchronized (ordersBookRepository) {
+            ordersBookRepository.deleteAll();
+        }
 
         OrdersBookUtils ordersBookUtils = new OrdersBookUtils();
         Set<CoinDepth> coinDepthSet = ordersBookUtils.getOrderBooksAsync(
@@ -201,12 +197,94 @@ public class AppServiceImpl implements AppService {
             ordersBook.setSlug(depth.getSlug());
             Coin coin = depth.getCoin();
             ordersBook.setCoin(coin);
-            ordersBookRepository.save(ordersBook);
+            synchronized (ordersBookRepository) {
+                ordersBookRepository.save(ordersBook);
+            }
         });
 
 
 //        long end = System.currentTimeMillis() - start;
 //        log.info("Операция обновления стакана цен выполнена. Время выполнения: {}s", end / 1000);
+    }
+
+    @Override
+    public CompletableFuture<ExchangeData> getExchanges(UserDetails userDetails) {
+        return CompletableFuture.supplyAsync(() -> {
+                if (userDetails == null) {
+                    return new ExchangeData();
+                }
+
+                var user = getUser(userDetails);
+
+                UserMarketSettings userMarketSettings = getUserMarketSettings(user);
+
+                return getExchangeData(userMarketSettings);
+            }
+        );
+    }
+
+    @Override
+    public CompletableFuture<ExchangeData> updateUserMarketData(UserUpdateMarketData userData, UserDetails userDetails) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (userDetails == null) {
+                return new ExchangeData();
+            }
+
+            var user = getUser(userDetails);
+            UserMarketSettings userMarketSettings = getUserMarketSettings(user);
+
+            userMarketSettings.setMarketsBuy(new ArrayList<>(userData.getBuyExchanges()));
+            userMarketSettings.setMarketsSell(new ArrayList<>(userData.getSellExchanges()));
+            userMarketSettings.setCoins(new ArrayList<>(userData.getCoins()));
+            userMarketSettings.setProfitSpread(new BigDecimal(userData.getMinProfit()));
+            userMarketSettings.setMinVolume(new BigDecimal(userData.getMinDealAmount()));
+            userMarketSettings.setMaxVolume(new BigDecimal(userData.getMaxDealAmount()));
+            userMarketSettingsRepository.save(userMarketSettings);
+
+            getCoinMarketCapCoinInfo();
+
+            return getExchangeData(userMarketSettings);
+        });
+    }
+
+    @Override
+    public CompletableFuture<Set<ArbitrageEvent>> getArbitrageEvents(UserDetails userDetails) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (userDetails == null) {
+                return new HashSet<>();
+            }
+
+            var user = getUser(userDetails);
+            UserMarketSettings userMarketSettings = getUserMarketSettings(user);
+
+            ArbitrageUtils arbitrageUtils = new ArbitrageUtils();
+            UserTradeEvent userTradeEvent = arbitrageUtils.createUserTradeEvent(
+                    exchangeRepository,
+                    ordersBookRepository,
+                    coinRepository,
+                    userMarketSettings
+            );
+
+            Set<ArbitrageOpportunity> arbitrageOpportunities = arbitrageService.getArbitrageOpportunities(userTradeEvent);
+            Set<ArbitrageEvent> eventSet = createArbitrageEvent(arbitrageOpportunities);
+
+            return updateLifeCycle(eventSet);
+        });
+    }
+
+    private UserMarketSettings getUserMarketSettings(User user) {
+        synchronized (userMarketSettingsRepository) {
+            var userMarketSettings = userMarketSettingsRepository.getByUser(user);
+            return userMarketSettings.orElseGet(() -> createUserMarketSettingsWithDefaults(user));
+        }
+    }
+
+    private User getUser(UserDetails userDetails) {
+        synchronized (userRepository) {
+            return userRepository.findByUsername(userDetails.getUsername()).orElseThrow(() ->
+                new UsernameNotFoundException("Пользователь не зарегистрирован")
+            );
+        }
     }
 
     protected void updateCoins(Map<String, Set<Coin>> coinsMap) {
@@ -223,62 +301,11 @@ public class AppServiceImpl implements AppService {
         });
     }
 
-    protected synchronized UserMarketSettings createUserMarketSettingsWithDefaults(User user) {
+    protected UserMarketSettings createUserMarketSettingsWithDefaults(User user) {
         List<String> exchangesNames = exchangeRepository.findAll().stream().map(Exchange::getName).toList();
         var userMarketSettings = UserMarketSettingsBuilder.getDefaultUserMarketSettings(user, exchangesNames);
 
         return userMarketSettingsRepository.save(userMarketSettings);
-    }
-
-    @Override
-    public CompletableFuture<ExchangeData> getExchanges(UserDetails userDetails) {
-        return CompletableFuture.supplyAsync(() -> {
-                if (userDetails == null) {
-                    return new ExchangeData();
-                }
-
-                var user = userRepository.findByUsername(userDetails.getUsername()).orElseThrow(() ->
-                        new UsernameNotFoundException("Пользователь не зарегистрирован")
-                );
-
-                UserMarketSettings userMarketSettings;
-                Optional<UserMarketSettings> optional = userMarketSettingsRepository.getByUser(user);
-                userMarketSettings = optional.orElseGet(() -> createUserMarketSettingsWithDefaults(user));
-
-                return getExchangeData(userMarketSettings);
-            }
-        );
-    }
-
-    @Override
-    public CompletableFuture <ExchangeData> updateUserMarketData(UserUpdateMarketData userData, UserDetails userDetails) {
-        return CompletableFuture.supplyAsync(() -> {
-            if (userDetails == null) {
-                return new ExchangeData();
-            }
-
-            var user = userRepository.findByUsername(userDetails.getUsername()).orElseThrow(() ->
-                    new UsernameNotFoundException("Пользователь не зарегистрирован")
-            );
-
-            UserMarketSettings userMarketSettings;
-            Optional<UserMarketSettings> optional = userMarketSettingsRepository.getByUser(user);
-            userMarketSettings = optional.orElseGet(() -> createUserMarketSettingsWithDefaults(user));
-
-            userMarketSettings.setMarketsBuy(new ArrayList<>(userData.getBuyExchanges()));
-            userMarketSettings.setMarketsSell(new ArrayList<>(userData.getSellExchanges()));
-            userMarketSettings.setCoins(new ArrayList<>(userData.getCoins()));
-            userMarketSettings.setProfitSpread(new BigDecimal(userData.getMinProfit()));
-            userMarketSettings.setMinVolume(new BigDecimal(userData.getMinDealAmount()));
-            userMarketSettings.setMaxVolume(new BigDecimal(userData.getMaxDealAmount()));
-            userMarketSettingsRepository.save(userMarketSettings);
-
-            getTradingFee();
-            getVolume24h();
-            getCoinMarketCapCoinInfo();
-
-            return getExchangeData(userMarketSettings);
-        });
     }
 
     private ExchangeData getExchangeData(UserMarketSettings userMarketSettings) {
@@ -305,41 +332,14 @@ public class AppServiceImpl implements AppService {
         return exchangeData;
     }
 
-    @Override
-    public CompletableFuture<Set<ArbitrageEvent>> getArbitrageEvents(UserDetails userDetails) {
-        return CompletableFuture.supplyAsync(() -> {
-            if (userDetails == null) {
-                return new HashSet<>();
-            }
-
-            var user = userRepository.findByUsername(userDetails.getUsername()).orElseThrow(() ->
-                    new UsernameNotFoundException("Пользователь не зарегистрирован")
-            );
-
-            UserMarketSettings userMarketSettings;
-            Optional<UserMarketSettings> optional = userMarketSettingsRepository.getByUser(user);
-            userMarketSettings = optional.orElseGet(() -> createUserMarketSettingsWithDefaults(user));
-
-            ArbitrageUtils arbitrageUtils = new ArbitrageUtils();
-            UserTradeEvent userTradeEvent = arbitrageUtils.createUserTradeEvent(
-                    exchangeRepository,
-                    ordersBookRepository,
-                    coinRepository,
-                    userMarketSettings
-            );
-
-            Set<ArbitrageOpportunity> arbitrageOpportunities = arbitrageService.getArbitrageOpportunities(userTradeEvent);
-            Set<ArbitrageEvent> eventSet = createArbitrageEvent(arbitrageOpportunities);
-
-            return updateLifeCycle(eventSet);
-        });
-    }
-
     private Set<ArbitrageEvent> updateLifeCycle(Set<ArbitrageEvent> eventSet) {
-        Set<ArbitrageEvent> arbitrageEventsWithLifeCycle = new HashSet<>();
+        Set<ArbitrageEvent> arbitrageEventsWithLifeCycle = new TreeSet<>();
+
+        checkForNotExistedTradeEvents(eventSet);
+
         eventSet.forEach(event -> {
             ArbitrageEvent arbitrageEvent = new ArbitrageEvent();
-            List<EventData> eventDataList = new ArrayList<>();
+            TreeSet<EventData> eventDataList = new TreeSet<>();
             arbitrageEvent.setCoin(event.getCoin());
             arbitrageEvent.setCoinMarketCapLink(event.getCoinMarketCapLink());
             arbitrageEvent.setCoinMarketCapLogo(event.getCoinMarketCapLogo());
@@ -348,8 +348,12 @@ public class AppServiceImpl implements AppService {
                 if (existedEventData.isPresent()) {
                     ArbitrageLifecycle existArbitrage = existedEventData.get();
                     long timestamp = existArbitrage.getTimestamp();
-                    Date currentLifeCycleTime = new Date(System.currentTimeMillis() - timestamp);
-                    data.setLifeCycle(new SimpleDateFormat("mm:ss").format(currentLifeCycleTime));
+                    long currentTimestamp = System.currentTimeMillis();
+                    Date lifecycle = new Date(currentTimestamp - timestamp);
+                    DateTimeFormatter dateFormat = DateTimeFormatter.ofPattern("HH:mm:ss");
+                    Duration duration = Duration.ofMillis(currentTimestamp - timestamp);
+                    System.out.println(duration.minusHours(3));
+                    data.setLifeCycle(dateFormat.toString());
                     existArbitrage.setLastUpdate(System.currentTimeMillis());
                 } else {
                     data.setLifeCycle("<1m");
@@ -368,13 +372,36 @@ public class AppServiceImpl implements AppService {
         return arbitrageEventsWithLifeCycle;
     }
 
+    private void checkForNotExistedTradeEvents(Set<ArbitrageEvent> eventSet) {
+        Set<String> existedEventsSlug = arbitrageLifeCycleRepository.findAll().stream()
+                .map(ArbitrageLifecycle::getSlug)
+                .collect(Collectors.toSet());
+        Set<String> newEventsSlug = eventSet.stream()
+                .flatMap(event -> event.getEventData().stream())
+                .map(EventData::getSlug)
+                .collect(Collectors.toSet());
+        deleteNotExistsLifeCycleEvents(existedEventsSlug, newEventsSlug);
+    }
+
+    private void deleteNotExistsLifeCycleEvents(Set<String> existedEventsSlug, Set<String> newEventsSlug) {
+        existedEventsSlug.forEach(slug -> {
+            if (!newEventsSlug.contains(slug)) {
+                arbitrageLifeCycleRepository.findBySlug(slug)
+                        .ifPresent(arbitrageEventLifecycle -> arbitrageLifeCycleRepository
+                                .deleteById(arbitrageEventLifecycle.getId()
+                        )
+                );
+            }
+        });
+    }
+
     private Set<ArbitrageEvent> createArbitrageEvent(Set<ArbitrageOpportunity> arbitrageOpportunities) {
         Set<ArbitrageEvent> arbitrageEventSet = arbitrageOpportunities.stream().map(arbitrage -> {
             ArbitrageEvent arbitrageEvent = new ArbitrageEvent();
             arbitrageEvent.setCoin(arbitrage.getCoinName());
             arbitrageEvent.setCoinMarketCapLink(arbitrage.getCoinMarketCapLink());
             arbitrageEvent.setCoinMarketCapLogo(arbitrage.getCoinMarketCapLogo());
-            arbitrageEvent.setEventData(new ArrayList<>());
+            arbitrageEvent.setEventData(new TreeSet<>());
             return arbitrageEvent;
         })
         .collect(Collectors.toSet());
@@ -386,10 +413,10 @@ public class AppServiceImpl implements AppService {
                         Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
 
         for (ArbitrageEvent event : arbitrageEventSet) {
-            List<EventData> eventDataList = new ArrayList<>();
+            TreeSet<EventData> eventDataList = new TreeSet<>();
             for (Map.Entry<String, List<EventData>> entry : eventDataMap.entrySet()) {
                 if (event.getCoin().equals(entry.getKey())) {
-                    eventDataList = entry.getValue();
+                    eventDataList.addAll(entry.getValue());
                 }
             }
             event.setEventData(eventDataList);

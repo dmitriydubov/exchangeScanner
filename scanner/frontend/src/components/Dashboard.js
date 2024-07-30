@@ -282,7 +282,7 @@ export default class Dashboard extends React.Component {
                     </td>
                     <td>
                         <div>
-                            {deal.eventData[0].spotFee} <br /> {deal.eventData[0].spotFee}
+                            {deal.eventData[0].spotFee} <br /> {deal.eventData[0].chainFee}
                         </div>
                     </td>
                     <td>
@@ -334,7 +334,7 @@ export default class Dashboard extends React.Component {
                     <td>{event.priceRangeForBuy} <br />  {event.priceRangeForSell}</td>
                     <td>{event.volume24ExchangeForBuy} <br />  {event.volume24ExchangeForSell}</td>
                     <td>{event.ordersCountForBuy} <br />  {event.ordersCountForSell}</td>
-                    <td>{event.spotFee} <br />  {event.spotFee}</td>
+                    <td>{event.spotFee} <br />  {event.chainFee}</td>
                     <td>{event.lifeCycle}</td>
                     <td>{event.chainName}</td>
                     <td>{event.transactionTime}</td>

@@ -5,9 +5,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class Data {
-
-    private String symbol;
+public class KucoinTradingFeeData {
 
     private String takerFeeRate;
 }

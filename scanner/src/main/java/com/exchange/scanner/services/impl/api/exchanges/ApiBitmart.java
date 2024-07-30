@@ -182,40 +182,31 @@ public class ApiBitmart implements ApiExchange {
     @Override
     public Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
         Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
-
+        BitmartTradingFeeResponse response = getFee().block();
+        if (response == null || response.getData() == null) {
+            return tradingFeeSet;
+        }
         coins.forEach(coin -> {
-            BitmartTradingFeeResponse response = getFee(coin).block();
-
-            if (response != null && response.getData() != null) {
-                TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
-                        exchangeName,
-                        coin,
-                        response.getData().getTakerFee()
-                );
-                tradingFeeSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(REQUEST_FEE_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
+            TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                    exchangeName,
+                    coin,
+                    response.getData().getTakerFee()
+            );
+            tradingFeeSet.add(responseDTO);
         });
 
         return tradingFeeSet;
     }
 
-    private Mono<BitmartTradingFeeResponse> getFee(Coin coin) {
-        String requestPath = "/spot/v1/trade_fee";
-        String symbol = coin.getName() + "_USDT";
+    private Mono<BitmartTradingFeeResponse> getFee() {
+        String requestPath = "/spot/v1/user_fee";
         BitmartSignatureBuilder signatureBuilder = new BitmartSignatureBuilder(secret, memo);
-        signatureBuilder.createSignature("GET", Collections.singletonMap("symbol", symbol));
+        signatureBuilder.createSignature("GET", new HashMap<>());
 
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
                     .path(requestPath)
-                    .queryParam("symbol", symbol)
                     .build()
             )
             .header("X-BM-TIMESTAMP", signatureBuilder.getTimestamp())
@@ -225,7 +216,7 @@ public class ApiBitmart implements ApiExchange {
             .onStatus(
                     status -> status.is4xxClientError() || status.is5xxServerError(),
                     response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Для торговой пары {}. Причина: {}", symbol, errorBody);
+                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Причина: {}", errorBody);
                         return Mono.empty();
                     })
             )
@@ -239,37 +230,34 @@ public class ApiBitmart implements ApiExchange {
     @Override
     public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
         Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
+        BitmartVolumeTicker response = getCoinTickerVolume().block();
+        if (response == null || response.getData() == null) return volume24HSet;
+        List<String> symbols = coins.stream().map(coin -> coin.getName().toUpperCase() + "_USDT").toList();
+        List<List<String>> volumeData = response.getData().stream()
+                .filter(data -> symbols.contains(data.getFirst()))
+                .toList();
 
         coins.forEach(coin -> {
-            BitmartVolumeTicker response = getCoinTickerVolume(coin).block();
+            volumeData.forEach(data -> {
+                if (data.getFirst().equalsIgnoreCase(coin.getName().toUpperCase() + "_USDT")) {
+                    Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                            exchange,
+                            coin,
+                            data.get(3)
+                    );
 
-            if (response != null && response.getData() != null) {
-                Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
-                        exchange,
-                        coin,
-                        response.getData().getQv24h()
-                );
-
-                volume24HSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
+                    volume24HSet.add(responseDTO);
+                }
+            });
         });
 
         return volume24HSet;
     }
 
-    public Mono<BitmartVolumeTicker> getCoinTickerVolume(Coin coin) {
-        String symbol = coin.getName() + "_USDT";
-
+    public Mono<BitmartVolumeTicker> getCoinTickerVolume() {
         return webClient.get()
             .uri(uriBuilder -> uriBuilder
-                    .path("/spot/quotation/v3/ticker")
-                    .queryParam("symbol", symbol)
+                    .path("/spot/quotation/v3/tickers")
                     .build()
             )
             .retrieve()

@@ -20,10 +20,10 @@ public class Bid implements Comparable<Bid> {
     @Column(nullable = false)
     private Long id;
 
-    @Column(precision = 38, scale = 8, nullable = false)
+    @Column(precision = 38, scale = 14, nullable = false)
     private BigDecimal price;
 
-    @Column(precision = 38, scale = 8, nullable = false)
+    @Column(precision = 38, scale = 14, nullable = false)
     private BigDecimal volume;
 
     @ManyToOne(cascade = CascadeType.ALL)

@@ -7,5 +7,7 @@ import lombok.Setter;
 @Setter
 public class LBankVolumeTickerData {
 
-    private Ticker ticker;
+    private String symbol;
+
+    private LBankVolumeTicker ticker;
 }

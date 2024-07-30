@@ -10,7 +10,7 @@ import java.util.stream.Collectors;
 public class AppServiceUtils {
 
 
-    public static Set<Exchange> getUsersExchanges(UserMarketSettingsRepository userMarketSettingsRepository,
+    public static synchronized Set<Exchange> getUsersExchanges(UserMarketSettingsRepository userMarketSettingsRepository,
                                                   ExchangeRepository exchangeRepository
     ) {
         return userMarketSettingsRepository.findAll().stream()
@@ -26,7 +26,7 @@ public class AppServiceUtils {
                 .collect(Collectors.toSet());
     }
 
-    public static Set<String> getUsersCoinsNames(UserMarketSettingsRepository userMarketSettingsRepository) {
+    public static synchronized Set<String> getUsersCoinsNames(UserMarketSettingsRepository userMarketSettingsRepository) {
         return userMarketSettingsRepository.findAll().stream()
                 .flatMap(settings -> settings.getCoins().stream())
                 .collect(Collectors.toSet());

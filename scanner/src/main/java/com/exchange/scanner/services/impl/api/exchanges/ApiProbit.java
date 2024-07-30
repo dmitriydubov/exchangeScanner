@@ -7,6 +7,7 @@ import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.probit.chains.Data;
 import com.exchange.scanner.dto.response.exchangedata.probit.chains.ProbitChainData;
 import com.exchange.scanner.dto.response.exchangedata.probit.depth.ProbitCoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.probit.tickervolume.ProbitTickerData;
 import com.exchange.scanner.dto.response.exchangedata.probit.tradingfee.FeeData;
 import com.exchange.scanner.dto.response.exchangedata.probit.tradingfee.ProbitTradingFeeResponse;
 import com.exchange.scanner.dto.response.exchangedata.probit.coins.ProbitCurrencyResponse;
@@ -202,19 +203,20 @@ public class ApiProbit implements ApiExchange {
     @Override
     public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
         Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
-
-        ProbitTickerVolume response = getCoinTickerVolume(new ArrayList<>(coins)).blockLast();
-
+        ProbitTickerVolume response = getCoinTickerVolume().block();
         if (response == null || response.getData() == null) return volume24HSet;
+        List<String> symbols = coins.stream().map(coin -> coin.getName() + "-USDT").toList();
+        List<ProbitTickerData> ticker = response.getData().stream()
+                .filter(data -> symbols.contains(data.getMarketId()))
+                .toList();
 
-        coins.forEach(coin -> response.getData().forEach(data -> {
-            if (coin.getName().equals(data.getMarketId().replaceAll("-USDT", ""))) {
+        coins.forEach(coin -> ticker.forEach(data -> {
+            if (data.getMarketId().equalsIgnoreCase(coin.getName() + "-USDT")) {
                 Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
                         exchange,
                         coin,
                         data.getQuoteVolume()
                 );
-
                 volume24HSet.add(responseDTO);
             }
         }));
@@ -222,34 +224,28 @@ public class ApiProbit implements ApiExchange {
         return volume24HSet;
     }
 
-    private Flux<ProbitTickerVolume> getCoinTickerVolume(List<Coin> coins) {
-        int maxRequestSymbolsSize = 20;
-        List<List<Coin>> partitions = ListUtils.partition(coins, maxRequestSymbolsSize);
-
-        return Flux.fromIterable(partitions)
-            .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
-            .flatMap(partition -> webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/ticker")
-                        .queryParam("market_ids", generateParameters(partition))
-                        .build()
-                )
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToFlux(ProbitTickerVolume.class)
-                .onErrorResume(error -> {
-                    LogsUtils.createErrorResumeLogs(error, NAME);
-                    return Flux.empty();
-                })
-            );
+    private Mono<ProbitTickerVolume> getCoinTickerVolume() {
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/ticker")
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(ProbitTickerVolume.class)
+            .onErrorResume(error -> {
+                LogsUtils.createErrorResumeLogs(error, NAME);
+                return Mono.empty();
+            });
     }
+
 
     @Override
     public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {

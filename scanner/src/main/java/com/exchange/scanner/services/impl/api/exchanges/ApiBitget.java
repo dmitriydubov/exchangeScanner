@@ -9,6 +9,7 @@ import com.exchange.scanner.dto.response.exchangedata.bitget.chains.BitgetChainR
 import com.exchange.scanner.dto.response.exchangedata.bitget.depth.BitgetCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.bitget.coins.BitgetCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.bitget.tickervolume.BitgetTickerVolume;
+import com.exchange.scanner.dto.response.exchangedata.bitget.tickervolume.BitgetTickerVolumeData;
 import com.exchange.scanner.dto.response.exchangedata.bitget.tradingfee.BitgetTradingFeeResponse;
 import com.exchange.scanner.dto.response.exchangedata.bitget.tradingfee.Data;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
@@ -159,50 +160,42 @@ public class ApiBitget implements ApiExchange {
 
     @Override
     public Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
-        try {
-            Thread.sleep(REQUEST_DELAY_DURATION);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-
         Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
+        BitgetTradingFeeResponse response = getFee().block();
+        if (response == null || response.getData().isEmpty()) return tradingFeeSet;
+        List<String> symbols = coins.stream().map(coin -> coin.getName().toUpperCase() + "USDT").toList();
+        List<Data> bitgetFeeData = response.getData().stream()
+                .filter(feeData -> symbols.contains(feeData.getSymbol()))
+                .toList();
 
         coins.forEach(coin -> {
-            Data response = getFee(coin).block();
-
-            if (response != null && response.getTakerFeeRate() != null) {
-                TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
-                        exchangeName,
-                        coin,
-                        response.getTakerFeeRate()
-                );
-                tradingFeeSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
+            bitgetFeeData.forEach(feeData -> {
+                if (feeData.getSymbol().equals(coin.getName() + "USDT")) {
+                    TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                            exchangeName,
+                            coin,
+                            feeData.getTakerFeeRate()
+                    );
+                    tradingFeeSet.add(responseDTO);
+                }
+            });
         });
 
         return tradingFeeSet;
     }
 
-    private Mono <Data> getFee(Coin coin) {
-        String symbol = coin.getName() + "USDT";
+    private Mono<BitgetTradingFeeResponse> getFee() {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
                     .path("/api/v2/spot/public/symbols")
-                    .queryParam("symbol", symbol)
                     .build()
             )
             .retrieve()
             .onStatus(
                     status -> status.is4xxClientError() || status.is5xxServerError(),
                     response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Для торговой пары {}. Причина: {}", symbol, errorBody);
+                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Причина: {}", errorBody);
                         return Mono.empty();
                     })
             )
@@ -210,51 +203,41 @@ public class ApiBitget implements ApiExchange {
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
-            })
-            .map(response -> response.getData().getFirst());
+            });
     }
 
     @Override
     public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
-        try {
-            Thread.sleep(REQUEST_DELAY_DURATION);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-
         Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
+        BitgetTickerVolume response = getCoinTickerVolume().block();
+        if (response == null || response.getData() == null) return volume24HSet;
+        List<String> symbols = coins.stream().map(coin -> coin.getName().toUpperCase() + "USDT").toList();
+        List<BitgetTickerVolumeData> volumeData = response.getData().stream()
+                .filter(data -> symbols.contains(data.getSymbol()))
+                .toList();
 
         coins.forEach(coin -> {
-            BitgetTickerVolume response = getCoinTickerVolume(coin).block();
+            volumeData.forEach(data -> {
+                if (data.getSymbol().equals(coin.getName() + "USDT")) {
+                    Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                            exchange,
+                            coin,
+                            data.getUsdtVolume()
+                    );
 
-            if (response != null && response.getData() != null) {
-                Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
-                        exchange,
-                        coin,
-                        response.getData().getFirst().getQuoteVolume()
-                );
-
-                volume24HSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
+                    volume24HSet.add(responseDTO);
+                }
+            });
         });
 
         return volume24HSet;
     }
 
-    private Mono<BitgetTickerVolume> getCoinTickerVolume(Coin coin) {
-        String symbol = coin.getName() + "USDT";
-
+    private Mono<BitgetTickerVolume> getCoinTickerVolume() {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
                     .path("/api/v2/spot/market/tickers")
-                    .queryParam("symbol", symbol)
                     .build()
             )
             .retrieve()

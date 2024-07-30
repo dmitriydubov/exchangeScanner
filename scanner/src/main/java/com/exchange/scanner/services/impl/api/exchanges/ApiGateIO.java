@@ -159,39 +159,28 @@ public class ApiGateIO implements ApiExchange {
     @Override
     public Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
         Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
+        GateIOTradingFeeResponse response = getFee().block();
+        if (response == null || response.getTakerFee() == null) return tradingFeeSet;
 
         coins.forEach(coin -> {
-            GateIOTradingFeeResponse response = getFee(coin).block();
-
-            if (response != null && response.getTakerFee() != null) {
-                TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
-                        exchangeName,
-                        coin,
-                        response.getTakerFee()
-                );
-                tradingFeeSet.add(responseDTO);
-            } else {
-                log.error("При попытке получения торговой комиссии для монеты {}, получен пустой ответ от {}", coin.getName(), NAME);
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
+            TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                    exchangeName,
+                    coin,
+                    response.getTakerFee()
+            );
+            tradingFeeSet.add(responseDTO);
         });
 
         return tradingFeeSet;
     }
 
-    private Mono<GateIOTradingFeeResponse> getFee(Coin coin) {
+    private Mono<GateIOTradingFeeResponse> getFee() {
         String endpoint = "/api/v4/wallet/fee";
-        String symbol = coin.getName() + "_USDT";
         String timestamp = String.valueOf(System.currentTimeMillis() / 1000);
 
         String method = "GET";
-        String queryString = "currency_pair=" + symbol;
         String requestBody = "";
+        String queryString = "";
         String payloadHash = GateIOSignatureBuilder.hashSHA512(requestBody);
         String data = method.toUpperCase() + "\n" +
                 endpoint.trim() + "\n" +
@@ -205,7 +194,6 @@ public class ApiGateIO implements ApiExchange {
             .get()
             .uri(uriBuilder -> uriBuilder
                     .path("/wallet/fee")
-                    .queryParam("currency_pair", symbol)
                     .build()
             )
             .header("KEY", key)
@@ -215,7 +203,7 @@ public class ApiGateIO implements ApiExchange {
             .onStatus(
                     status -> status.is4xxClientError() || status.is5xxServerError(),
                     response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Для торговой пары {}. Причина: {}", symbol, errorBody);
+                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Причина: {}", errorBody);
                         return Mono.empty();
                     })
             )
@@ -229,39 +217,34 @@ public class ApiGateIO implements ApiExchange {
     @Override
     public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
         Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
+        List<GateIOCoinTickerVolume> response = getCoinTickerVolume().collectList().block();
+        if (response == null || response.getFirst() == null) return volume24HSet;
+        List<String> symbols = coins.stream().map(coin -> coin.getName().toUpperCase() + "_USDT").toList();
+        List<GateIOCoinTickerVolume> filteredResponse = response.stream()
+                .filter(data -> symbols.contains(data.getCurrencyPair()))
+                .toList();
 
         coins.forEach(coin -> {
-            List<GateIOCoinTickerVolume> response = getCoinTickerVolume(coin).collectList().block();
-
-            if (response != null && response.getFirst() != null) {
-                GateIOCoinTickerVolume volume = response.getFirst();
-                Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
-                        exchange,
-                        coin,
-                        volume.getQuoteVolume()
-                );
-
-                volume24HSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
+            filteredResponse.forEach(data -> {
+                if (data.getCurrencyPair().equalsIgnoreCase(coin.getName().toUpperCase() + "_USDT")) {
+                    Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                            exchange,
+                            coin,
+                            data.getQuoteVolume()
+                    );
+                    volume24HSet.add(responseDTO);
+                }
+            });
         });
 
         return volume24HSet;
     }
 
-    private Flux<GateIOCoinTickerVolume> getCoinTickerVolume(Coin coin) {
-        String symbol = coin.getName() + "_USDT";
-
+    private Flux<GateIOCoinTickerVolume> getCoinTickerVolume() {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
                     .path("/spot/tickers")
-                    .queryParam("currency_pair", symbol)
                     .build()
             )
             .retrieve()

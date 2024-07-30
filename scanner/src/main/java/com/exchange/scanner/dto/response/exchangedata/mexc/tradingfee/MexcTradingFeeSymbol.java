@@ -5,7 +5,11 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class MexcFeeData {
+public class MexcTradingFeeSymbol {
+
+    private String symbol;
+
+    private String quoteAsset;
 
     private String takerCommission;
 }

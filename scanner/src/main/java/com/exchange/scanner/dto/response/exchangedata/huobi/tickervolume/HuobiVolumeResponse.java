@@ -1,13 +1,13 @@
 package com.exchange.scanner.dto.response.exchangedata.huobi.tickervolume;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.List;
+
 @Getter
 @Setter
-public class HuobiVolumeTicker {
+public class HuobiVolumeResponse {
 
-    @JsonProperty("tick")
-    private Tick tick;
+    private List<HuobiVolumeData> data;
 }

@@ -75,7 +75,7 @@ public class CoinChainUtils {
                 initialChainName.equalsIgnoreCase("BEP20") ||
                 initialChainName.equalsIgnoreCase("BEP2") ||
                 initialChainName.equalsIgnoreCase("NFP") ||
-                initialChainName.equalsIgnoreCase("BEP20(BSC") ||
+                initialChainName.equalsIgnoreCase("BEP20(BSC)") ||
                 initialChainName.equalsIgnoreCase("BNB SMART CHAIN") ||
                 initialChainName.equalsIgnoreCase("BNB") ||
                 initialChainName.equalsIgnoreCase("OPBNB")

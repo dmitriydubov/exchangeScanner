@@ -9,5 +9,5 @@ import java.util.List;
 @Setter
 public class KucoinTradingFeeResponse {
 
-    private List<Data> data;
+    private KucoinTradingFeeData data;
 }

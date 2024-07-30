@@ -10,4 +10,10 @@ public class CoinexFeeData {
 
     @JsonProperty("taker_fee_rate")
     private String takerFeeRate;
+
+    @JsonProperty("base_ccy")
+    private String baseCcy;
+
+    @JsonProperty("quote_ccy")
+    private String quoteCcy;
 }

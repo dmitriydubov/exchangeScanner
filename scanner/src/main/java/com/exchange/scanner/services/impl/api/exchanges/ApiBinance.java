@@ -5,13 +5,11 @@ import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.binance.chains.BinanceChainResponse;
-import com.exchange.scanner.dto.response.exchangedata.binance.chains.BinanceNetwork;
 import com.exchange.scanner.dto.response.exchangedata.binance.depth.BinanceCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.binance.tickervolume.BinanceCoinTickerVolume;
 import com.exchange.scanner.dto.response.exchangedata.binance.coins.BinanceCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.binance.tradingfee.BinanceTradingFeeResponse;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
-import com.exchange.scanner.dto.response.exchangedata.mexc.chains.NetworkList;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
@@ -26,7 +24,6 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -167,33 +164,31 @@ public class ApiBinance implements ApiExchange {
     @Override
     public Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
         Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
+        List<BinanceTradingFeeResponse> response = getFee().collectList().block();
+        if (response == null || response.getFirst() == null) return tradingFeeSet;
+        List<String> symbols = coins.stream().map(coin -> coin.getName() + "USDT").toList();
+        List<BinanceTradingFeeResponse> filteredResponse = response.stream()
+                .filter(feeData -> symbols.contains(feeData.getSymbol()))
+                .toList();
 
         coins.forEach(coin -> {
-            List <BinanceTradingFeeResponse> response = getFee(coin).collectList().block();
-
-            if (response != null && response.getFirst() != null) {
-                TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
-                        exchangeName,
-                        coin,
-                        response.getFirst().getTakerCommission()
-                );
-                tradingFeeSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException(ex);
-            }
+            filteredResponse.forEach(feeData -> {
+                if (feeData.getSymbol().equalsIgnoreCase(coin.getName() + "USDT")) {
+                    TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
+                            exchangeName,
+                            coin,
+                            feeData.getTakerCommission()
+                    );
+                    tradingFeeSet.add(responseDTO);
+                }
+            });
         });
 
         return tradingFeeSet;
     }
 
-    private Flux<BinanceTradingFeeResponse> getFee(Coin coin) {
-        String symbol = coin.getName() + "USDT";
+    private Flux<BinanceTradingFeeResponse> getFee() {
         Map<String, String> params = new HashMap<>();
-        params.put("symbol", symbol);
         BinanceSignatureBuilder signatureBuilder = new BinanceSignatureBuilder(key, secret, params);
         signatureBuilder.createSignature();
 
@@ -209,7 +204,7 @@ public class ApiBinance implements ApiExchange {
             .onStatus(
                     status -> status.is4xxClientError() || status.is5xxServerError(),
                     response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Для торговой пары {}. Причина: {}", symbol, errorBody);
+                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Причина: {}", errorBody);
                         return Mono.empty();
                     })
             )
@@ -223,13 +218,15 @@ public class ApiBinance implements ApiExchange {
     @Override
     public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
         Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
-
-        List<BinanceCoinTickerVolume> response = getCoinTickerVolume(new ArrayList<>(coins)).collectList().block();
-
+        List<BinanceCoinTickerVolume> response = getCoinTickerVolume().collectList().block();
         if (response == null || response.isEmpty()) return volume24HSet;
+        List<String> symbols = coins.stream().map(coin -> coin.getName() + "USDT").toList();
+        List<BinanceCoinTickerVolume> filteredResponse = response.stream()
+                .filter(data -> symbols.contains(data.getSymbol()))
+                .toList();
 
-        coins.forEach(coin -> response.forEach(tradingFeeResponse -> {
-            if (coin.getName().equals(tradingFeeResponse.getSymbol().replaceAll("USDT", ""))) {
+        coins.forEach(coin -> filteredResponse.forEach(tradingFeeResponse -> {
+            if (tradingFeeResponse.getSymbol().equalsIgnoreCase(coin.getName() + "USDT")) {
                 Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
                         exchange,
                         coin,
@@ -243,15 +240,11 @@ public class ApiBinance implements ApiExchange {
         return volume24HSet;
     }
 
-    private Flux<BinanceCoinTickerVolume> getCoinTickerVolume(List<Coin> coins) {
-        int maxSymbolPerRequest = 100;
-        List<List<Coin>> partitions = ListUtils.partition(coins, maxSymbolPerRequest);
-        return Flux.fromIterable(partitions)
-            .delayElements(Duration.ofMillis(REQUEST_DELAY_DURATION))
-            .flatMap(partition -> webClient
+    private Flux<BinanceCoinTickerVolume> getCoinTickerVolume() {
+        return webClient
                 .get()
-                .uri(uriBuilder -> uriBuilder.path("/api/v3/ticker/24hr")
-                        .queryParam("symbols", generateParameters(partition))
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/v3/ticker/24hr")
                         .build()
                 )
                 .retrieve()
@@ -266,8 +259,7 @@ public class ApiBinance implements ApiExchange {
                 .onErrorResume(error -> {
                     LogsUtils.createErrorResumeLogs(error, NAME);
                     return Flux.empty();
-                })
-            );
+                });
     }
 
     @Override

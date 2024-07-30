@@ -2,6 +2,7 @@ package com.exchange.scanner.dto.response.event;
 
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Getter
@@ -9,7 +10,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class EventData {
+public class EventData implements Comparable<EventData> {
 
     private String exchangeForBuy;
 
@@ -64,4 +65,9 @@ public class EventData {
     private Boolean isWarning;
 
     private String lifeCycle;
+
+    @Override
+    public int compareTo(EventData o) {
+        return new BigDecimal(o.fiatSpread).compareTo(new BigDecimal(fiatSpread));
+    }
 }

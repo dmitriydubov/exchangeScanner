@@ -131,9 +131,9 @@ public class ApiExchangeAdapterImpl implements ApiExchangeAdapter {
             case "LBank" -> result.addAll(apiLBank.getTradingFee(coinsSet, exchange));
             case "CoinEx" -> result.addAll(apiCoinEx.getTradingFee(coinsSet, exchange));
             case "CoinW" -> result.addAll(apiCoinW.getTradingFee(coinsSet, exchange));
-            case "XT" -> result.addAll(apiXT.getTradingFee(coinsSet, exchange)); //XT Не предоставляет торговые комиссии
+            case "XT" -> result.addAll(apiXT.getTradingFee(coinsSet, exchange)); //Не предоставляет торговые комиссии
             case "Probit" -> result.addAll(apiProbit.getTradingFee(coinsSet, exchange));
-            case "BingX" -> result.addAll(apiBingX.getTradingFee(coinsSet, exchange));
+            case "BingX" -> result.addAll(apiBingX.getTradingFee(coinsSet, exchange)); //Не предоставляет торговые комиссии
         }
 
         return result;

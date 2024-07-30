@@ -7,8 +7,9 @@ import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.poloniex.chains.PoloniexChain;
 import com.exchange.scanner.dto.response.exchangedata.poloniex.depth.PoloniexCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.poloniex.coins.PoloniexCurrencyResponse;
-import com.exchange.scanner.dto.response.exchangedata.poloniex.tickervolume.PoloniexVolumeTicker;
+import com.exchange.scanner.dto.response.exchangedata.poloniex.tickervolume.PoloniexVolumeData;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
+import com.exchange.scanner.dto.response.exchangedata.poloniex.tradingfee.PoloniexTradingFeeResponse;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
@@ -18,7 +19,7 @@ import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
 import com.exchange.scanner.services.utils.Poloniex.PoloniexCoinDepthBuilder;
 import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
 
-import com.poloniex.api.client.rest.PoloRestClient;
+import com.exchange.scanner.services.utils.Poloniex.PoloniexSignatureBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
@@ -161,14 +162,19 @@ public class ApiPoloniex implements ApiExchange {
     @Override
     public  Set<TradingFeeResponseDTO> getTradingFee(Set<Coin> coins, String exchangeName) {
         Set<TradingFeeResponseDTO> tradingFeeSet = new HashSet<>();
-
-        PoloRestClient poloniexApiClient = new PoloRestClient(BASE_ENDPOINT, key, secret);
+        PoloniexTradingFeeResponse response = getFee().block();
+        String takerFee;
+        if (response == null) {
+            takerFee = BigDecimal.ZERO.toPlainString();
+        } else {
+            takerFee = response.getTakerRate();
+        }
 
         coins.forEach(coin -> {
             TradingFeeResponseDTO responseDTO = ObjectUtils.getTradingFeeResponseDTO(
                     exchangeName,
                     coin,
-                    poloniexApiClient.getFeeInfo().getTakerRate()
+                    takerFee
             );
             tradingFeeSet.add(responseDTO);
         });
@@ -176,40 +182,70 @@ public class ApiPoloniex implements ApiExchange {
         return tradingFeeSet;
     }
 
+    private Mono<PoloniexTradingFeeResponse> getFee() {
+        String requestPath = "/feeinfo";
+        TreeMap<String, String> params = new TreeMap<>();
+        PoloniexSignatureBuilder signatureBuilder = new PoloniexSignatureBuilder(secret, "GET", requestPath, params);
+        signatureBuilder.createSignature();
+
+        return webClient
+                .get()
+                .uri(uriBuilder -> {
+                    uriBuilder.path(requestPath);
+                    return uriBuilder.build();
+                })
+                .header("key", key)
+                .header("signatureMethod", "hmacSHA256")
+                .header("signatureVersion", "1")
+                .header("signTimestamp", String.valueOf(signatureBuilder.getTimestamp()))
+                .header("signature", signatureBuilder.getSignature())
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                            log.error("Ошибка получения торговой комиссии от " + NAME + ". Причина: {}", errorBody);
+                            return Mono.empty();
+                        })
+                )
+                .bodyToMono(PoloniexTradingFeeResponse.class)
+                .onErrorResume(error -> {
+                    LogsUtils.createErrorResumeLogs(error, NAME);
+                    return Mono.empty();
+                });
+    }
+
     @Override
     public Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchange) {
         Set<Volume24HResponseDTO> volume24HSet = new HashSet<>();
+        List<PoloniexVolumeData> response = getCoinTicker().collectList().block();
+        if (response == null) return volume24HSet;
+        List<String> symbols = coins.stream().map(coin -> coin.getName().toUpperCase() + "_USDT").toList();
+        List<PoloniexVolumeData> volumeData = response.stream()
+                .filter(data -> symbols.contains(data.getSymbol()))
+                .toList();
 
         coins.forEach(coin -> {
-            PoloniexVolumeTicker response = getCoinTicker(coin).block();
-            if (response != null && response.getAmount() != null) {
-                Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
-                        exchange,
-                        coin,
-                        response.getAmount()
-                );
-
-                volume24HSet.add(responseDTO);
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
+            volumeData.forEach(data -> {
+                if (data.getSymbol().equalsIgnoreCase(coin.getName() + "_USDT")) {
+                    Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
+                            exchange,
+                            coin,
+                            data.getAmount()
+                    );
+                    volume24HSet.add(responseDTO);
+                }
+            });
         });
 
         return volume24HSet;
     }
 
-    private Mono<PoloniexVolumeTicker> getCoinTicker(Coin coin) {
-        String symbol = coin.getName() + "_USDT";
-
+    private Flux<PoloniexVolumeData> getCoinTicker() {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
-                    .path("/markets/{symbol}/ticker24h")
-                    .build(symbol)
+                    .path("/markets/ticker24h")
+                    .build()
             )
             .retrieve()
             .onStatus(
@@ -219,10 +255,10 @@ public class ApiPoloniex implements ApiExchange {
                         return Mono.empty();
                     })
             )
-            .bodyToMono(PoloniexVolumeTicker.class)
+            .bodyToFlux(PoloniexVolumeData.class)
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
-                return Mono.empty();
+                return Flux.empty();
             });
     }
 

@@ -2,12 +2,12 @@ package com.exchange.scanner.dto.response.event;
 
 import lombok.*;
 
-import java.util.List;
 import java.util.Objects;
+import java.util.TreeSet;
 
 @Getter
 @Setter
-public class ArbitrageEvent {
+public class ArbitrageEvent implements Comparable<ArbitrageEvent> {
 
     private String coin;
 
@@ -15,7 +15,7 @@ public class ArbitrageEvent {
 
     private String coinMarketCapLogo;
 
-    private List<EventData> eventData;
+    private TreeSet<EventData> eventData;
 
     @Override
     public boolean equals(Object o) {
@@ -28,5 +28,10 @@ public class ArbitrageEvent {
     @Override
     public int hashCode() {
         return Objects.hashCode(coin);
+    }
+
+    @Override
+    public int compareTo(ArbitrageEvent o) {
+        return coin.compareTo(o.coin);
     }
 }
