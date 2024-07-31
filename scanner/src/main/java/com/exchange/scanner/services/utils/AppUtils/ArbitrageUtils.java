@@ -96,9 +96,9 @@ public class ArbitrageUtils {
     ) {
         try {
             T tradeEventDTO = classDTO.getConstructor().newInstance();
-            Coin coinEntity = coinRepository.findBySlug(coin.getSlug());
-            if (coinEntity == null) return tradeEventDTO;
-            Set<Chain> chains = coinEntity.getChains();
+            Optional<Coin> coinOptional = coinRepository.findBySlug(coin.getSlug());
+            if (coinOptional.isEmpty()) return tradeEventDTO;
+            Set<Chain> chains = coinOptional.get().getChains();
             tradeEventDTO.setExchange(exchange.getName());
             tradeEventDTO.setCoin(coin.getName());
             tradeEventDTO.setDepositLink(coin.getDepositLink());
