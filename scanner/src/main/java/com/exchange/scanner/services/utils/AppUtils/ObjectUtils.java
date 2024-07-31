@@ -23,6 +23,7 @@ public class ObjectUtils {
         coin.setWithdrawLink(links.getWithdrawLink());
         coin.setTradeLink(links.getTradeLink());
         coin.setIsMarginTradingAllowed(isMargin);
+        coin.setTimestamp(System.currentTimeMillis());
         return coin;
     }
 

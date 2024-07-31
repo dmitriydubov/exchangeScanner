@@ -350,10 +350,7 @@ public class AppServiceImpl implements AppService {
                     long timestamp = existArbitrage.getTimestamp();
                     long currentTimestamp = System.currentTimeMillis();
                     Date lifecycle = new Date(currentTimestamp - timestamp);
-                    DateTimeFormatter dateFormat = DateTimeFormatter.ofPattern("HH:mm:ss");
-                    Duration duration = Duration.ofMillis(currentTimestamp - timestamp);
-                    System.out.println(duration.minusHours(3));
-                    data.setLifeCycle(dateFormat.toString());
+                    data.setLifeCycle(new SimpleDateFormat("mm:ss").format(lifecycle));
                     existArbitrage.setLastUpdate(System.currentTimeMillis());
                 } else {
                     data.setLifeCycle("<1m");

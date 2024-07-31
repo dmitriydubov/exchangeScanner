@@ -1,9 +1,7 @@
 package com.exchange.scanner.handler;
 
 import com.exchange.scanner.error.NoExchangesException;
-import com.exchange.scanner.security.error.NoSuchUserException;
-import com.exchange.scanner.security.error.RefreshTokenException;
-import com.exchange.scanner.security.error.UserAlreadyExistException;
+import com.exchange.scanner.security.error.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -23,6 +21,16 @@ public class WebAppExceptionHandler {
         return buildResponse(HttpStatus.BAD_REQUEST, ex, webRequest);
     }
 
+    @ExceptionHandler(value = EmptyFieldException.class)
+    public ResponseEntity<ErrorResponseBody> emptyFieldHandler(EmptyFieldException ex, WebRequest webRequest) {
+        return buildResponse(HttpStatus.BAD_REQUEST, ex, webRequest);
+    }
+
+    @ExceptionHandler(value = PasswordConfirmationException.class)
+    public ResponseEntity<ErrorResponseBody> passwordConfirmationHandler(PasswordConfirmationException ex, WebRequest webRequest) {
+        return buildResponse(HttpStatus.BAD_REQUEST, ex, webRequest);
+    }
+
     @ExceptionHandler(value = NoSuchUserException.class)
     public ResponseEntity<ErrorResponseBody> noSuchUserHandler(NoSuchUserException ex, WebRequest webRequest) {
         return buildResponse(HttpStatus.BAD_REQUEST, ex, webRequest);
@@ -33,6 +41,10 @@ public class WebAppExceptionHandler {
         return buildResponse(HttpStatus.BAD_REQUEST, ex, webRequest);
     }
 
+    @ExceptionHandler(value = IllegalConfirmationCodeException.class)
+    public ResponseEntity<ErrorResponseBody> wrongCodeHandler(IllegalConfirmationCodeException ex, WebRequest webRequest) {
+        return buildResponse(HttpStatus.BAD_REQUEST, ex, webRequest);
+    }
 
     private ResponseEntity<ErrorResponseBody> buildResponse(HttpStatus httpStatus, Exception ex, WebRequest webRequest) {
         return ResponseEntity

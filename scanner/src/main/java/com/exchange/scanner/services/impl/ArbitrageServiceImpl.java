@@ -25,10 +25,8 @@ public class ArbitrageServiceImpl implements ArbitrageService {
                         .filter(sellEvent -> buyEvent.getCoin().equals(sellEvent.getCoin()))
                         .filter(sellEvent -> isValidArbitrage(buyEvent, sellEvent))
                         .map(sellEvent -> createPossibleOpportunity(buyEvent, sellEvent)))
-//                .peek(this::printSpreads)
                 .map(this::checkForArbitrage)
                 .filter(arbitrage -> arbitrage.getTradingData() != null)
-//                .peek(this::printArbitrage)
                 .collect(Collectors.toSet());
     }
 
@@ -67,9 +65,6 @@ public class ArbitrageServiceImpl implements ArbitrageService {
         BigDecimal totalFee = fee.add(withdrawFee).setScale(5, RoundingMode.CEILING);
         BigDecimal profitSpread = profit.subtract(totalFee).setScale(2, RoundingMode.CEILING);
 
-        System.out.println(asksAndBids.buyEvent.getCoin());
-        System.out.println(profitSpread);
-
         if (profitSpread.compareTo(asksAndBids.buyEvent.getUserMinProfit()) > 0) {
             arbitrageOpportunity.setCoinName(asksAndBids.buyEvent.getCoin());
             arbitrageOpportunity.setCoinMarketCapLogo(asksAndBids.buyEvent.getLogoLink());
@@ -104,6 +99,7 @@ public class ArbitrageServiceImpl implements ArbitrageService {
             eventData.setChainName(asksAndBids.buyEvent.getMostProfitableChain().getName());
             eventData.setSlug(asksAndBids.buyEvent.getCoin() + "-" + asksAndBids.buyEvent.getExchange() + "-" + asksAndBids.sellEvent.getExchange());
             eventData.setIsWarning(withdrawFee.compareTo(BigDecimal.ZERO) <= 0);
+            eventData.setTransactionConfirmation(String.valueOf(asksAndBids.buyEvent.getConfirmations()));
             eventData.setMargin(asksAndBids.sellEvent.getIsMargin());
             Map<String, EventData> tradingData = Collections.singletonMap(arbitrageOpportunity.getCoinName(), eventData);
             arbitrageOpportunity.setTradingData(tradingData);
@@ -283,6 +279,7 @@ public class ArbitrageServiceImpl implements ArbitrageService {
 
         buyEventCopy.setChains(possibleTransactionChains);
         buyEventCopy.setMostProfitableChain(mostProfitableChain);
+        buyEventCopy.setConfirmations(mostProfitableChain.getMinConfirm());
         buyEventCopy.setAsks(new TreeSet<>(asks));
         sellEventCopy.setChains(possibleTransactionChains);
         sellEventCopy.setMostProfitableChain(mostProfitableChain);
@@ -309,31 +306,6 @@ public class ArbitrageServiceImpl implements ArbitrageService {
         order.setVolume(tradeVolume);
         order.setType(orderType);
         return order;
-    }
-
-    private void printSpreads(AsksAndBids asksAndBids) {
-        System.out.println("Биржа покупки: " + asksAndBids.buyEvent().getExchange());
-        System.out.println("Монета: " + asksAndBids.buyEvent().getCoin());
-        System.out.println("Asks:");
-        asksAndBids.buyEvent().getAsks().forEach(ask -> System.out.println(ask.getPrice().toPlainString() + " " + ask.getVolume().toPlainString()));
-
-        System.out.println("Биржа продажи: " + asksAndBids.sellEvent().getExchange());
-        System.out.println("Монета: " + asksAndBids.sellEvent().getCoin());
-        System.out.println("Bids:");
-        asksAndBids.sellEvent().getBids().forEach(bid -> System.out.println(bid.getPrice().toPlainString() + " " + bid.getVolume().toPlainString()));
-    }
-
-    private void printArbitrage(ArbitrageOpportunity arbitrageOpportunity) {
-        System.out.println("////////////////////");
-        System.out.println("iteration:");
-        System.out.println(arbitrageOpportunity.getCoinName());
-        arbitrageOpportunity.getTradingData().forEach((k, v) -> {
-            System.out.println(v.getExchangeForBuy());
-            System.out.println(v.getExchangeForSell());
-            System.out.println(k);
-            System.out.println(v.getFiatSpread());
-        });
-        System.out.println("=========================");
     }
 
     private record AsksAndBids(UserBuyTradeEventDTO buyEvent, UserSellTradeEventDTO sellEvent) {}

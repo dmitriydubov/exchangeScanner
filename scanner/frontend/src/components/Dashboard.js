@@ -307,7 +307,8 @@ export default class Dashboard extends React.Component {
                     </td>
                     <td>
                         <div>
-                            {deal.eventData[0].margin}
+                            {deal.eventData[0].margin === true && <span role='img' aria-label='margin unlock'>&#128275;</span>}
+                            {deal.eventData[0].margin === false && <span role='img' aria-label='margin lock'>&#128274;</span>}
                         </div>
                     </td>
                 </tr>
@@ -339,7 +340,10 @@ export default class Dashboard extends React.Component {
                     <td>{event.chainName}</td>
                     <td>{event.transactionTime}</td>
                     <td>{event.transactionConfirmation}</td>
-                    <td>{event.margin}</td>
+                    <td>
+                      {event.margin === true && <span role='img' aria-label='margin unlock'>&#128275;</span>}
+                      {event.margin === false && <span role='img' aria-label='margin lock'>&#128274;</span>}
+                    </td>
                   </tr>
                 ))}
               </React.Fragment>

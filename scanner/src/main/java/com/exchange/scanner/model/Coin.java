@@ -58,6 +58,9 @@ public class Coin {
     @Column(name = "is_margin_trading_allowed", nullable = false)
     private Boolean isMarginTradingAllowed = false;
 
+    @Column(nullable = false)
+    private Long timestamp;
+
     @ManyToMany(cascade = CascadeType.ALL)
     @JoinTable(
             name = "chain_coins",

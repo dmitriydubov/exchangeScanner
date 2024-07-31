@@ -51,6 +51,8 @@ public class UserSellTradeEventDTO implements TradeEventDTO, Comparable<UserSell
 
     private TreeSet<Ask> asks;
 
+    private Integer confirmations;
+
     private Boolean isMargin;
 
     @Override

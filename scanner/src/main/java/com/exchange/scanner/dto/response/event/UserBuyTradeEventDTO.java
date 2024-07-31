@@ -49,6 +49,8 @@ public class UserBuyTradeEventDTO implements TradeEventDTO, Comparable<UserBuyTr
 
     private BigDecimal totalTradeVolume;
 
+    private Integer confirmations;
+
     private Boolean isMargin;
 
     @Override
