@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -97,6 +98,7 @@ public class ApiHuobi implements ApiExchange {
                     })
             )
             .bodyToMono(HuobiCurrencyResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -159,6 +161,7 @@ public class ApiHuobi implements ApiExchange {
                     })
             )
             .bodyToMono(HuobiChainsResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -221,6 +224,7 @@ public class ApiHuobi implements ApiExchange {
                             })
                     )
                     .bodyToFlux(HuobiTradingFeeResponse.class)
+                    .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
                     .map(response -> {
                         if (response.getCode() == 200) {
                             return response;
@@ -286,6 +290,7 @@ public class ApiHuobi implements ApiExchange {
                     })
             )
             .bodyToMono(HuobiVolumeResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -334,6 +339,7 @@ public class ApiHuobi implements ApiExchange {
                     })
             )
             .bodyToMono(HuobiCoinDepth.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();

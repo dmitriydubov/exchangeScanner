@@ -14,7 +14,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -75,27 +77,28 @@ public class CoinMarketCapServiceImpl implements CoinMarketCapService {
         String symbolParams = generateSymbolsParameters(coins);
 
         return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/v2/cryptocurrency/info")
-                        .queryParam("symbol", symbolParams)
-                        .queryParam("aux", "logo")
-                        .build()
-                )
-                .header("X-CMC_PRO_API_KEY", apiKey)
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения информации о монете от CoinMarketCap. Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToMono(String.class)
-                .onErrorResume(error -> {
-                    LogsUtils.createErrorResumeLogs(error, "CoinMarketCap");
-                    return Mono.empty();
-                });
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/v2/cryptocurrency/info")
+                    .queryParam("symbol", symbolParams)
+                    .queryParam("aux", "logo")
+                    .build()
+            )
+            .header("X-CMC_PRO_API_KEY", apiKey)
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения информации о монете от CoinMarketCap. Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(String.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
+            .onErrorResume(error -> {
+                LogsUtils.createErrorResumeLogs(error, "CoinMarketCap");
+                return Mono.empty();
+            });
     }
 
     private static String generateSymbolsParameters(Set<String> coins) {

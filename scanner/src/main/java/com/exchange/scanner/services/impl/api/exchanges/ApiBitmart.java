@@ -25,8 +25,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -105,6 +107,7 @@ public class ApiBitmart implements ApiExchange {
                     })
             )
             .bodyToMono(BitmartCurrencyResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -173,6 +176,7 @@ public class ApiBitmart implements ApiExchange {
                     })
             )
             .bodyToMono(BitmartChainsResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -221,6 +225,7 @@ public class ApiBitmart implements ApiExchange {
                     })
             )
             .bodyToMono(BitmartTradingFeeResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -254,7 +259,7 @@ public class ApiBitmart implements ApiExchange {
         return volume24HSet;
     }
 
-    public Mono<BitmartVolumeTicker> getCoinTickerVolume() {
+    private Mono<BitmartVolumeTicker> getCoinTickerVolume() {
         return webClient.get()
             .uri(uriBuilder -> uriBuilder
                     .path("/spot/quotation/v3/tickers")
@@ -269,6 +274,7 @@ public class ApiBitmart implements ApiExchange {
                     })
             )
             .bodyToMono(BitmartVolumeTicker.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -315,6 +321,7 @@ public class ApiBitmart implements ApiExchange {
                     })
             )
             .bodyToMono(BitmartCoinDepth.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();

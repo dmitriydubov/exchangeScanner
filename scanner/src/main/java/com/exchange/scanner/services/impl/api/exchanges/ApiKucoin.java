@@ -24,8 +24,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -95,6 +97,7 @@ public class ApiKucoin implements ApiExchange {
                     })
             )
             .bodyToMono(KucoinCurrencyResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -152,6 +155,7 @@ public class ApiKucoin implements ApiExchange {
                     })
             )
             .bodyToMono(KucoinChainResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -185,29 +189,30 @@ public class ApiKucoin implements ApiExchange {
         String signature = KucoinSignatureBuilder.generateKucoinSignature(secret, strToSign);
         String encodedPassphrase = KucoinSignatureBuilder.generateKucoinPassphrase(secret, passphrase);
         return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path(endpoint)
-                        .build()
-                )
-                .header("KC-API-KEY", key)
-                .header("KC-API-SIGN", signature)
-                .header("KC-API-TIMESTAMP", timestamp)
-                .header("KC-API-PASSPHRASE", encodedPassphrase)
-                .header("KC-API-KEY-VERSION", "3")
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения торговых комиссии от " + NAME + ". Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToFlux(KucoinTradingFeeResponse.class)
-                .onErrorResume(error -> {
-                    LogsUtils.createErrorResumeLogs(error, NAME);
-                    return Flux.empty();
-                });
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path(endpoint)
+                    .build()
+            )
+            .header("KC-API-KEY", key)
+            .header("KC-API-SIGN", signature)
+            .header("KC-API-TIMESTAMP", timestamp)
+            .header("KC-API-PASSPHRASE", encodedPassphrase)
+            .header("KC-API-KEY-VERSION", "3")
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения торговых комиссии от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToFlux(KucoinTradingFeeResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
+            .onErrorResume(error -> {
+                LogsUtils.createErrorResumeLogs(error, NAME);
+                return Flux.empty();
+            });
     }
 
     @Override
@@ -253,6 +258,7 @@ public class ApiKucoin implements ApiExchange {
                     })
             )
             .bodyToMono(KucoinTickerVolumeResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -299,6 +305,7 @@ public class ApiKucoin implements ApiExchange {
                     })
             )
             .bodyToMono(KucoinCoinDepth.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();

@@ -28,10 +28,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -106,6 +108,7 @@ public class ApiBingX implements ApiExchange {
                     })
             )
             .bodyToMono(String.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -177,6 +180,7 @@ public class ApiBingX implements ApiExchange {
                     })
             )
             .bodyToMono(BingXChainResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -240,6 +244,7 @@ public class ApiBingX implements ApiExchange {
                     })
             )
             .bodyToMono(BingXVolumeTicker.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -288,6 +293,7 @@ public class ApiBingX implements ApiExchange {
                     })
             )
             .bodyToMono(BingXCoinDepth.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();

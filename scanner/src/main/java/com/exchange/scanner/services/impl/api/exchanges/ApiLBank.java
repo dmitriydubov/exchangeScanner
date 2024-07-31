@@ -27,9 +27,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -91,6 +93,7 @@ public class ApiLBank implements ApiExchange {
             )
             .retrieve()
             .bodyToMono(LBankCurrencyResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -151,6 +154,7 @@ public class ApiLBank implements ApiExchange {
                     })
             )
             .bodyToMono(LBankChainsResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -210,6 +214,7 @@ public class ApiLBank implements ApiExchange {
                     })
             )
             .bodyToMono(LBankTradingFeeResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -259,6 +264,7 @@ public class ApiLBank implements ApiExchange {
                     })
             )
             .bodyToMono(LBankVolumeTickerResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -305,6 +311,7 @@ public class ApiLBank implements ApiExchange {
                     })
             )
             .bodyToMono(LBankCoinDepth.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();

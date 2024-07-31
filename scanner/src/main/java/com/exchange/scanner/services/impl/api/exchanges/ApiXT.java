@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -98,6 +99,7 @@ public class ApiXT implements ApiExchange {
                     })
             )
             .bodyToMono(XTCurrencyResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -168,6 +170,7 @@ public class ApiXT implements ApiExchange {
                     })
             )
             .bodyToMono(XTChainResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -231,6 +234,7 @@ public class ApiXT implements ApiExchange {
                     })
             )
             .bodyToMono(XTVolumeTicker.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -278,6 +282,7 @@ public class ApiXT implements ApiExchange {
                     })
             )
             .bodyToMono(XTCoinDepth.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();

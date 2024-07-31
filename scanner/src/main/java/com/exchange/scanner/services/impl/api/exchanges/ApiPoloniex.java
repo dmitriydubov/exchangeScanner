@@ -27,8 +27,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -96,6 +98,7 @@ public class ApiPoloniex implements ApiExchange {
                     })
             )
             .bodyToFlux(PoloniexCurrencyResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Flux.empty();
@@ -153,6 +156,7 @@ public class ApiPoloniex implements ApiExchange {
                     })
             )
             .bodyToFlux(new ParameterizedTypeReference<Map<String, PoloniexChain>>() {})
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -189,29 +193,30 @@ public class ApiPoloniex implements ApiExchange {
         signatureBuilder.createSignature();
 
         return webClient
-                .get()
-                .uri(uriBuilder -> {
-                    uriBuilder.path(requestPath);
-                    return uriBuilder.build();
-                })
-                .header("key", key)
-                .header("signatureMethod", "hmacSHA256")
-                .header("signatureVersion", "1")
-                .header("signTimestamp", String.valueOf(signatureBuilder.getTimestamp()))
-                .header("signature", signatureBuilder.getSignature())
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения торговой комиссии от " + NAME + ". Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToMono(PoloniexTradingFeeResponse.class)
-                .onErrorResume(error -> {
-                    LogsUtils.createErrorResumeLogs(error, NAME);
-                    return Mono.empty();
-                });
+            .get()
+            .uri(uriBuilder -> {
+                uriBuilder.path(requestPath);
+                return uriBuilder.build();
+            })
+            .header("key", key)
+            .header("signatureMethod", "hmacSHA256")
+            .header("signatureVersion", "1")
+            .header("signTimestamp", String.valueOf(signatureBuilder.getTimestamp()))
+            .header("signature", signatureBuilder.getSignature())
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(PoloniexTradingFeeResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
+            .onErrorResume(error -> {
+                LogsUtils.createErrorResumeLogs(error, NAME);
+                return Mono.empty();
+            });
     }
 
     @Override
@@ -256,6 +261,7 @@ public class ApiPoloniex implements ApiExchange {
                     })
             )
             .bodyToFlux(PoloniexVolumeData.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Flux.empty();
@@ -301,6 +307,7 @@ public class ApiPoloniex implements ApiExchange {
                     })
             )
             .bodyToMono(PoloniexCoinDepth.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();

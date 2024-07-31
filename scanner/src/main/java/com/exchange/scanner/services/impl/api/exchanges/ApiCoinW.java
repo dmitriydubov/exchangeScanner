@@ -23,8 +23,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -85,6 +87,7 @@ public class ApiCoinW implements ApiExchange {
                     })
             )
             .bodyToMono(CoinWCoinAvailableResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -141,6 +144,7 @@ public class ApiCoinW implements ApiExchange {
                     })
             )
             .bodyToMono(CoinWChainsResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -184,6 +188,7 @@ public class ApiCoinW implements ApiExchange {
                     })
             )
             .bodyToMono(CoinWTradingFeeResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -231,6 +236,7 @@ public class ApiCoinW implements ApiExchange {
                     })
             )
             .bodyToMono(CoinWVolumeResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -279,6 +285,7 @@ public class ApiCoinW implements ApiExchange {
                     })
             )
             .bodyToMono(CoinWCoinDepthResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();

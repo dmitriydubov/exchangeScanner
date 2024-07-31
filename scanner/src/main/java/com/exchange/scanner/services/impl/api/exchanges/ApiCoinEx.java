@@ -24,8 +24,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -95,6 +97,7 @@ public class ApiCoinEx implements ApiExchange {
                     })
             )
             .bodyToMono(CoinExCurrencyResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -158,6 +161,7 @@ public class ApiCoinEx implements ApiExchange {
                     })
             )
             .bodyToMono(CoinexChainsResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -206,6 +210,7 @@ public class ApiCoinEx implements ApiExchange {
                     })
             )
             .bodyToMono(CoinexTradingFeeResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -239,23 +244,24 @@ public class ApiCoinEx implements ApiExchange {
 
     private Mono<CoinExVolumeTicker> getCoinTicker() {
         return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder.path("/spot/ticker")
-                        .build()
-                )
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToMono(CoinExVolumeTicker.class)
-                .onErrorResume(error -> {
-                    LogsUtils.createErrorResumeLogs(error, NAME);
-                    return Mono.empty();
-                });
+            .get()
+            .uri(uriBuilder -> uriBuilder.path("/spot/ticker")
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToMono(CoinExVolumeTicker.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
+            .onErrorResume(error -> {
+                LogsUtils.createErrorResumeLogs(error, NAME);
+                return Mono.empty();
+            });
     }
 
     @Override
@@ -299,6 +305,7 @@ public class ApiCoinEx implements ApiExchange {
                     })
             )
             .bodyToMono(CoinExCoinDepth.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();

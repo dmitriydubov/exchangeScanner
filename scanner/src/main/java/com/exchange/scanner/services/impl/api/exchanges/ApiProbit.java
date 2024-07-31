@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -87,6 +88,7 @@ public class ApiProbit implements ApiExchange {
                     })
             )
             .bodyToMono(ProbitCurrencyResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -146,6 +148,7 @@ public class ApiProbit implements ApiExchange {
                     })
             )
             .bodyToMono(ProbitChainData.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -194,6 +197,7 @@ public class ApiProbit implements ApiExchange {
                     })
             )
             .bodyToMono(ProbitTradingFeeResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -240,6 +244,7 @@ public class ApiProbit implements ApiExchange {
                     })
             )
             .bodyToMono(ProbitTickerVolume.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -286,6 +291,7 @@ public class ApiProbit implements ApiExchange {
                     })
             )
             .bodyToMono(ProbitCoinDepth.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();

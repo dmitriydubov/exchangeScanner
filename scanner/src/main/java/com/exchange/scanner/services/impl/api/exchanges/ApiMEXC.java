@@ -26,8 +26,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -98,6 +100,7 @@ public class ApiMEXC implements ApiExchange {
                     })
             )
             .bodyToMono(MexcCurrencyResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -165,6 +168,7 @@ public class ApiMEXC implements ApiExchange {
                     })
             )
             .bodyToFlux(MexcChainResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Flux.empty();
@@ -216,6 +220,7 @@ public class ApiMEXC implements ApiExchange {
                     })
             )
             .bodyToMono(MexcTradingFeeResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -265,6 +270,7 @@ public class ApiMEXC implements ApiExchange {
                     })
             )
             .bodyToFlux(MexcCoinTicker.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -312,6 +318,7 @@ public class ApiMEXC implements ApiExchange {
                     })
             )
             .bodyToMono(MexcCoinDepth.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();

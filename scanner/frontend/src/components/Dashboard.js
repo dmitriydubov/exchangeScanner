@@ -18,7 +18,8 @@ export default class Dashboard extends React.Component {
       selectedCoins: [],
       minProfit: '',
       minDealAmount: '',
-      maxDealAmount: ''
+      maxDealAmount: '',
+      isSubmitting: false
     };
     this.intervalId = null;
   }
@@ -83,6 +84,8 @@ export default class Dashboard extends React.Component {
   handleFilterSubmit = () => {
     const { selectedBuyExchanges, selectedSellExchanges, selectedCoins, minProfit, minDealAmount, maxDealAmount } = this.state;
 
+    this.setState({ isSubmitting: true });
+
     request(
         "POST", "/api/v1/app/update", 
         { 
@@ -95,6 +98,7 @@ export default class Dashboard extends React.Component {
         }
     ).then(response => {
         this.setState({ data: response.data });
+        this.setState({ isSubmitting: false });
 }   );
   }
 
@@ -193,7 +197,7 @@ export default class Dashboard extends React.Component {
                 onChange={this.handleInputChange}
               />
             </div>
-            <button className="btn btn-primary mt-3" onClick={this.handleFilterSubmit}>Обновить</button>
+            <button className="btn btn-primary mt-3" onClick={this.handleFilterSubmit} disabled={this.state.isSubmitting}>Обновить</button>
           </div>
         </div>
 

@@ -22,8 +22,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -92,6 +94,7 @@ public class ApiBinance implements ApiExchange {
                     })
             )
             .bodyToMono(BinanceCurrencyResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
@@ -155,6 +158,7 @@ public class ApiBinance implements ApiExchange {
                     })
             )
             .bodyToFlux(BinanceChainResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Flux.empty();
@@ -209,6 +213,7 @@ public class ApiBinance implements ApiExchange {
                     })
             )
             .bodyToFlux(BinanceTradingFeeResponse.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Flux.empty();
@@ -242,24 +247,25 @@ public class ApiBinance implements ApiExchange {
 
     private Flux<BinanceCoinTickerVolume> getCoinTickerVolume() {
         return webClient
-                .get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/api/v3/ticker/24hr")
-                        .build()
-                )
-                .retrieve()
-                .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                            log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
-                            return Mono.empty();
-                        })
-                )
-                .bodyToFlux(BinanceCoinTickerVolume.class)
-                .onErrorResume(error -> {
-                    LogsUtils.createErrorResumeLogs(error, NAME);
-                    return Flux.empty();
-                });
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                    .path("/api/v3/ticker/24hr")
+                    .build()
+            )
+            .retrieve()
+            .onStatus(
+                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                        log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                        return Mono.empty();
+                    })
+            )
+            .bodyToFlux(BinanceCoinTickerVolume.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
+            .onErrorResume(error -> {
+                LogsUtils.createErrorResumeLogs(error, NAME);
+                return Flux.empty();
+            });
     }
 
     @Override
@@ -297,6 +303,7 @@ public class ApiBinance implements ApiExchange {
                     })
             )
             .bodyToMono(BinanceCoinDepth.class)
+            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
             .onErrorResume(error -> {
                 LogsUtils.createErrorResumeLogs(error, NAME);
                 return Mono.empty();
