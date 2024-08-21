@@ -65,6 +65,13 @@ public class ArbitrageServiceImpl implements ArbitrageService {
         BigDecimal totalFee = fee.add(withdrawFee).setScale(5, RoundingMode.CEILING);
         BigDecimal profitSpread = profit.subtract(totalFee).setScale(2, RoundingMode.CEILING);
 
+//        if (asksAndBids.buyEvent.getCoin().equals("GOMINING")) {
+//            System.out.println(asksAndBids.buyEvent.getExchange());
+//            System.out.println(asksAndBids.sellEvent.getExchange());
+//            System.out.println(asksAndBids.buyEvent.getCoin());
+//            System.out.println(profitSpread);
+//        }
+
         if (profitSpread.compareTo(asksAndBids.buyEvent.getUserMinProfit()) > 0) {
             arbitrageOpportunity.setCoinName(asksAndBids.buyEvent.getCoin());
             arbitrageOpportunity.setCoinMarketCapLogo(asksAndBids.buyEvent.getLogoLink());

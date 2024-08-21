@@ -10,30 +10,35 @@ import com.exchange.scanner.dto.response.exchangedata.gateio.depth.GateIOCoinDep
 import com.exchange.scanner.dto.response.exchangedata.gateio.volume24h.GateIOCoinTickerVolume;
 import com.exchange.scanner.dto.response.exchangedata.gateio.tradingfee.GateIOTradingFeeResponse;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
-import com.exchange.scanner.model.Chain;
-import com.exchange.scanner.model.Coin;
-import com.exchange.scanner.model.Exchange;
-import com.exchange.scanner.services.utils.AppUtils.CoinChainUtils;
-import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
-import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
+import com.exchange.scanner.model.*;
+import com.exchange.scanner.repositories.OrdersBookRepository;
+import com.exchange.scanner.services.utils.AppUtils.*;
 import com.exchange.scanner.services.utils.GateIO.GateIOCoinDepthBuilder;
 import com.exchange.scanner.services.utils.GateIO.GateIOSignatureBuilder;
-import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.netty.channel.ChannelOption;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
+import reactor.netty.http.client.HttpClient;
 import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 @Service
 @Slf4j
+@Transactional
 public class ApiGateIO implements ApiExchange {
 
     @Value("${exchanges.apiKeys.GateIO.key}")
@@ -42,20 +47,38 @@ public class ApiGateIO implements ApiExchange {
     @Value("${exchanges.apiKeys.GateIO.secret}")
     private String secret;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private OrdersBookRepository ordersBookRepository;
+
+    private final BlockingDeque<Runnable> taskQueue = new LinkedBlockingDeque<>(20);
+
+    private final ExecutorService executorService = new ThreadPoolExecutor(
+            10,
+            20,
+            60L, TimeUnit.SECONDS,
+            new LinkedBlockingDeque<>(20),
+            new ThreadPoolExecutor.DiscardOldestPolicy()
+    );
+
     private static final String NAME = "Gate.io";
 
-    private final static String BASE_ENDPOINT = "https://api.gateio.ws/api/v4";
+    private final static String BASE_HTTP_ENDPOINT = "https://api.gateio.ws/api/v4";
 
-    private static final int TIMEOUT = 10000;
+    private static final int HTTP_REQUEST_TIMEOUT = 10000;
 
-    private static final int REQUEST_DELAY_DURATION = 100;
+    private static final String WSS_URL = "wss://api.gateio.ws/ws/v4/";
 
-    private static final int DEPTH_REQUEST_LIMIT = 15;
+    private static final int MAX_WEBSOCKET_CONNECTION_RETRIES = 3;
+
+    private static final Duration WEBSOCKET_RECONNECT_DELAY = Duration.ofSeconds(10);
 
     private final WebClient webClient;
 
     public ApiGateIO() {
-        this.webClient = WebClientBuilder.buildWebClient(BASE_ENDPOINT, TIMEOUT);
+        this.webClient = WebClientBuilder.buildWebClient(BASE_HTTP_ENDPOINT, HTTP_REQUEST_TIMEOUT);
     }
 
     @Override
@@ -269,50 +292,108 @@ public class ApiGateIO implements ApiExchange {
     }
 
     @Override
-    public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {
-        Set<CoinDepth> coinDepthSet = new HashSet<>();
-        coins.forEach(coin -> {
-            GateIOCoinDepth response = getCoinDepth(coin).block();
+    public void getOrderBook(Set<Coin> coins, String exchange) {
+        List<String> symbols = coins.stream().map(coin -> coin.getName().toUpperCase() + "_USDT").toList();
+        Map<String, Coin> coinMap = coins.stream().collect(Collectors.toMap(Coin::getName, coin -> coin));
 
-            if (response != null && (response.getBids() != null || response.getAsks() != null)) {
-                CoinDepth coinDepth = GateIOCoinDepthBuilder.getCoinDepth(coin, response, exchange);
-                coinDepthSet.add(coinDepth);
-            }
-
-            try {
-                Thread.sleep(DEPTH_REQUEST_LIMIT);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
-        });
-
-        return coinDepthSet;
+        getCoinDepth(symbols, coinMap);
     }
 
-    private Mono<GateIOCoinDepth> getCoinDepth(Coin coin) {
-        String symbol = coin.getName() + "_USDT";
+    private void getCoinDepth(List<String> symbols, Map<String, Coin> coinMap) {
+        submitExecutorService();
 
-        return webClient
-            .get()
-            .uri(uriBuilder -> uriBuilder
-                    .path("/spot/order_book")
-                    .queryParam("currency_pair", symbol)
-                    .queryParam("limit", DEPTH_REQUEST_LIMIT)
-                    .build()
-            )
-            .retrieve()
-            .onStatus(
-                    status -> status.is4xxClientError() || status.is5xxServerError(),
-                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
-                        return Mono.empty();
+        List<String> subscriptionMessages = symbols.stream()
+                .map(symbol -> String.format("{\"channel\": \"spot.order_book\", \"event\": \"subscribe\", \"payload\": [\"%s\", \"10\", \"1000ms\"]}", symbol))
+                .toList();
+
+        connectWebSocket(subscriptionMessages, coinMap);
+    }
+
+    private void submitExecutorService() {
+        executorService.submit(() -> {
+           while (true) {
+               try {
+                   Runnable task = taskQueue.take();
+                   task.run();
+               } catch (Exception e) {
+                   Thread.currentThread().interrupt();
+                   break;
+               }
+           }
+        });
+    }
+
+    private void connectWebSocket(List<String> payload, Map<String, Coin> coinMap) {
+        HttpClient client = HttpClient.create()
+            .keepAlive(true)
+            .option(ChannelOption.SO_KEEPALIVE, true);
+
+        client.websocket()
+            .uri(WSS_URL)
+            .handle((inbound, outbound) -> {
+                inbound.receive()
+                    .asString()
+                    .retryWhen(Retry.fixedDelay(MAX_WEBSOCKET_CONNECTION_RETRIES, WEBSOCKET_RECONNECT_DELAY))
+                    .doOnTerminate(() -> {
+                        log.error("Потеряно соединение с Websocket");
+                        executorService.shutdownNow();
                     })
-            )
-            .bodyToMono(GateIOCoinDepth.class)
-            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
-            .onErrorResume(error -> {
-                LogsUtils.createErrorResumeLogs(error, NAME);
-                return Mono.empty();
-            });
+                    .map(this::processWebsocketResponse)
+                    .filter(this::isValidResponseData)
+                    .map(Optional::get)
+                    .windowTimeout(300, Duration.ofSeconds(2))
+                    .flatMap(Flux::collectList)
+                    .subscribeOn(Schedulers.boundedElastic())
+                    .subscribe(depthList -> {
+                        if (depthList != null && !depthList.isEmpty()) {
+                            taskQueue.offer(() -> saveOrderBooks(createOrderBooks(coinMap, depthList)));
+                        }
+                    });
+
+                return outbound.sendString(Flux.fromIterable(payload)).neverComplete();
+            })
+            .subscribe();
+    }
+
+    private Optional<GateIOCoinDepth> processWebsocketResponse(String response) {
+        try {
+            GateIOCoinDepth gateIOCoinDepth = objectMapper.readValue(response, GateIOCoinDepth.class);
+            if (gateIOCoinDepth.getEvent().equalsIgnoreCase("subscribe")) return Optional.empty();
+            return Optional.of(gateIOCoinDepth);
+        } catch (JsonProcessingException e) {
+            log.info(e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private Boolean isValidResponseData(Optional<GateIOCoinDepth> coinDepth) {
+        return coinDepth.isPresent() &&
+                !coinDepth.get().getResult().getAsks().isEmpty() &&
+                !coinDepth.get().getResult().getBids().isEmpty();
+    }
+
+    private Set<OrdersBook> createOrderBooks(Map<String, Coin> coinMap, List<GateIOCoinDepth> depthList) {
+        return depthList.stream().map(depth -> {
+                    Coin currentCoin = coinMap.get(depth.getResult().getS().replaceAll("_USDT", ""));
+                    return getCurrentOrderBook(depth, currentCoin);
+                })
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .collect(Collectors.toSet());
+    }
+
+    private Optional<OrdersBook> getCurrentOrderBook(GateIOCoinDepth depth, Coin currentCoin) {
+        CoinDepth coinDepth = GateIOCoinDepthBuilder.getCoinDepth(currentCoin, depth, NAME);
+        OrdersBook ordersBook = OrdersBookUtils.createOrderBooks(coinDepth);
+
+        if (ordersBook.getBids().isEmpty() || ordersBook.getAsks().isEmpty()) return Optional.empty();
+
+        return ordersBookRepository.findBySlug(ordersBook.getSlug())
+                .map(book -> OrdersBookUtils.updateOrderBooks(book, coinDepth))
+                .or(() -> Optional.of(ordersBook));
+    }
+
+    private void saveOrderBooks(Set<OrdersBook> ordersBookSet) {
+        ordersBookRepository.saveAllAndFlush(ordersBookSet);
     }
 }

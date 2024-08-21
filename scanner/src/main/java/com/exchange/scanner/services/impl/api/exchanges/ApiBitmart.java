@@ -282,7 +282,7 @@ public class ApiBitmart implements ApiExchange {
     }
 
     @Override
-    public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {
+    public void getOrderBook(Set<Coin> coins, String exchange) {
         Set<CoinDepth> coinDepthSet = new HashSet<>();
 
         coins.forEach(coin -> {
@@ -299,8 +299,6 @@ public class ApiBitmart implements ApiExchange {
                 throw new RuntimeException();
             }
         });
-
-        return coinDepthSet;
     }
 
     private Mono<BitmartCoinDepth> getCoinDepth(Coin coin) {

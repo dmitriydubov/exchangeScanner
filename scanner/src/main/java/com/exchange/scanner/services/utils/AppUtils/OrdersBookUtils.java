@@ -3,14 +3,13 @@ package com.exchange.scanner.services.utils.AppUtils;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.*;
 import com.exchange.scanner.repositories.ExchangeRepository;
-import com.exchange.scanner.repositories.UserMarketSettingsRepository;
 import com.exchange.scanner.services.ApiExchangeAdapter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 /**
  *@OrdersBookUtils - Утилитный класс для получения dto (CoinDepth) ответов от бирж с данными о стаканах цен (depth) и обновление
@@ -29,71 +28,83 @@ public class OrdersBookUtils {
     private static final int ORDERS_BOOK_SIZE_LIMIT = 10;
 
     /**
-     * @getOrderBooksAsync - метод получает список бирж покупки/продажи, имена монет пользователя и в многопоточном режиме
+     * @getOrderBooksAsync - метод получает список бирж покупки/продажи и в многопоточном режиме
      * передаёт в аргументы метода apiExchangeAdapter.getOrderBook()
-     * @return - сет объектов класса CoinDepth
      * **/
 
-    public Set<CoinDepth> getOrderBooksAsync(
+    @Transactional
+    public void getOrderBooks(
             ExchangeRepository exchangeRepository,
-            ApiExchangeAdapter apiExchangeAdapter,
-            UserMarketSettingsRepository userMarketSettingsRepository
+            ApiExchangeAdapter apiExchangeAdapter
     ) {
-        Set<CoinDepth> result = Collections.synchronizedSet(new HashSet<>());
-        Set<Exchange> exchanges = AppServiceUtils.getUsersExchanges(userMarketSettingsRepository, exchangeRepository);
-        if (exchanges.isEmpty()) return new HashSet<>();
-        Set<String> usersCoinsNames = AppServiceUtils.getUsersCoinsNames(userMarketSettingsRepository);
-        ExecutorService executorService = Executors.newFixedThreadPool(exchanges.size());
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        Set<Exchange> exchanges = new HashSet<>(exchangeRepository.findAll());
+        if (exchanges.isEmpty()) return;
 
         exchanges.forEach(exchange -> {
-            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                Set<Coin> filteredCoins = AppServiceUtils.getFilteredCoins(exchange, usersCoinsNames);
-                Set<CoinDepth> coinDepth = apiExchangeAdapter.getOrderBook(exchange, filteredCoins);
-                coinDepth.forEach(depth -> {
-                    synchronized (result) {
-                        result.addAll(coinDepth);
-                    }
-                });
-            },executorService);
-            futures.add(future);
+            Set<Coin> coins = exchange.getCoins();
+            apiExchangeAdapter.getOrderBook(exchange, coins);
         });
-
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        executorService.shutdown();
-
-        return result;
     }
 
     /**
      * @createOrderBooks - метод создаёт объекты класса OrdersBook из объекта класса CoinDepth
      * @return - объекты класса OrdersBook
      * **/
-    public OrdersBook createOrderBooks(CoinDepth coinDepth) {
+    public static OrdersBook createOrderBooks(CoinDepth coinDepth) {
         OrdersBook ordersBook = new OrdersBook();
         if (coinDepth == null || coinDepth.getCoinDepthAsks() == null || coinDepth.getCoinDepthBids() == null) return ordersBook;
 
         ordersBook.setSlug(coinDepth.getSlug());
 
-        Set<Ask> asks = new TreeSet<>();
-        coinDepth.getCoinDepthAsks().stream().limit(ORDERS_BOOK_SIZE_LIMIT).forEach(askResponse -> {
-            Ask ask = new Ask();
-            ask.setPrice(askResponse.getPrice());
-            ask.setVolume(askResponse.getVolume());
-            asks.add(ask);
-        });
-
-        Set<Bid> bids = new TreeSet<>();
-        coinDepth.getCoinDepthBids().stream().limit(ORDERS_BOOK_SIZE_LIMIT).forEach(bidResponse -> {
-            Bid bid = new Bid();
-            bid.setPrice(bidResponse.getPrice());
-            bid.setVolume(bidResponse.getVolume());
-            bids.add(bid);
-        });
+        Set<Ask> asks = getAsks(coinDepth, ordersBook);
+        Set<Bid> bids = getBids(coinDepth, ordersBook);
 
         ordersBook.setAsks(asks);
         ordersBook.setBids(bids);
+        ordersBook.setFrequencyFactor(0);
+        ordersBook.setTimestamp(getTimestamp());
 
         return ordersBook;
+    }
+
+    public static OrdersBook updateOrderBooks(OrdersBook ordersBook, CoinDepth coinDepth) {
+        ordersBook.getAsks().clear();
+        ordersBook.getBids().clear();
+        ordersBook.getAsks().addAll(getAsks(coinDepth, ordersBook));
+        ordersBook.getBids().addAll(getBids(coinDepth, ordersBook));
+        ordersBook.setFrequencyFactor(ordersBook.getFrequencyFactor() + 1);
+        ordersBook.setTimestamp(getTimestamp());
+        return ordersBook;
+    }
+
+    private static Set<Ask> getAsks(CoinDepth coinDepth, OrdersBook ordersBook) {
+        return coinDepth.getCoinDepthAsks().stream().limit(ORDERS_BOOK_SIZE_LIMIT)
+                .filter(askResponse -> askResponse.getPrice() != null && askResponse.getVolume() != null)
+                .map(askResponse -> {
+                    Ask ask = new Ask();
+                    ask.setOrdersBook(ordersBook);
+                    ask.setPrice(askResponse.getPrice());
+                    ask.setVolume(askResponse.getVolume());
+                    return ask;
+                })
+                .collect(Collectors.toSet());
+    }
+
+    private static Set<Bid> getBids(CoinDepth coinDepth, OrdersBook ordersBook) {
+        return coinDepth.getCoinDepthBids().stream().limit(ORDERS_BOOK_SIZE_LIMIT)
+                .filter(bidResponse -> bidResponse.getPrice() != null && bidResponse.getVolume() != null)
+                .map(bidResponse -> {
+                    Bid bid = new Bid();
+                    bid.setOrdersBook(ordersBook);
+                    bid.setPrice(bidResponse.getPrice());
+                    bid.setVolume(bidResponse.getVolume());
+                    return bid;
+                })
+                .collect(Collectors.toSet());
+    }
+
+    private static String getTimestamp() {
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+        return dateFormat.format(System.currentTimeMillis());
     }
 }

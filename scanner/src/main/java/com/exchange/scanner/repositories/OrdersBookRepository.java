@@ -11,4 +11,6 @@ public interface OrdersBookRepository extends JpaRepository<OrdersBook, Long> {
 
     @EntityGraph(attributePaths = {"asks", "bids"})
     Optional<OrdersBook> findBySlug(String slug);
+
+    void deleteAllBySlugEndingWith(String exchange);
 }

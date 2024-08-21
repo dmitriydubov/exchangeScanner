@@ -23,7 +23,7 @@ public class BinanceCoinDepthBuilder {
         coinDepth.setExchange(exchange);
         coinDepth.setSlug(coin.getName() + "-" + exchange);
 
-        Set<CoinDepthAsk> coinDepthAskSet = depth.getAsks().stream()
+        Set<CoinDepthAsk> coinDepthAskSet = depth.getA().stream()
                 .map(ask -> {
                     CoinDepthAsk coinDepthAsk = new CoinDepthAsk();
                     coinDepthAsk.setPrice(new BigDecimal(ask.getFirst()));
@@ -32,7 +32,7 @@ public class BinanceCoinDepthBuilder {
                 })
                 .collect(Collectors.toSet());
 
-        Set<CoinDepthBid> coinDepthBidSet = depth.getBids().stream()
+        Set<CoinDepthBid> coinDepthBidSet = depth.getB().stream()
                 .map(bid -> {
                     CoinDepthBid coinDepthBid = new CoinDepthBid();
                     coinDepthBid.setPrice(new BigDecimal(bid.getFirst()));

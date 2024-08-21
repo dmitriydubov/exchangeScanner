@@ -7,9 +7,9 @@ import java.util.List;
 
 @Getter
 @Setter
-public class MexcCoinDepth {
+public class MexcDepth {
 
-    private MexcDepth d;
+    private List<MexcBid> bids;
 
-    private String s;
+    private List<MexcAsk> asks;
 }

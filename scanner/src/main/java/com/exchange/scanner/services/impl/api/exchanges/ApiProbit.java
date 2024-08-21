@@ -253,7 +253,7 @@ public class ApiProbit implements ApiExchange {
 
 
     @Override
-    public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {
+    public void getOrderBook(Set<Coin> coins, String exchange) {
         Set<CoinDepth> coinDepthSet = new HashSet<>();
 
         coins.forEach(coin -> {
@@ -270,8 +270,6 @@ public class ApiProbit implements ApiExchange {
                 throw new RuntimeException();
             }
         });
-
-        return coinDepthSet;
     }
 
     private Mono<ProbitCoinDepth> getCoinDepth(Coin coin) {

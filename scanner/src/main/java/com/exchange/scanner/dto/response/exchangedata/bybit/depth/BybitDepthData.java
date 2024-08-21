@@ -1,4 +1,4 @@
-package com.exchange.scanner.dto.response.exchangedata.binance.depth;
+package com.exchange.scanner.dto.response.exchangedata.bybit.depth;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -7,7 +7,7 @@ import java.util.List;
 
 @Getter
 @Setter
-public class BinanceCoinDepth {
+public class BybitDepthData {
 
     private String s;
 

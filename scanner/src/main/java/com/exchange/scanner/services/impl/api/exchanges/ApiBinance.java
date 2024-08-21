@@ -13,24 +13,36 @@ import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.model.OrdersBook;
+import com.exchange.scanner.repositories.OrdersBookRepository;
 import com.exchange.scanner.services.utils.AppUtils.*;
 import com.exchange.scanner.services.utils.Binance.BinanceCoinDepthBuilder;
 import com.exchange.scanner.services.utils.Binance.BinanceSignatureBuilder;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.netty.channel.ChannelOption;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
+import reactor.netty.http.client.HttpClient;
+import reactor.netty.http.client.WebsocketClientSpec;
 import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 @Service
 @Slf4j
+@Transactional
 public class ApiBinance implements ApiExchange {
 
     @Value("${exchanges.apiKeys.Binance.key}")
@@ -39,20 +51,38 @@ public class ApiBinance implements ApiExchange {
     @Value("${exchanges.apiKeys.Binance.secret}")
     private String secret;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private OrdersBookRepository ordersBookRepository;
+
+    private final BlockingDeque<Runnable> taskQueue = new LinkedBlockingDeque<>(20);
+
+    private final ExecutorService executorService = new ThreadPoolExecutor(
+            10,
+            20,
+            60L, TimeUnit.SECONDS,
+            new LinkedBlockingDeque<>(20),
+            new ThreadPoolExecutor.DiscardOldestPolicy()
+    );
+
     private static final String NAME = "Binance";
 
-    private static final String BASE_ENDPOINT = "https://api.binance.com";
+    private static final String BASE_HTTP_ENDPOINT = "https://api.binance.com";
 
-    private static final int TIMEOUT = 10000;
+    private static final int HTTP_REQUEST_TIMEOUT = 10000;
 
-    private static final int REQUEST_DELAY_DURATION = 20;
+    private static final String WSS_URL = "wss://stream.binance.com:9443/ws";
 
-    private static final int DEPTH_REQUEST_LIMIT = 15;
+    private static final int MAX_WEBSOCKET_CONNECTION_RETRIES = 3;
+
+    private static final Duration WEBSOCKET_RECONNECT_DELAY = Duration.ofSeconds(10);
 
     private final WebClient webClient;
 
     public ApiBinance() {
-        this.webClient = WebClientBuilder.buildWebClient(BASE_ENDPOINT, TIMEOUT);
+        this.webClient = WebClientBuilder.buildWebClient(BASE_HTTP_ENDPOINT, HTTP_REQUEST_TIMEOUT);
     }
 
     @Override
@@ -269,56 +299,116 @@ public class ApiBinance implements ApiExchange {
     }
 
     @Override
-    public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {
-        Set<CoinDepth> coinDepthSet = new HashSet<>();
+    public void getOrderBook(Set<Coin> coins, String exchange) {
+        List<String> symbols = coins.stream().map(coin -> coin.getName().toLowerCase() + "usdt").toList();
+        Map<String, Coin> coinMap = coins.stream().collect(Collectors.toMap(Coin::getName, coin -> coin));
 
-        coins.forEach(coin -> {
-            BinanceCoinDepth response = getCoinDepth(coin).block();
+        int batchSize = 100;
+        List<List<String>> batches = ListUtils.partition(symbols, batchSize);
 
-            if (response != null && (!response.getBids().isEmpty() || !response.getAsks().isEmpty())) {
-                CoinDepth coinDepth = BinanceCoinDepthBuilder.getCoinDepth(coin, response, exchange);
-                coinDepthSet.add(coinDepth);
+        batches.forEach(batch -> getCoinDepth(batch, coinMap));
+    }
+
+    private void getCoinDepth(List<String> symbols, Map<String, Coin> coinMap) {
+        submitExecutorService();
+
+        StringBuilder params = new StringBuilder();
+        symbols.forEach(symbol -> params.append("\"").append(symbol).append("@depth@1000ms").append("\"").append(","));
+        params.deleteCharAt(params.length() - 1);
+        String payload = "{" +
+                "\"method\": " + "\"SUBSCRIBE\"" + "," +
+                "\"params\": " + "[" + params + "]" + "," +
+                "\"id\": " + null +
+                "}";
+
+        connectWebSocket(payload, coinMap);
+    }
+
+    private void submitExecutorService() {
+        executorService.submit(() -> {
+            while (true) {
+                try {
+                    Runnable task = taskQueue.take();
+                    task.run();
+                } catch (Exception e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
             }
         });
-
-        return coinDepthSet;
     }
 
-    private Mono<BinanceCoinDepth> getCoinDepth(Coin coin) {
-        String symbol = coin.getName() + "USDT";
+    private void connectWebSocket(String payload, Map<String, Coin> coinMap) {
+        HttpClient client = HttpClient.create()
+                .keepAlive(true)
+                .option(ChannelOption.SO_KEEPALIVE, true);
 
-        return webClient
-            .get()
-            .uri(uriBuilder -> uriBuilder.path("/api/v3/depth")
-                    .queryParam("symbol", symbol)
-                    .queryParam("limit", DEPTH_REQUEST_LIMIT)
-                    .build()
-            )
-            .retrieve()
-            .onStatus(
-                    status -> status.is4xxClientError() || status.is5xxServerError(),
-                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
-                        return Mono.empty();
+        client.websocket(WebsocketClientSpec.builder()
+                    .maxFramePayloadLength(1048576)
+                    .build())
+            .uri(WSS_URL)
+            .handle((inbound, outbound) -> {
+                inbound.receive()
+                    .asString()
+                    .retryWhen(Retry.fixedDelay(MAX_WEBSOCKET_CONNECTION_RETRIES, WEBSOCKET_RECONNECT_DELAY))
+                    .doOnTerminate(() -> {
+                        log.error("Потеряно соединение с Websocket");
+                        executorService.shutdownNow();
                     })
-            )
-            .bodyToMono(BinanceCoinDepth.class)
-            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
-            .onErrorResume(error -> {
-                LogsUtils.createErrorResumeLogs(error, NAME);
-                return Mono.empty();
-            });
+                    .map(this::processWebsocketResponse)
+                    .filter(this::isValidResponseData)
+                    .map(Optional::get)
+                    .windowTimeout(coinMap.size(), Duration.ofSeconds(2))
+                    .flatMap(Flux::collectList)
+                    .subscribeOn(Schedulers.boundedElastic())
+                    .subscribe(depthList -> {
+                        if (depthList != null && !depthList.isEmpty()) {
+                            taskQueue.offer(() -> saveOrderBooks(createOrderBooks(coinMap, depthList)));
+                        }
+                    });
+
+                return outbound.sendString(Mono.just(payload)).neverComplete();
+            })
+            .subscribe();
     }
 
-    private static String generateParameters(List<Coin> coins) {
-        String parameters;
-        StringBuilder sb = new StringBuilder();
-        sb.append("[");
-        coins.forEach(coin -> sb.append("\"").append(coin.getName()).append("USDT").append("\"").append(","));
-        sb.deleteCharAt(sb.length() - 1);
-        sb.append("]");
-        parameters = sb.toString();
+    private Optional<BinanceCoinDepth> processWebsocketResponse(String response) {
+        try {
+            return Optional.of(objectMapper.readValue(response, BinanceCoinDepth.class));
+        } catch (JsonProcessingException e) {
+            log.info(e.getMessage());
+            return Optional.empty();
+        }
+    }
 
-        return parameters;
+    private Boolean isValidResponseData(Optional<BinanceCoinDepth> coinDepth) {
+        return coinDepth.isPresent() &&
+                coinDepth.get().getB() != null &&
+                coinDepth.get().getA() != null;
+    }
+
+    private Set<OrdersBook> createOrderBooks(Map<String, Coin> coinMap, List<BinanceCoinDepth> depthList) {
+        return depthList.stream().map(depth -> {
+                    Coin currentCoin = coinMap.get(depth.getS().replaceAll("USDT", ""));
+                    return getCurrentOrderBook(depth, currentCoin);
+                })
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .collect(Collectors.toSet());
+    }
+
+    private Optional<OrdersBook> getCurrentOrderBook(BinanceCoinDepth depth, Coin currentCoin) {
+        CoinDepth coinDepth = BinanceCoinDepthBuilder.getCoinDepth(currentCoin, depth, NAME);
+        OrdersBook ordersBook = OrdersBookUtils.createOrderBooks(coinDepth);
+
+        if (ordersBook.getBids().isEmpty() || ordersBook.getAsks().isEmpty()) return Optional.empty();
+
+        return ordersBookRepository.findBySlug(ordersBook.getSlug())
+                .map(book -> OrdersBookUtils.updateOrderBooks(book, coinDepth))
+                .or(() -> Optional.of(ordersBook));
+    }
+
+    private void saveOrderBooks(Set<OrdersBook> ordersBookSet) {
+        ordersBookRepository.saveAllAndFlush(ordersBookSet);
     }
 }

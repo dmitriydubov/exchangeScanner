@@ -4,6 +4,7 @@ import com.exchange.scanner.dto.response.exchangedata.gateio.depth.GateIOCoinDep
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthAsk;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthBid;
+import com.exchange.scanner.dto.response.exchangedata.gateio.depth.GateIOCoinDepthResult;
 import com.exchange.scanner.model.Coin;
 
 import java.math.BigDecimal;
@@ -20,7 +21,7 @@ public class GateIOCoinDepthBuilder {
         coinDepth.setCoin(coin);
         coinDepth.setSlug(coin.getName() + "-" + exchange);
 
-        Set<CoinDepthAsk> coinDepthAskSet = depth.getAsks().stream()
+        Set<CoinDepthAsk> coinDepthAskSet = depth.getResult().getAsks().stream()
             .map(ask -> {
                 CoinDepthAsk coinDepthAsk = new CoinDepthAsk();
                 coinDepthAsk.setPrice(new BigDecimal(ask.getFirst()));
@@ -29,7 +30,7 @@ public class GateIOCoinDepthBuilder {
             })
             .collect(Collectors.toSet());
 
-        Set<CoinDepthBid> coinDepthBidSet = depth.getBids().stream()
+        Set<CoinDepthBid> coinDepthBidSet = depth.getResult().getBids().stream()
             .map(bid -> {
                 CoinDepthBid coinDepthBid = new CoinDepthBid();
                 coinDepthBid.setPrice(new BigDecimal(bid.getFirst()));

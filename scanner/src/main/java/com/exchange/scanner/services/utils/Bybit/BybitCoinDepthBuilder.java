@@ -1,7 +1,7 @@
 package com.exchange.scanner.services.utils.Bybit;
 
 
-import com.exchange.scanner.dto.response.exchangedata.bybit.depth.BybitDepthResult;
+import com.exchange.scanner.dto.response.exchangedata.bybit.depth.BybitDepthData;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthAsk;
 import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepthBid;
@@ -14,13 +14,13 @@ import java.util.stream.Collectors;
 
 public class BybitCoinDepthBuilder {
 
-    public static CoinDepth getCoinDepth(Coin coin, BybitDepthResult result, String exchange) {
+    public static CoinDepth getCoinDepth(Coin coin, BybitDepthData result, String exchange) {
         CoinDepth coinDepth = new CoinDepth();
         coinDepth.setExchange(exchange);
         coinDepth.setCoin(coin);
         coinDepth.setSlug(coin.getName() + "-" + exchange);
 
-        Set<CoinDepthAsk> coinDepthAskSet = result.getAsks().stream()
+        Set<CoinDepthAsk> coinDepthAskSet = result.getA().stream()
                 .map(ask -> {
                     CoinDepthAsk coinDepthAsk = new CoinDepthAsk();
                     coinDepthAsk.setPrice(new BigDecimal(ask.getFirst()));
@@ -29,7 +29,7 @@ public class BybitCoinDepthBuilder {
                 })
                 .collect(Collectors.toSet());
 
-        Set<CoinDepthBid> coinDepthBidSet = result.getBids().stream()
+        Set<CoinDepthBid> coinDepthBidSet = result.getB().stream()
                 .map(bid -> {
                     CoinDepthBid coinDepthBid = new CoinDepthBid();
                     coinDepthBid.setPrice(new BigDecimal(bid.getFirst()));

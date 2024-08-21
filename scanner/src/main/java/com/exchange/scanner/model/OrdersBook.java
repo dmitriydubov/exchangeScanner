@@ -22,18 +22,23 @@ public class OrdersBook {
     @Column(nullable = false)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true)
     private String slug;
 
     @OneToOne(mappedBy = "ordersBook", cascade = CascadeType.ALL)
     @JoinColumn(name = "orders_book_id")
     private Coin coin;
 
-    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+    @Column(name = "frequency_factor", nullable = false)
+    private long frequencyFactor;
+
+    private String timestamp;
+
+    @OneToMany(cascade = {CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REMOVE}, fetch = FetchType.EAGER, orphanRemoval = true)
     @JoinColumn(name = "orders_book_id")
     private Set<Ask> asks = new TreeSet<>();
 
-    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(cascade = {CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REMOVE}, fetch = FetchType.EAGER, orphanRemoval = true)
     @JoinColumn(name = "orders_book_id")
     private Set<Bid> bids = new TreeSet<>();
 

@@ -19,20 +19,20 @@ public class MexcCoinDepthBuilder {
         coinDepth.setCoin(coin);
         coinDepth.setSlug(coin.getName() + "-" + exchange);
 
-        Set<CoinDepthAsk> coinDepthAskSet = depth.getAsks().stream()
+        Set<CoinDepthAsk> coinDepthAskSet = depth.getD().getAsks().stream()
                 .map(ask -> {
                     CoinDepthAsk coinDepthAsk = new CoinDepthAsk();
-                    coinDepthAsk.setPrice(new BigDecimal(ask.getFirst()));
-                    coinDepthAsk.setVolume(new BigDecimal(ask.getLast()));
+                    coinDepthAsk.setPrice(new BigDecimal(ask.getP()));
+                    coinDepthAsk.setVolume(new BigDecimal(ask.getV()));
                     return coinDepthAsk;
                 })
                 .collect(Collectors.toSet());
 
-        Set<CoinDepthBid> coinDepthBidSet = depth.getBids().stream()
+        Set<CoinDepthBid> coinDepthBidSet = depth.getD().getBids().stream()
                 .map(bid -> {
                     CoinDepthBid coinDepthBid = new CoinDepthBid();
-                    coinDepthBid.setPrice(new BigDecimal(bid.getFirst()));
-                    coinDepthBid.setVolume(new BigDecimal(bid.getLast()));
+                    coinDepthBid.setPrice(new BigDecimal(bid.getP()));
+                    coinDepthBid.setVolume(new BigDecimal(bid.getV()));
                     return coinDepthBid;
                 })
                 .collect(Collectors.toSet());

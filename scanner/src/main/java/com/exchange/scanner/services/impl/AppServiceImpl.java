@@ -6,7 +6,6 @@ import com.exchange.scanner.dto.response.event.ArbitrageEvent;
 import com.exchange.scanner.dto.response.event.ArbitrageOpportunity;
 import com.exchange.scanner.dto.response.event.EventData;
 import com.exchange.scanner.dto.response.event.UserTradeEvent;
-import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.*;
 import com.exchange.scanner.repositories.*;
 import com.exchange.scanner.security.model.User;
@@ -26,11 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
-import java.time.Duration;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -67,13 +61,13 @@ public class AppServiceImpl implements AppService {
 
     private static final int SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H = 1000 * 60 * 60;
 
-    private static final int SCHEDULED_RATE_TIME_FOR_GET_ORDERS_BOOK = 5000;
+    private static final int SCHEDULED_RATE_TIME_FOR_GET_ORDERS_BOOK = 1000 * 60 * 60;
 
     private static final int SCHEDULED_RATE_TIME_FOR_GET_COIN_INFO = 1000 * 60 * 60;
 
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_REFRESH_COINS)
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_REFRESH_COINS, initialDelay = 1000000000)
     public void refreshCoins() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи refreshCoins", Thread.currentThread().getName());
@@ -91,7 +85,7 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_CHAINS, initialDelay = 15000)
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_CHAINS, initialDelay = 1000000000)
     public void getCoinsChains() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи getCoinsChains", Thread.currentThread().getName());
@@ -112,7 +106,7 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_TRADING_FEE, initialDelay = 15000)
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_TRADING_FEE, initialDelay = 1000000000)
     public void getTradingFee() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи getTradingFee", Thread.currentThread().getName());
@@ -132,7 +126,7 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H, initialDelay = 15000)
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_VOLUME24H, initialDelay = 1000000000)
     public void getVolume24h() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи getVolume24h", Thread.currentThread().getName());
@@ -152,7 +146,7 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_INFO, initialDelay = 15000)
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_COIN_INFO, initialDelay = 1000000000)
     public void getCoinMarketCapCoinInfo() {
         long start = System.currentTimeMillis();
         log.info("{} приступил к выполнению задачи getCoinMarketCapCoinInfo", Thread.currentThread().getName());
@@ -177,31 +171,16 @@ public class AppServiceImpl implements AppService {
     }
 
     @Override
-    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_ORDERS_BOOK, initialDelay = 15000)
+    @Scheduled(fixedRate = SCHEDULED_RATE_TIME_FOR_GET_ORDERS_BOOK, initialDelay = 0)
     public void getOrderBooks() {
 //        long start = System.currentTimeMillis();
 //        log.info("{} приступил к выполнению задачи getOrderBooks", Thread.currentThread().getName());
 
-        synchronized (ordersBookRepository) {
-            ordersBookRepository.deleteAll();
-        }
-
         OrdersBookUtils ordersBookUtils = new OrdersBookUtils();
-        Set<CoinDepth> coinDepthSet = ordersBookUtils.getOrderBooksAsync(
+        ordersBookUtils.getOrderBooks(
                 exchangeRepository,
-                apiExchangeAdapter,
-                userMarketSettingsRepository
+                apiExchangeAdapter
         );
-        coinDepthSet.forEach(depth -> {
-            OrdersBook ordersBook = ordersBookUtils.createOrderBooks(depth);
-            ordersBook.setSlug(depth.getSlug());
-            Coin coin = depth.getCoin();
-            ordersBook.setCoin(coin);
-            synchronized (ordersBookRepository) {
-                ordersBookRepository.save(ordersBook);
-            }
-        });
-
 
 //        long end = System.currentTimeMillis() - start;
 //        log.info("Операция обновления стакана цен выполнена. Время выполнения: {}s", end / 1000);

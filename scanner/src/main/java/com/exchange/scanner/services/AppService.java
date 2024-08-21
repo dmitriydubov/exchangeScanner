@@ -4,6 +4,7 @@ import com.exchange.scanner.dto.request.UserUpdateMarketData;
 import com.exchange.scanner.dto.response.ExchangeData;
 import com.exchange.scanner.dto.response.SimpleResponse;
 import com.exchange.scanner.dto.response.event.ArbitrageEvent;
+import com.exchange.scanner.model.OrdersBook;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.List;

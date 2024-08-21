@@ -1,4 +1,4 @@
-package com.exchange.scanner.dto.response.exchangedata.bybit.depth;
+package com.exchange.scanner.dto.response.exchangedata.gateio.depth;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -7,7 +7,9 @@ import java.util.List;
 
 @Getter
 @Setter
-public class BybitDepthResult {
+public class GateIOCoinDepthResult {
+
+    private String s;
 
     private List<List<String>> bids;
 

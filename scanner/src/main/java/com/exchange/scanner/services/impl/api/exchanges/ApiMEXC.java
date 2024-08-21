@@ -4,37 +4,46 @@ import com.exchange.scanner.dto.response.ChainResponseDTO;
 import com.exchange.scanner.dto.response.LinkDTO;
 import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
+import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.mexc.chains.MexcChainResponse;
 import com.exchange.scanner.dto.response.exchangedata.mexc.depth.MexcCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.mexc.tradingfee.MexcTradingFeeResponse;
 import com.exchange.scanner.dto.response.exchangedata.mexc.coins.MexcCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.mexc.tickervolume.MexcCoinTicker;
-import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.mexc.tradingfee.MexcTradingFeeSymbol;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
-import com.exchange.scanner.services.utils.AppUtils.CoinChainUtils;
-import com.exchange.scanner.services.utils.AppUtils.LogsUtils;
-import com.exchange.scanner.services.utils.AppUtils.ObjectUtils;
+import com.exchange.scanner.model.OrdersBook;
+import com.exchange.scanner.repositories.OrdersBookRepository;
+import com.exchange.scanner.services.utils.AppUtils.*;
 import com.exchange.scanner.services.utils.Mexc.MexcCoinDepthBuilder;
 import com.exchange.scanner.services.utils.Mexc.MexcSignatureBuilder;
-import com.exchange.scanner.services.utils.AppUtils.WebClientBuilder;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.netty.channel.ChannelOption;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
+import reactor.netty.http.client.HttpClient;
 import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Service
 @Slf4j
+@Transactional
 public class ApiMEXC implements ApiExchange {
 
     @Value("${exchanges.apiKeys.MEXC.key}")
@@ -43,20 +52,38 @@ public class ApiMEXC implements ApiExchange {
     @Value("${exchanges.apiKeys.MEXC.secret}")
     private String secret;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private OrdersBookRepository ordersBookRepository;
+
+    private final BlockingDeque<Runnable> taskQueue = new LinkedBlockingDeque<>(20);
+
+    private final ExecutorService executorService = new ThreadPoolExecutor(
+            10,
+            20,
+            60L, TimeUnit.SECONDS,
+            new LinkedBlockingDeque<>(20),
+            new ThreadPoolExecutor.DiscardOldestPolicy()
+    );
+
     private static final String NAME = "MEXC";
 
-    public final static String BASE_ENDPOINT = "https://api.mexc.com";
+    public static final String BASE_HTTP_ENDPOINT = "https://api.mexc.com";
 
-    private static final int TIMEOUT = 10000;
+    private static final int HTTP_REQUEST_TIMEOUT = 10000;
 
-    private static final int REQUEST_DELAY_DURATION = 20;
+    private static final String WSS_URL = "wss://wbs.mexc.com/ws";
 
-    private static final int DEPTH_REQUEST_LIMIT = 15;
+    private static final int MAX_WEBSOCKET_CONNECTION_RETRIES = 3;
+
+    private static final Duration WEBSOCKET_RECONNECT_DELAY = Duration.ofSeconds(10);
 
     private final WebClient webClient;
 
     public ApiMEXC() {
-        this.webClient = WebClientBuilder.buildWebClient(BASE_ENDPOINT, TIMEOUT);
+        this.webClient = WebClientBuilder.buildWebClient(BASE_HTTP_ENDPOINT, HTTP_REQUEST_TIMEOUT);
     }
 
     @Override
@@ -278,50 +305,121 @@ public class ApiMEXC implements ApiExchange {
     }
 
     @Override
-    public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {
-        Set<CoinDepth> coinDepthSet = new HashSet<>();
+    public void getOrderBook(Set<Coin> coins, String exchange) {
+        List<String> symbols = coins.stream().map(coin -> coin.getName().toUpperCase() + "USDT").toList();
+        Map<String, Coin> coinMap = coins.stream().collect(Collectors.toConcurrentMap(Coin::getName, coin -> coin));
 
-        coins.forEach(coin -> {
-            MexcCoinDepth response = getCoinDepth(coin).block();
+        int batchSize = 20;
+        List<List<String>> batches = ListUtils.partition(symbols, batchSize);
 
-            if (response != null && (response.getAsks() != null || response.getBids() != null)) {
-                CoinDepth coinDepth = MexcCoinDepthBuilder.getCoinDepth(coin, response, exchange);
-                coinDepthSet.add(coinDepth);
-            }
-
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
-        });
-
-        return coinDepthSet;
+        batches.forEach(batch -> getCoinDepth(batch, coinMap));
     }
 
-    private Mono<MexcCoinDepth> getCoinDepth(Coin coin) {
-        String symbol = coin.getName() + "USDT";
+    private void getCoinDepth(List<String> symbols, Map<String, Coin> coinMap) {
+        submitExecutorService();
 
-        return webClient
-            .get()
-            .uri(uriBuilder -> uriBuilder.path("/api/v3/depth")
-                    .queryParam("symbol", symbol)
-                    .queryParam("limit", DEPTH_REQUEST_LIMIT)
-                    .build()
-            )
-            .retrieve()
-            .onStatus(
-                    status -> status.is4xxClientError() || status.is5xxServerError(),
-                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
-                        return Mono.empty();
+        List<String> subscriptionMessages = symbols.stream()
+                .map(symbol -> "{" +
+                        "\"method\": " + "\"SUBSCRIPTION\"" + "," +
+                        "\"params\": " +
+                        "[" +
+                        "\"" + "spot@public.limit.depth.v3.api@" + symbol + "@10" + "\"" +
+                        "]" + "," +
+                        "\"id\": " + System.currentTimeMillis() +
+                        "}")
+                .toList();
+
+        connectWebSocket(subscriptionMessages, coinMap);
+    }
+
+    private void submitExecutorService() {
+        executorService.submit(() -> {
+            while (true) {
+                try {
+                    Runnable task = taskQueue.take();
+                    task.run();
+                } catch (Exception ex) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        });
+    }
+
+    private void connectWebSocket(List<String> payload, Map<String, Coin> coinMap) {
+        HttpClient client = HttpClient.create()
+            .keepAlive(true)
+            .option(ChannelOption.SO_KEEPALIVE, true);
+
+        client.websocket()
+            .uri(WSS_URL)
+            .handle((inbound, outbound) -> {
+                inbound.receive()
+                    .asString()
+                    .retryWhen(Retry.fixedDelay(MAX_WEBSOCKET_CONNECTION_RETRIES, WEBSOCKET_RECONNECT_DELAY))
+                    .doOnTerminate(() -> {
+                        log.error("Потеряно соединение с Websocket");
+                        executorService.shutdownNow();
                     })
-            )
-            .bodyToMono(MexcCoinDepth.class)
-            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
-            .onErrorResume(error -> {
-                LogsUtils.createErrorResumeLogs(error, NAME);
-                return Mono.empty();
-            });
+                    .map(this::processWebsocketResponse)
+                    .filter(this::isValidResponseData)
+                    .map(Optional::get)
+                    .windowTimeout(coinMap.size(), Duration.ofSeconds(2))
+                    .flatMap(Flux::collectList)
+                    .subscribeOn(Schedulers.boundedElastic())
+                    .subscribe(depthList -> {
+                        if (depthList != null && !depthList.isEmpty()) {
+                            taskQueue.offer(() -> saveOrderBooks(createOrderBooks(coinMap, depthList)));
+                        }
+                    });
+
+                return outbound.sendString(Flux.fromIterable(payload)).neverComplete();
+            })
+            .subscribe();
+    }
+
+    private Optional<MexcCoinDepth> processWebsocketResponse(String response) {
+        try {
+            return Optional.of(objectMapper.readValue(response, MexcCoinDepth.class));
+        } catch (JsonProcessingException e) {
+            log.info(e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private Boolean isValidResponseData(Optional<MexcCoinDepth> coinDepth) {
+        return coinDepth.isPresent() &&
+                coinDepth.get().getD() != null &&
+                coinDepth.get().getD().getAsks() != null &&
+                coinDepth.get().getD().getBids() != null;
+    }
+
+    private Set<OrdersBook> createOrderBooks(Map<String, Coin> coinMap, List<MexcCoinDepth> depthList) {
+        return depthList.stream().map(depth -> {
+                    Coin currentCoin = coinMap.get(depth.getS().replaceAll("USDT", ""));
+                    return getCurrentOrderBook(depth, currentCoin);
+                })
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .collect(Collectors.toSet());
+    }
+    
+    private Optional<OrdersBook> getCurrentOrderBook(MexcCoinDepth depth, Coin currentCoin) {
+        CoinDepth coinDepth = MexcCoinDepthBuilder.getCoinDepth(currentCoin, depth, NAME);
+        OrdersBook ordersBook = OrdersBookUtils.createOrderBooks(coinDepth);
+
+        if (ordersBook.getSlug() == null ||
+                ordersBook.getBids().isEmpty() ||
+                ordersBook.getAsks().isEmpty()) {
+            return Optional.empty();
+        }
+
+        return ordersBookRepository.findBySlug(ordersBook.getSlug())
+                .map(book -> OrdersBookUtils.updateOrderBooks(book, coinDepth))
+                .or(() -> Optional.of(ordersBook));
+    }
+
+    private void saveOrderBooks(Set<OrdersBook> ordersBookSet) {
+        ordersBookRepository.saveAllAndFlush(ordersBookSet);
     }
 }

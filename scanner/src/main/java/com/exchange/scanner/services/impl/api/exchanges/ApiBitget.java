@@ -112,7 +112,7 @@ public class ApiBitget implements ApiExchange {
                 .filter(data -> coinsNames.contains(data.getCoin()))
                 .filter(data -> data.getChains().stream()
                     .allMatch(chain -> chain.getWithdrawable().equalsIgnoreCase("true") &&
-                            chain.getRechargeable().equalsIgnoreCase("false")
+                            chain.getRechargeable().equalsIgnoreCase("true")
                     )
                 )
                 .toList();
@@ -262,13 +262,7 @@ public class ApiBitget implements ApiExchange {
     }
 
     @Override
-    public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {
-        try {
-            Thread.sleep(REQUEST_DELAY_DURATION);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-
+    public void getOrderBook(Set<Coin> coins, String exchange) {
         Set<CoinDepth> coinDepthSet = new HashSet<>();
 
         coins.forEach(coin -> {
@@ -285,8 +279,6 @@ public class ApiBitget implements ApiExchange {
                 throw new RuntimeException();
             }
         });
-
-        return coinDepthSet;
     }
 
     private Mono<BitgetCoinDepth> getCoinDepth(Coin coin) {

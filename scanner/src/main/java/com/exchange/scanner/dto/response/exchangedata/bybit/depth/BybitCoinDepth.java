@@ -7,5 +7,5 @@ import lombok.Setter;
 @Setter
 public class BybitCoinDepth {
 
-    private BybitDepthResult result;
+    private BybitDepthData data;
 }

@@ -3,13 +3,11 @@ package com.exchange.scanner.dto.response.exchangedata.mexc.depth;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.util.List;
-
 @Getter
 @Setter
-public class MexcCoinDepth {
+public class MexcBid {
 
-    private MexcDepth d;
+    private String p;
 
-    private String s;
+    private String v;
 }

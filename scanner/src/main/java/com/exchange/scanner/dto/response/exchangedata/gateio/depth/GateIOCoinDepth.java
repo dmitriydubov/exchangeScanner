@@ -9,7 +9,7 @@ import java.util.List;
 @Setter
 public class GateIOCoinDepth {
 
-    private List<List<String>> bids;
+    private String event;
 
-    private List<List<String>> asks;
+    private GateIOCoinDepthResult result;
 }

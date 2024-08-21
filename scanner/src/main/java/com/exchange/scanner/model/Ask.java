@@ -7,8 +7,6 @@ import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 
 import java.math.BigDecimal;
-import java.util.Objects;
-import java.util.Set;
 
 @Entity
 @Getter
@@ -20,19 +18,19 @@ public class Ask implements Comparable<Ask> {
     @Column(nullable = false)
     private Long id;
 
-    @Column(precision = 38, scale = 14, nullable = false)
+    @Column(precision = 50, scale = 14, nullable = false)
     private BigDecimal price;
 
-    @Column(precision = 38, scale = 14, nullable = false)
+    @Column(precision = 50, scale = 14, nullable = false)
     private BigDecimal volume;
 
-    @ManyToOne(cascade = CascadeType.ALL)
+    @ManyToOne
     @JoinColumn(name = "orders_book_id")
     @OnDelete(action = OnDeleteAction.CASCADE)
     private OrdersBook ordersBook;
 
     @Override
     public int compareTo(Ask ask) {
-        return price.compareTo(ask.getPrice());
+        return this.price.compareTo(ask.price);
     }
 }

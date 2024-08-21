@@ -252,7 +252,7 @@ public class ApiBingX implements ApiExchange {
     }
 
     @Override
-    public Set<CoinDepth> getOrderBook(Set<Coin> coins, String exchange) {
+    public void getOrderBook(Set<Coin> coins, String exchange) {
         Set<CoinDepth> coinDepths = new HashSet<>();
 
         coins.forEach(coin -> {
@@ -269,8 +269,6 @@ public class ApiBingX implements ApiExchange {
                 throw new RuntimeException();
             }
         });
-
-        return coinDepths;
     }
 
     private Mono<BingXCoinDepth> getCoinDepth(Coin coin) {
