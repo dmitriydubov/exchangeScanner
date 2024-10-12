@@ -17,6 +17,9 @@ import java.util.TreeSet;
 )
 public class OrdersBook {
 
+    @Version
+    private Long version;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(nullable = false)
@@ -29,16 +32,13 @@ public class OrdersBook {
     @JoinColumn(name = "orders_book_id")
     private Coin coin;
 
-    @Column(name = "frequency_factor", nullable = false)
-    private long frequencyFactor;
-
     private String timestamp;
 
-    @OneToMany(cascade = {CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REMOVE}, fetch = FetchType.EAGER, orphanRemoval = true)
+    @OneToMany(cascade = {CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REMOVE}, fetch = FetchType.LAZY, orphanRemoval = true)
     @JoinColumn(name = "orders_book_id")
     private Set<Ask> asks = new TreeSet<>();
 
-    @OneToMany(cascade = {CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REMOVE}, fetch = FetchType.EAGER, orphanRemoval = true)
+    @OneToMany(cascade = {CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REMOVE}, fetch = FetchType.LAZY, orphanRemoval = true)
     @JoinColumn(name = "orders_book_id")
     private Set<Bid> bids = new TreeSet<>();
 

@@ -1,6 +1,6 @@
-insert into exchanges (id, name, location, description, deposit_link, withdraw_link, trade_link, is_block_by_superuser) values (1, 'Binance', 'CN', NULL, 'https://www.gate.io/ru/myaccount/deposit/', 'https://www.gate.io/ru/myaccount/withdraw/', 'https://www.gate.io/ru/trade/', false) ON CONFLICT DO NOTHING;
+insert into exchanges (id, name, location, description, deposit_link, withdraw_link, trade_link, is_block_by_superuser) values (1, 'Binance', 'CN', NULL, 'https://www.binance.com/ru/my/wallet/account/main/deposit/crypto/', 'https://www.binance.com/ru/my/wallet/account/main/withdrawal/crypto/', 'https://www.binance.com/ru/trade/', false) ON CONFLICT DO NOTHING;
 
-insert into exchanges (id, name, location, description, deposit_link, withdraw_link, trade_link, is_block_by_superuser) values (2, 'Gate.io', 'CN', NULL, 'https://www.binance.com/ru/my/wallet/account/main/deposit/crypto/', 'https://www.binance.com/ru/my/wallet/account/main/withdrawal/crypto/', 'https://www.binance.com/ru/trade/', false) ON CONFLICT DO NOTHING;
+insert into exchanges (id, name, location, description, deposit_link, withdraw_link, trade_link, is_block_by_superuser) values (2, 'Gate.io', 'CN', NULL, 'https://www.gate.io/ru/myaccount/deposit/', 'https://www.gate.io/ru/myaccount/withdraw/', 'https://www.gate.io/ru/trade/', false) ON CONFLICT DO NOTHING;
 
 insert into exchanges (id, name, location, description, deposit_link, withdraw_link, trade_link, is_block_by_superuser) values (3, 'MEXC', 'SG', NULL, 'https://www.mexc.com/ru-RU/assets/deposit/', 'https://www.mexc.com/ru-RU/assets/withdraw/', 'https://www.mexc.com/ru-RU/exchange/', false) ON CONFLICT DO NOTHING;
 

@@ -9,5 +9,7 @@ import java.util.List;
 @Setter
 public class OKXCoinDepth {
 
+    private OKXDepthArg arg;
+
     private List<OKXDepthData> data;
 }

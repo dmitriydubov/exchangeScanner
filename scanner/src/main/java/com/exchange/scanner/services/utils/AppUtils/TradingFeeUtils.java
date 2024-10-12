@@ -15,8 +15,7 @@ import java.util.concurrent.Executors;
 
 public class TradingFeeUtils {
     public Set<TradingFeeResponseDTO> getTradingFeeAsync(ApiExchangeAdapter apiExchangeAdapter,
-                                                    ExchangeRepository exchangeRepository,
-                                                    UserMarketSettingsRepository userMarketSettingsRepository
+                                                    ExchangeRepository exchangeRepository
     ) {
         Set<TradingFeeResponseDTO> result = Collections.synchronizedSet(new HashSet<>());
         Set<Exchange> exchanges = new HashSet<>(exchangeRepository.findAll());

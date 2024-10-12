@@ -22,22 +22,26 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.ChannelOption;
 import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Hooks;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.http.client.WebsocketClientSpec;
+import reactor.netty.http.websocket.WebsocketOutbound;
 import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 @Service
@@ -57,16 +61,6 @@ public class ApiBinance implements ApiExchange {
     @Autowired
     private OrdersBookRepository ordersBookRepository;
 
-    private final BlockingDeque<Runnable> taskQueue = new LinkedBlockingDeque<>(20);
-
-    private final ExecutorService executorService = new ThreadPoolExecutor(
-            10,
-            20,
-            60L, TimeUnit.SECONDS,
-            new LinkedBlockingDeque<>(20),
-            new ThreadPoolExecutor.DiscardOldestPolicy()
-    );
-
     private static final String NAME = "Binance";
 
     private static final String BASE_HTTP_ENDPOINT = "https://api.binance.com";
@@ -77,7 +71,7 @@ public class ApiBinance implements ApiExchange {
 
     private static final int MAX_WEBSOCKET_CONNECTION_RETRIES = 3;
 
-    private static final Duration WEBSOCKET_RECONNECT_DELAY = Duration.ofSeconds(10);
+    private static final Duration WEBSOCKET_RECONNECT_DELAY = Duration.ofSeconds(20);
 
     private final WebClient webClient;
 
@@ -299,102 +293,133 @@ public class ApiBinance implements ApiExchange {
     }
 
     @Override
-    public void getOrderBook(Set<Coin> coins, String exchange) {
+    public void getOrderBook(Set<Coin> coins, String exchange, BlockingDeque<Runnable> taskQueue, ReentrantLock lock) {
         List<String> symbols = coins.stream().map(coin -> coin.getName().toLowerCase() + "usdt").toList();
         Map<String, Coin> coinMap = coins.stream().collect(Collectors.toMap(Coin::getName, coin -> coin));
+        HttpClient client = createClient();
 
-        int batchSize = 100;
-        List<List<String>> batches = ListUtils.partition(symbols, batchSize);
-
-        batches.forEach(batch -> getCoinDepth(batch, coinMap));
+        connect(symbols, coinMap, taskQueue, client, lock);
     }
 
-    private void getCoinDepth(List<String> symbols, Map<String, Coin> coinMap) {
-        submitExecutorService();
-
-        StringBuilder params = new StringBuilder();
-        symbols.forEach(symbol -> params.append("\"").append(symbol).append("@depth@1000ms").append("\"").append(","));
-        params.deleteCharAt(params.length() - 1);
-        String payload = "{" +
-                "\"method\": " + "\"SUBSCRIBE\"" + "," +
-                "\"params\": " + "[" + params + "]" + "," +
-                "\"id\": " + null +
-                "}";
-
-        connectWebSocket(payload, coinMap);
+    private HttpClient createClient() {
+        return HttpClient.create()
+            .keepAlive(true)
+            .option(ChannelOption.SO_KEEPALIVE, true);
     }
 
-    private void submitExecutorService() {
-        executorService.submit(() -> {
-            while (true) {
-                try {
-                    Runnable task = taskQueue.take();
-                    task.run();
-                } catch (Exception e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-        });
-    }
-
-    private void connectWebSocket(String payload, Map<String, Coin> coinMap) {
-        HttpClient client = HttpClient.create()
-                .keepAlive(true)
-                .option(ChannelOption.SO_KEEPALIVE, true);
+    private void connect(
+            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
+    ) {
+        Hooks.onErrorDropped(error -> log.error(error.getLocalizedMessage()));
 
         client.websocket(WebsocketClientSpec.builder()
-                    .maxFramePayloadLength(1048576)
-                    .build())
+            .maxFramePayloadLength(1048576)
+            .build())
             .uri(WSS_URL)
             .handle((inbound, outbound) -> {
+                sendSubscribeMessage(symbols, outbound);
                 inbound.receive()
                     .asString()
                     .retryWhen(Retry.fixedDelay(MAX_WEBSOCKET_CONNECTION_RETRIES, WEBSOCKET_RECONNECT_DELAY))
-                    .doOnTerminate(() -> {
-                        log.error("Потеряно соединение с Websocket");
-                        executorService.shutdownNow();
-                    })
+                    .doOnTerminate(() -> processTerminate(symbols, coinMap, taskQueue, client, lock))
+                    .onErrorResume(this::processError)
+                    .doOnNext(this::processReceivedPingMessage)
                     .map(this::processWebsocketResponse)
                     .filter(this::isValidResponseData)
                     .map(Optional::get)
-                    .windowTimeout(coinMap.size(), Duration.ofSeconds(2))
+                    .windowTimeout(coinMap.size(), Duration.ofSeconds(5))
                     .flatMap(Flux::collectList)
                     .subscribeOn(Schedulers.boundedElastic())
-                    .subscribe(depthList -> {
-                        if (depthList != null && !depthList.isEmpty()) {
-                            taskQueue.offer(() -> saveOrderBooks(createOrderBooks(coinMap, depthList)));
-                        }
-                    });
+                    .doOnNext(depthList -> processResult(coinMap, taskQueue, depthList, lock))
+                    .subscribe();
 
-                return outbound.sendString(Mono.just(payload)).neverComplete();
+                return outbound.neverComplete();
             })
             .subscribe();
+    }
+
+    private void sendSubscribeMessage(List<String> symbols, WebsocketOutbound outbound) {
+        List<List<String>> batches = ListUtils.partition(symbols, 100);
+        Flux.fromIterable(batches).flatMap(batch -> outbound.sendString(Mono.just(createArgs(batch))))
+            .delaySubscription(Duration.ofMillis(200))
+            .subscribeOn(Schedulers.boundedElastic())
+            .subscribe();
+    }
+
+    private String createArgs(List<String> symbols) {
+        StringBuilder params = new StringBuilder();
+        symbols.forEach(symbol -> params.append("\"").append(symbol).append("@depth@1000ms").append("\"").append(","));
+        params.deleteCharAt(params.length() - 1);
+        return
+            "{" +
+                "\"method\": " + "\"SUBSCRIBE\"" + "," +
+                "\"params\": " + "[" + params + "]" + "," +
+                "\"id\": " + null +
+            "}";
+    }
+
+    private void processTerminate(
+            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
+    ) {
+        log.error("Потеряно соединение с Websocket. Попытка повторного подключения...");
+        reconnect(symbols, coinMap, taskQueue, client, lock);
+    }
+
+    private void reconnect(
+            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
+    ) {
+        Mono.delay(WEBSOCKET_RECONNECT_DELAY)
+            .subscribe(aLong -> connect(symbols, coinMap, taskQueue, client, lock));
+    }
+
+    private Mono<String> processError(Throwable error) {
+        log.debug(error.getLocalizedMessage());
+        return Mono.empty();
+    }
+
+    private void processReceivedPingMessage(String response) {
+        if (response.contains("ping")) {
+            log.debug(response);
+        }
     }
 
     private Optional<BinanceCoinDepth> processWebsocketResponse(String response) {
         try {
             return Optional.of(objectMapper.readValue(response, BinanceCoinDepth.class));
         } catch (JsonProcessingException e) {
-            log.info(e.getMessage());
+            log.debug(e.getMessage());
             return Optional.empty();
         }
     }
 
     private Boolean isValidResponseData(Optional<BinanceCoinDepth> coinDepth) {
         return coinDepth.isPresent() &&
-                coinDepth.get().getB() != null &&
-                coinDepth.get().getA() != null;
+            coinDepth.get().getB() != null &&
+            coinDepth.get().getA() != null;
+    }
+
+    private void processResult(
+            Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, List<BinanceCoinDepth> depthList, ReentrantLock lock
+    ) {
+        if (depthList != null && !depthList.isEmpty()) {
+            try {
+                lock.lock();
+                saveOrderBooks(createOrderBooks(coinMap, depthList));
+            } finally {
+                lock.unlock();
+            }
+        }
     }
 
     private Set<OrdersBook> createOrderBooks(Map<String, Coin> coinMap, List<BinanceCoinDepth> depthList) {
         return depthList.stream().map(depth -> {
-                    Coin currentCoin = coinMap.get(depth.getS().replaceAll("USDT", ""));
-                    return getCurrentOrderBook(depth, currentCoin);
-                })
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .collect(Collectors.toSet());
+                Coin currentCoin = coinMap.get(depth.getS().replaceAll("USDT", ""));
+                if (currentCoin == null) return Optional.<OrdersBook>empty();
+                return getCurrentOrderBook(depth, currentCoin);
+            })
+            .filter(Optional::isPresent)
+            .map(Optional::get)
+            .collect(Collectors.toSet());
     }
 
     private Optional<OrdersBook> getCurrentOrderBook(BinanceCoinDepth depth, Coin currentCoin) {
@@ -404,8 +429,8 @@ public class ApiBinance implements ApiExchange {
         if (ordersBook.getBids().isEmpty() || ordersBook.getAsks().isEmpty()) return Optional.empty();
 
         return ordersBookRepository.findBySlug(ordersBook.getSlug())
-                .map(book -> OrdersBookUtils.updateOrderBooks(book, coinDepth))
-                .or(() -> Optional.of(ordersBook));
+            .map(book -> OrdersBookUtils.updateOrderBooks(book, coinDepth))
+            .or(() -> Optional.of(ordersBook));
     }
 
     private void saveOrderBooks(Set<OrdersBook> ordersBookSet) {

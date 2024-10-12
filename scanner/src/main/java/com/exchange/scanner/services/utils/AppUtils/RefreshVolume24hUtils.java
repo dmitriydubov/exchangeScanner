@@ -15,8 +15,7 @@ import java.util.concurrent.Executors;
 
 public class RefreshVolume24hUtils {
     public Set<Volume24HResponseDTO> getVolume24hAsync(ApiExchangeAdapter apiExchangeAdapter,
-                                                       ExchangeRepository exchangeRepository,
-                                                       UserMarketSettingsRepository userMarketSettingsRepository)
+                                                       ExchangeRepository exchangeRepository)
     {
         Set<Volume24HResponseDTO> result = new HashSet<>();
         Set<Exchange> exchanges = new HashSet<>(exchangeRepository.findAll());

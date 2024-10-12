@@ -1,25 +1,26 @@
 package com.exchange.scanner.services.utils.AppUtils;
 
 import com.exchange.scanner.dto.response.CoinInfoDTO;
+import com.exchange.scanner.model.ArbitrageEvent;
 import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.repositories.ArbitrageEventRepository;
 import com.exchange.scanner.repositories.ExchangeRepository;
 import com.exchange.scanner.repositories.UserMarketSettingsRepository;
 import com.exchange.scanner.services.CoinMarketCapService;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class CoinMarketCapUtils {
 
-    public Set<CoinInfoDTO> getCoinMarketCapCoinInfo(
-             ExchangeRepository exchangeRepository,
-             CoinMarketCapService coinMarketCapService,
-             UserMarketSettingsRepository userMarketSettingsRepository
-    ) {
-        Set<Exchange> exchanges = AppServiceUtils.getUsersExchanges(userMarketSettingsRepository, exchangeRepository);
-        if (exchanges.isEmpty()) return new HashSet<>();
-        Set<String> usersCoinsNames = AppServiceUtils.getUsersCoinsNames(userMarketSettingsRepository);
+    public Set<CoinInfoDTO> getCoinMarketCapCoinInfo(CoinMarketCapService coinMarketCapService,
+                                                     Set<ArbitrageEvent> arbitrageEvents)
+    {
+        Set<String> coinNames = arbitrageEvents.stream()
+            .map(ArbitrageEvent::getCoin)
+            .collect(Collectors.toSet());
 
-        return coinMarketCapService.getCoinMarketCapCoinsInfo(usersCoinsNames);
+        return coinMarketCapService.getCoinMarketCapCoinsInfo(coinNames);
     }
 }

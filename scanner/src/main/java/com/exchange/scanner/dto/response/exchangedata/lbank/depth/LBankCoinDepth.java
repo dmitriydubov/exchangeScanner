@@ -7,5 +7,7 @@ import lombok.Setter;
 @Setter
 public class LBankCoinDepth {
 
-    private LBankDepthData data;
+    private LBankDepthData depth;
+
+    private String pair;
 }

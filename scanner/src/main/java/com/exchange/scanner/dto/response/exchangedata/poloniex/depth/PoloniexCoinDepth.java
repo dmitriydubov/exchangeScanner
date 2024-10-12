@@ -9,8 +9,5 @@ import java.util.List;
 @Setter
 public class PoloniexCoinDepth {
 
-    private List<String> asks;
-
-    private List<String> bids;
-
+    private List<PoloniexDepthData> data;
 }

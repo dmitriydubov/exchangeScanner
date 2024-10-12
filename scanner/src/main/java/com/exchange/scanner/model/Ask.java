@@ -13,6 +13,9 @@ import java.math.BigDecimal;
 @Setter
 public class Ask implements Comparable<Ask> {
 
+    @Version
+    private Long version;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(nullable = false)

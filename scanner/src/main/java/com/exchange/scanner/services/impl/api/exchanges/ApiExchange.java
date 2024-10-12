@@ -9,13 +9,15 @@ import com.exchange.scanner.model.Exchange;
 import com.exchange.scanner.model.OrdersBook;
 
 import java.util.Set;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.locks.ReentrantLock;
 
 public interface ApiExchange {
     Set<Coin> getAllCoins(Exchange exchange);
 
     Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchangeName);
 
-    void getOrderBook(Set<Coin> coins, String exchangeName);
+    void getOrderBook(Set<Coin> coins, String exchangeName, BlockingDeque<Runnable> taskQueue, ReentrantLock lock);
 
     Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName);
 

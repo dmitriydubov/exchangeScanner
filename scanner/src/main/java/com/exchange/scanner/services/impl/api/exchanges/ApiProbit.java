@@ -16,18 +16,32 @@ import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.model.OrdersBook;
+import com.exchange.scanner.repositories.OrdersBookRepository;
 import com.exchange.scanner.services.utils.AppUtils.*;
 import com.exchange.scanner.services.utils.Probit.ProbitCoinDepthBuilder;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.netty.channel.ChannelOption;
 import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Hooks;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
+import reactor.netty.http.client.HttpClient;
+import reactor.netty.http.client.WebsocketClientSpec;
+import reactor.netty.http.websocket.WebsocketOutbound;
 import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 @Service
@@ -36,11 +50,21 @@ public class ApiProbit implements ApiExchange {
 
     private static final String NAME = "Probit";
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private OrdersBookRepository ordersBookRepository;
+
+    private static final String WSS_URL = "wss://api.probit.com/api/exchange/v1/ws";
+
+    private static final int MAX_WEBSOCKET_CONNECTION_RETRIES = 3;
+
+    private static final Duration WEBSOCKET_RECONNECT_DELAY = Duration.ofSeconds(20);
+
     public final static String BASE_ENDPOINT = "https://api.probit.com/api/exchange/v1";
 
     private static final int TIMEOUT = 10000;
-
-    private static final int REQUEST_DELAY_DURATION = 200;
 
     private final WebClient webClient;
 
@@ -251,58 +275,138 @@ public class ApiProbit implements ApiExchange {
             });
     }
 
-
     @Override
-    public void getOrderBook(Set<Coin> coins, String exchange) {
-        Set<CoinDepth> coinDepthSet = new HashSet<>();
+    public void getOrderBook(Set<Coin> coins, String exchange, BlockingDeque<Runnable> taskQueue, ReentrantLock lock) {
+        List<String> symbols = coins.stream().map(coin -> coin.getName().toUpperCase() + "-USDT").toList();
+        Map<String, Coin> coinMap = coins.stream().collect(Collectors.toMap(Coin::getName, coin -> coin));
+        HttpClient client = createClient();
 
-        coins.forEach(coin -> {
-            ProbitCoinDepth response = getCoinDepth(coin).block();
+        connect(symbols, coinMap, taskQueue, client, lock);
+    }
 
-            if (response != null && response.getData() != null) {
-                CoinDepth coinDepth = ProbitCoinDepthBuilder.getCoinDepth(coin, response.getData(), exchange);
-                coinDepthSet.add(coinDepth);
-            }
+    private HttpClient createClient() {
+        return HttpClient.create()
+            .keepAlive(true)
+            .option(ChannelOption.SO_KEEPALIVE, true);
+    }
 
+    private void connect(
+            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
+    ) {
+        Hooks.onErrorDropped(error -> log.error(error.getLocalizedMessage()));
+
+        client.websocket(WebsocketClientSpec.builder()
+            .maxFramePayloadLength(1048576)
+            .build())
+            .uri(WSS_URL)
+            .handle((inbound, outbound) -> {
+                sendSubscribeMessage(symbols, outbound);
+                inbound.receive()
+                    .asString()
+                    .doOnTerminate(() -> processTerminate(symbols, coinMap, taskQueue, client, lock))
+                    .onErrorResume(this::processError)
+                    .map(this::processWebsocketResponse)
+                    .filter(this::isValidResponseData)
+                    .map(Optional::get)
+                    .windowTimeout(coinMap.size(), Duration.ofSeconds(5))
+                    .flatMap(Flux::collectList)
+                    .subscribeOn(Schedulers.boundedElastic())
+                    .doOnNext(depthList -> processResult(coinMap, taskQueue, depthList, lock))
+                    .subscribe();
+
+                return outbound.neverComplete();
+            })
+            .subscribe();
+    }
+
+    private void sendSubscribeMessage(List<String> symbols, WebsocketOutbound outbound) {
+        Flux.fromIterable(symbols).flatMap(symbol -> outbound.sendString(Mono.just(createArgs(symbol))))
+            .delaySubscription(Duration.ofMillis(10))
+            .subscribeOn(Schedulers.boundedElastic())
+            .subscribe();
+    }
+
+    private String createArgs(String symbol) {
+        return String.format(
+            "{ " +
+                "\"channel\": \"marketdata\", " +
+                "\"filter\": [\"order_books_l1\"], " +
+                "\"interval\": 100, " +
+                "\"market_id\": \"%s\", " +
+                "\"type\": \"subscribe\" " +
+            "}", symbol);
+    }
+
+    private void processTerminate(
+            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
+    ) {
+        log.error("Потеряно соединение с Websocket. Попытка повторного подключения...");
+        reconnect(symbols, coinMap, taskQueue, client, lock);
+    }
+
+    private void reconnect(
+            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
+    ) {
+        Mono.delay(WEBSOCKET_RECONNECT_DELAY)
+            .subscribe(aLong -> connect(symbols, coinMap, taskQueue, client, lock));
+    }
+
+    private Mono<String> processError(Throwable error) {
+        log.debug(error.getLocalizedMessage());
+        return Mono.empty();
+    }
+
+    private Optional<ProbitCoinDepth> processWebsocketResponse(String response) {
+        try {
+            return Optional.of(objectMapper.readValue(response, ProbitCoinDepth.class));
+        } catch (JsonProcessingException e) {
+            log.debug(e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private Boolean isValidResponseData(Optional<ProbitCoinDepth> coinDepth) {
+        return coinDepth.isPresent() &&
+            coinDepth.get().getOrderBooksL1() != null &&
+            !coinDepth.get().getOrderBooksL1().isEmpty();
+    }
+
+    private void processResult(
+            Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, List<ProbitCoinDepth> depthList, ReentrantLock lock
+    ) {
+        if (depthList != null && !depthList.isEmpty()) {
             try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
+                lock.lock();
+                saveOrderBooks(createOrderBooks(coinMap, depthList));
+            } finally {
+                lock.unlock();
             }
-        });
+        }
     }
 
-    private Mono<ProbitCoinDepth> getCoinDepth(Coin coin) {
-        String symbol = coin.getName() + "-USDT";
-        return webClient
-            .get()
-            .uri(uriBuilder -> uriBuilder.path("/order_book")
-                    .queryParam("market_id", symbol)
-                    .build()
-            )
-            .retrieve()
-            .onStatus(
-                    status -> status.is4xxClientError() || status.is5xxServerError(),
-                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
-                        return Mono.empty();
-                    })
-            )
-            .bodyToMono(ProbitCoinDepth.class)
-            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
-            .onErrorResume(error -> {
-                LogsUtils.createErrorResumeLogs(error, NAME);
-                return Mono.empty();
-            });
+    private Set<OrdersBook> createOrderBooks(Map<String, Coin> coinMap, List<ProbitCoinDepth> depthList) {
+        return depthList.stream().map(depth -> {
+                Coin currentCoin = coinMap.get(depth.getMarketId().replaceAll("-USDT", ""));
+                if (currentCoin == null) return Optional.<OrdersBook>empty();
+                return getCurrentOrderBook(depth, currentCoin);
+            })
+            .filter(Optional::isPresent)
+            .map(Optional::get)
+            .collect(Collectors.toSet());
     }
 
-    private static String generateParameters(List<Coin> coins) {
-        String parameters;
-        StringBuilder sb = new StringBuilder();
-        coins.forEach(coin -> sb.append(coin.getName()).append("-USDT").append(","));
-        sb.deleteCharAt(sb.length() - 1);
-        parameters = sb.toString();
+    private Optional<OrdersBook> getCurrentOrderBook(ProbitCoinDepth depth, Coin currentCoin) {
+        CoinDepth coinDepth = ProbitCoinDepthBuilder.getCoinDepth(currentCoin, depth.getOrderBooksL1(), NAME);
+        OrdersBook ordersBook = OrdersBookUtils.createOrderBooks(coinDepth);
 
-        return parameters;
+        if (ordersBook.getBids().isEmpty() || ordersBook.getAsks().isEmpty()) return Optional.empty();
+
+        return ordersBookRepository.findBySlug(ordersBook.getSlug())
+            .map(book -> OrdersBookUtils.updateOrderBooks(book, coinDepth))
+            .or(() -> Optional.of(ordersBook));
+    }
+
+    private void saveOrderBooks(Set<OrdersBook> ordersBookSet) {
+        ordersBookRepository.saveAllAndFlush(ordersBookSet);
     }
 }

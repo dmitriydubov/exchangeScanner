@@ -18,8 +18,7 @@ import java.util.concurrent.Executors;
 public class CoinChainUtils {
 
     public Set<ChainResponseDTO> getCoinsChainInfoAsync(ApiExchangeAdapter apiExchangeAdapter,
-                                                         ExchangeRepository exchangeRepository,
-                                                         UserMarketSettingsRepository userMarketSettingsRepository
+                                                         ExchangeRepository exchangeRepository
     ) {
         Set<ChainResponseDTO> result = Collections.synchronizedSet(new HashSet<>());
         Set<Exchange> exchanges = new HashSet<>(exchangeRepository.findAll());

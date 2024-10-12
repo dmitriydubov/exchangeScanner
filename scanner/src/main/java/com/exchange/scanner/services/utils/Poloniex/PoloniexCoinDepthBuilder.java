@@ -10,47 +10,41 @@ import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 public class PoloniexCoinDepthBuilder {
 
     public static CoinDepth getPoloniexCoinDepth(PoloniexCoinDepth depth, Coin coin, String exchange) {
-
         CoinDepth coinDepth = new CoinDepth();
         coinDepth.setExchange(exchange);
         coinDepth.setCoin(coin);
         coinDepth.setSlug(coin.getName() + "-" + exchange);
 
-        Set<CoinDepthBid> coinDepthBids = new HashSet<>();
+        Set<CoinDepthAsk> coinDepthAskSet = depth.getData().getFirst().getAsks().stream()
+                .map(ask -> {
+                    CoinDepthAsk coinDepthAsk = new CoinDepthAsk();
+                    coinDepthAsk.setPrice(new BigDecimal(ask.getFirst()));
+                    coinDepthAsk.setVolume(new BigDecimal(ask.getLast()));
+                    return coinDepthAsk;
+                })
+                .collect(Collectors.toSet());
 
-        int checkBidOrdersSum = 0;
-        for (int i = 0; i < depth.getBids().size(); i+=2) {
-            CoinDepthBid coinDepthBid = new CoinDepthBid();
-            coinDepthBid.setPrice(new BigDecimal(depth.getBids().get(i)));
-            coinDepthBid.setVolume(new BigDecimal(depth.getBids().get(i + 1)));
-            checkBidOrdersSum += 2;
-            coinDepthBids.add(coinDepthBid);
-            if (checkBidOrdersSum == depth.getBids().size()) break;
-        }
+        Set<CoinDepthBid> coinDepthBidSet = depth.getData().getFirst().getBids().stream()
+                .map(bid -> {
+                    CoinDepthBid coinDepthBid = new CoinDepthBid();
+                    coinDepthBid.setPrice(new BigDecimal(bid.getFirst()));
+                    coinDepthBid.setVolume(new BigDecimal(bid.getLast()));
+                    return coinDepthBid;
+                })
+                .collect(Collectors.toSet());
 
-        Set<CoinDepthAsk> coinDepthAsks =new HashSet<>();
-
-        int checkAskOrdersSum = 0;
-        for (int i = 0; i < depth.getAsks().size(); i+=2) {
-            CoinDepthAsk coinDepthAsk = new CoinDepthAsk();
-            coinDepthAsk.setPrice(new BigDecimal(depth.getAsks().get(i)));
-            coinDepthAsk.setVolume(new BigDecimal(depth.getAsks().get(i + 1)));
-            checkAskOrdersSum += 2;
-            coinDepthAsks.add(coinDepthAsk);
-            if (checkAskOrdersSum == depth.getAsks().size()) break;
-        }
-
-        if (coinDepthAsks.isEmpty() || coinDepthBids.isEmpty()) {
+        if (coinDepthAskSet.isEmpty() || coinDepthBidSet.isEmpty()) {
             coinDepth.setStatusCode(404);
         } else {
             coinDepth.setStatusCode(200);
         }
-        coinDepth.setCoinDepthBids(new TreeSet<>(coinDepthBids));
-        coinDepth.setCoinDepthAsks(new TreeSet<>(coinDepthAsks));
+        coinDepth.setCoinDepthBids(new TreeSet<>(coinDepthBidSet));
+        coinDepth.setCoinDepthAsks(new TreeSet<>(coinDepthAskSet));
 
         return coinDepth;
     }

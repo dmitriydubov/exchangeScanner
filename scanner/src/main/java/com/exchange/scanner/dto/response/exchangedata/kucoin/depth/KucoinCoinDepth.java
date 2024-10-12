@@ -7,5 +7,7 @@ import lombok.Setter;
 @Setter
 public class KucoinCoinDepth {
 
+    private String topic;
+
     private KucoinDepthData data;
 }

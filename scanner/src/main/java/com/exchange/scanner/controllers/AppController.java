@@ -2,7 +2,8 @@ package com.exchange.scanner.controllers;
 
 import com.exchange.scanner.dto.request.UserUpdateMarketData;
 import com.exchange.scanner.dto.response.ExchangeData;
-import com.exchange.scanner.dto.response.event.ArbitrageEvent;
+import com.exchange.scanner.dto.response.event.ArbitrageEventDTO;
+import com.exchange.scanner.model.ArbitrageEvent;
 import com.exchange.scanner.services.AppService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -25,7 +26,7 @@ public class AppController {
     }
 
     @GetMapping("/refresh-data")
-    public ResponseEntity<Set<ArbitrageEvent>> refreshData(@AuthenticationPrincipal UserDetails userDetails) throws ExecutionException, InterruptedException {
+    public ResponseEntity<Set<ArbitrageEventDTO>> refreshData(@AuthenticationPrincipal UserDetails userDetails) throws ExecutionException, InterruptedException {
         return ResponseEntity.ok(appService.getArbitrageEvents(userDetails).get());
     }
 

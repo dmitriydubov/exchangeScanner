@@ -1,5 +1,6 @@
 package com.exchange.scanner.dto.response.event;
 
+import com.exchange.scanner.model.EventData;
 import lombok.*;
 
 import java.util.Map;

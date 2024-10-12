@@ -7,5 +7,7 @@ import lombok.Setter;
 @Setter
 public class HuobiCoinDepth {
 
+    private String ch;
+
     private HuobiDepthTick tick;
 }

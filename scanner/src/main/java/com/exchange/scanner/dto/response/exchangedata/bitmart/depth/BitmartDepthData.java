@@ -12,4 +12,6 @@ public class BitmartDepthData {
     private List<List<String>> asks;
 
     private List<List<String>> bids;
+
+    private String symbol;
 }

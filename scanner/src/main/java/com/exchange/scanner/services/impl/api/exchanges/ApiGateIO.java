@@ -19,21 +19,25 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.ChannelOption;
 import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Hooks;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import reactor.netty.http.client.HttpClient;
+import reactor.netty.http.websocket.WebsocketOutbound;
 import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 @Service
@@ -53,16 +57,6 @@ public class ApiGateIO implements ApiExchange {
     @Autowired
     private OrdersBookRepository ordersBookRepository;
 
-    private final BlockingDeque<Runnable> taskQueue = new LinkedBlockingDeque<>(20);
-
-    private final ExecutorService executorService = new ThreadPoolExecutor(
-            10,
-            20,
-            60L, TimeUnit.SECONDS,
-            new LinkedBlockingDeque<>(20),
-            new ThreadPoolExecutor.DiscardOldestPolicy()
-    );
-
     private static final String NAME = "Gate.io";
 
     private final static String BASE_HTTP_ENDPOINT = "https://api.gateio.ws/api/v4";
@@ -73,7 +67,7 @@ public class ApiGateIO implements ApiExchange {
 
     private static final int MAX_WEBSOCKET_CONNECTION_RETRIES = 3;
 
-    private static final Duration WEBSOCKET_RECONNECT_DELAY = Duration.ofSeconds(10);
+    private static final Duration WEBSOCKET_RECONNECT_DELAY = Duration.ofSeconds(20);
 
     private final WebClient webClient;
 
@@ -88,15 +82,16 @@ public class ApiGateIO implements ApiExchange {
         if (response == null || response.getFirst() == null) return coins;
 
         coins = response.stream()
-                .filter(currency -> currency.getQuote().equals("USDT") && currency.getTradeStatus().equals("tradable"))
-                .map(currency -> {
-                    LinkDTO links = new LinkDTO();
-                    links.setDepositLink(exchange.getDepositLink() + currency.getBase().toUpperCase());
-                    links.setWithdrawLink(exchange.getWithdrawLink() + currency.getBase().toUpperCase());
-                    links.setTradeLink(exchange.getTradeLink() + currency.getBase().toUpperCase() + "_USDT");
-                    return ObjectUtils.getCoin(currency.getBase(), NAME, links, false);
-                })
-                .collect(Collectors.toSet());
+            .filter(currency -> currency.getQuote().equals("USDT") && !currency.getBase().endsWith("3S") &&
+                 !currency.getBase().endsWith("3L") && currency.getTradeStatus().equals("tradable"))
+            .map(currency -> {
+                LinkDTO links = new LinkDTO();
+                links.setDepositLink(exchange.getDepositLink() + currency.getBase().toUpperCase());
+                links.setWithdrawLink(exchange.getWithdrawLink() + currency.getBase().toUpperCase());
+                links.setTradeLink(exchange.getTradeLink() + currency.getBase().toUpperCase() + "_USDT");
+                return ObjectUtils.getCoin(currency.getBase(), NAME, links, false);
+            })
+            .collect(Collectors.toSet());
 
         return coins;
     }
@@ -292,67 +287,92 @@ public class ApiGateIO implements ApiExchange {
     }
 
     @Override
-    public void getOrderBook(Set<Coin> coins, String exchange) {
+    public void getOrderBook(Set<Coin> coins, String exchange, BlockingDeque<Runnable> taskQueue, ReentrantLock lock) {
         List<String> symbols = coins.stream().map(coin -> coin.getName().toUpperCase() + "_USDT").toList();
         Map<String, Coin> coinMap = coins.stream().collect(Collectors.toMap(Coin::getName, coin -> coin));
+        HttpClient client = createClient();
 
-        getCoinDepth(symbols, coinMap);
+        connect(symbols, coinMap, taskQueue, client, lock);
     }
 
-    private void getCoinDepth(List<String> symbols, Map<String, Coin> coinMap) {
-        submitExecutorService();
-
-        List<String> subscriptionMessages = symbols.stream()
-                .map(symbol -> String.format("{\"channel\": \"spot.order_book\", \"event\": \"subscribe\", \"payload\": [\"%s\", \"10\", \"1000ms\"]}", symbol))
-                .toList();
-
-        connectWebSocket(subscriptionMessages, coinMap);
-    }
-
-    private void submitExecutorService() {
-        executorService.submit(() -> {
-           while (true) {
-               try {
-                   Runnable task = taskQueue.take();
-                   task.run();
-               } catch (Exception e) {
-                   Thread.currentThread().interrupt();
-                   break;
-               }
-           }
-        });
-    }
-
-    private void connectWebSocket(List<String> payload, Map<String, Coin> coinMap) {
-        HttpClient client = HttpClient.create()
+    private HttpClient createClient() {
+        return HttpClient.create()
             .keepAlive(true)
             .option(ChannelOption.SO_KEEPALIVE, true);
+    }
+
+    private void connect(
+            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
+    ) {
+        Hooks.onErrorDropped(error -> log.error(error.getLocalizedMessage()));
 
         client.websocket()
             .uri(WSS_URL)
             .handle((inbound, outbound) -> {
+                sendSubscribeMessage(symbols, outbound);
                 inbound.receive()
                     .asString()
                     .retryWhen(Retry.fixedDelay(MAX_WEBSOCKET_CONNECTION_RETRIES, WEBSOCKET_RECONNECT_DELAY))
-                    .doOnTerminate(() -> {
-                        log.error("Потеряно соединение с Websocket");
-                        executorService.shutdownNow();
-                    })
+                    .doOnTerminate(() -> processTerminate(symbols, coinMap, taskQueue, client, lock))
+                    .onErrorResume(ApiGateIO::processError)
+                    .doOnNext(this::processReceivePingMessage)
                     .map(this::processWebsocketResponse)
                     .filter(this::isValidResponseData)
                     .map(Optional::get)
-                    .windowTimeout(300, Duration.ofSeconds(2))
+                    .windowTimeout(coinMap.size(), Duration.ofSeconds(5))
                     .flatMap(Flux::collectList)
                     .subscribeOn(Schedulers.boundedElastic())
-                    .subscribe(depthList -> {
-                        if (depthList != null && !depthList.isEmpty()) {
-                            taskQueue.offer(() -> saveOrderBooks(createOrderBooks(coinMap, depthList)));
-                        }
-                    });
+                    .doOnNext(depthList -> processResult(coinMap, taskQueue, depthList, lock))
+                    .subscribe();
 
-                return outbound.sendString(Flux.fromIterable(payload)).neverComplete();
+                return outbound.neverComplete();
             })
             .subscribe();
+    }
+
+    private void sendSubscribeMessage(List<String> symbols, WebsocketOutbound outbound) {
+        List<List<String>> batches = ListUtils.partition(symbols, 100);
+        Flux.fromIterable(batches).flatMap(batch -> outbound.sendString(Flux.fromIterable(createArgs(batch))))
+            .delaySubscription(Duration.ofMillis(200))
+            .subscribeOn(Schedulers.boundedElastic())
+            .subscribe();
+    }
+
+    private List<String> createArgs(List<String> symbols) {
+        return symbols.stream()
+            .map(symbol -> String.format(
+                "{" +
+                    "\"channel\": \"spot.order_book\", " +
+                    "\"event\": \"subscribe\", " +
+                    "\"payload\": [\"%s\", \"10\", \"1000ms\"]" +
+                "}", symbol)
+            )
+            .toList();
+    }
+
+    private void processTerminate(
+            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
+    ) {
+        log.error("Потеряно соединение с Websocket. Попытка повторного подключения...");
+        reconnect(symbols, coinMap, taskQueue, client, lock);
+    }
+
+    private void reconnect(
+            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
+    ) {
+        Mono.delay(WEBSOCKET_RECONNECT_DELAY)
+            .subscribe(aLong -> connect(symbols, coinMap, taskQueue, client, lock));
+    }
+
+    private static Mono<String> processError(Throwable error) {
+        log.debug(error.getLocalizedMessage());
+        return Mono.empty();
+    }
+
+    private void processReceivePingMessage(String response) {
+        if (response.contains("ping")) {
+            log.debug(response);
+        }
     }
 
     private Optional<GateIOCoinDepth> processWebsocketResponse(String response) {
@@ -361,25 +381,39 @@ public class ApiGateIO implements ApiExchange {
             if (gateIOCoinDepth.getEvent().equalsIgnoreCase("subscribe")) return Optional.empty();
             return Optional.of(gateIOCoinDepth);
         } catch (JsonProcessingException e) {
-            log.info(e.getMessage());
+            log.debug(e.getMessage());
             return Optional.empty();
         }
     }
 
     private Boolean isValidResponseData(Optional<GateIOCoinDepth> coinDepth) {
         return coinDepth.isPresent() &&
-                !coinDepth.get().getResult().getAsks().isEmpty() &&
-                !coinDepth.get().getResult().getBids().isEmpty();
+            !coinDepth.get().getResult().getAsks().isEmpty() &&
+            !coinDepth.get().getResult().getBids().isEmpty();
+    }
+
+    private void processResult(
+            Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, List<GateIOCoinDepth> depthList, ReentrantLock lock
+    ) {
+        if (depthList != null && !depthList.isEmpty()) {
+            try {
+                lock.lock();
+                saveOrderBooks(createOrderBooks(coinMap, depthList));
+            } finally {
+                lock.unlock();
+            }
+        }
     }
 
     private Set<OrdersBook> createOrderBooks(Map<String, Coin> coinMap, List<GateIOCoinDepth> depthList) {
         return depthList.stream().map(depth -> {
-                    Coin currentCoin = coinMap.get(depth.getResult().getS().replaceAll("_USDT", ""));
-                    return getCurrentOrderBook(depth, currentCoin);
-                })
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .collect(Collectors.toSet());
+                Coin currentCoin = coinMap.get(depth.getResult().getS().replaceAll("_USDT", ""));
+                if (currentCoin == null) return Optional.<OrdersBook>empty();
+                return getCurrentOrderBook(depth, currentCoin);
+            })
+            .filter(Optional::isPresent)
+            .map(Optional::get)
+            .collect(Collectors.toSet());
     }
 
     private Optional<OrdersBook> getCurrentOrderBook(GateIOCoinDepth depth, Coin currentCoin) {
@@ -389,8 +423,8 @@ public class ApiGateIO implements ApiExchange {
         if (ordersBook.getBids().isEmpty() || ordersBook.getAsks().isEmpty()) return Optional.empty();
 
         return ordersBookRepository.findBySlug(ordersBook.getSlug())
-                .map(book -> OrdersBookUtils.updateOrderBooks(book, coinDepth))
-                .or(() -> Optional.of(ordersBook));
+            .map(book -> OrdersBookUtils.updateOrderBooks(book, coinDepth))
+            .or(() -> Optional.of(ordersBook));
     }
 
     private void saveOrderBooks(Set<OrdersBook> ordersBookSet) {

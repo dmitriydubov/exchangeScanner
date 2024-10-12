@@ -4,6 +4,7 @@ import com.exchange.scanner.dto.response.event.*;
 import com.exchange.scanner.model.Ask;
 import com.exchange.scanner.model.Bid;
 import com.exchange.scanner.model.Chain;
+import com.exchange.scanner.model.EventData;
 import com.exchange.scanner.services.ArbitrageService;
 import org.springframework.stereotype.Service;
 
@@ -16,6 +17,9 @@ import java.util.stream.Collectors;
 @Service
 public class ArbitrageServiceImpl implements ArbitrageService {
 
+    private static final BigDecimal MIN_TRADE_PROFIT = BigDecimal.ONE;
+
+    private static final BigDecimal MAX_USER_AMOUNT = BigDecimal.valueOf(10.000);
 
     @Override
     public Set<ArbitrageOpportunity> getArbitrageOpportunities(UserTradeEvent userTradeEvent) {
@@ -25,18 +29,13 @@ public class ArbitrageServiceImpl implements ArbitrageService {
                         .filter(sellEvent -> buyEvent.getCoin().equals(sellEvent.getCoin()))
                         .filter(sellEvent -> isValidArbitrage(buyEvent, sellEvent))
                         .map(sellEvent -> createPossibleOpportunity(buyEvent, sellEvent)))
-                .map(this::checkForArbitrage)
+                .map(this::getArbitrageOpportunity)
+                .filter(Objects::nonNull)
                 .filter(arbitrage -> arbitrage.getTradingData() != null)
                 .collect(Collectors.toSet());
     }
 
-    private ArbitrageOpportunity checkForArbitrage(AsksAndBids asksAndBids) {
-        BigDecimal maxUserAmount = asksAndBids.buyEvent.getMaxUserTradeAmount();
-
-        return getArbitrageOpportunity(asksAndBids, maxUserAmount);
-    }
-
-    private ArbitrageOpportunity getArbitrageOpportunity(AsksAndBids asksAndBids, BigDecimal maxUserAmount) {
+    private ArbitrageOpportunity getArbitrageOpportunity(AsksAndBids asksAndBids) {
         BigDecimal totalTradeVolume = getTotalTradeVolume(asksAndBids);
         BigDecimal withdrawCommission = asksAndBids.buyEvent.getMostProfitableChain().getCommission();
         List<Order> orders = getOrders(asksAndBids, totalTradeVolume);
@@ -48,20 +47,21 @@ public class ArbitrageServiceImpl implements ArbitrageService {
                 .filter(order -> order != null && order.getType().equals("sell"))
                 .collect(Collectors.toCollection(ArrayList::new));
 
-        Trade buyTrade = getBuyTrade(maxUserAmount, buyOrders, asksAndBids.buyEvent.getTakerFee(), withdrawCommission);
-        Trade sellTrade = getSellTrade(sellOrders, asksAndBids.sellEvent.getTakerFee(), buyTrade.totalCoinVolume);
+        Optional<Trade> buyTrade = getBuyTrade(buyOrders, asksAndBids.buyEvent.getTakerFee(), withdrawCommission);
+        Optional<Trade> sellTrade = getSellTrade(sellOrders, asksAndBids.sellEvent.getTakerFee(), buyTrade);
 
         return createArbitrageOpportunity(asksAndBids, buyTrade, sellTrade, buyOrders, sellOrders);
     }
 
-    private ArbitrageOpportunity createArbitrageOpportunity(AsksAndBids asksAndBids, Trade buyTrade, Trade sellTrade, List<Order> buyOrders, List<Order> sellOrders) {
+    private ArbitrageOpportunity createArbitrageOpportunity(AsksAndBids asksAndBids, Optional<Trade> buyTrade, Optional<Trade> sellTrade, List<Order> buyOrders, List<Order> sellOrders) {
+        if (buyTrade.isEmpty() || sellTrade.isEmpty()) return null;
         ArbitrageOpportunity arbitrageOpportunity = new ArbitrageOpportunity();
         EventData eventData = new EventData();
-        BigDecimal totalAmount = buyTrade.amount.setScale(2, RoundingMode.CEILING);
-        BigDecimal totalCoinVolume = buyTrade.totalCoinVolume.setScale(5, RoundingMode.CEILING);
-        BigDecimal profit = sellTrade.amount.subtract(buyTrade.amount).setScale(2, RoundingMode.CEILING);
-        BigDecimal fee = buyTrade.feeAmount.add(sellTrade.feeAmount).setScale(5, RoundingMode.CEILING);
-        BigDecimal withdrawFee = buyTrade.withdrawFee.setScale(5, RoundingMode.CEILING);
+        BigDecimal totalAmount = buyTrade.get().amount.setScale(2, RoundingMode.CEILING);
+        BigDecimal totalCoinVolume = buyTrade.get().totalCoinVolume.setScale(5, RoundingMode.CEILING);
+        BigDecimal profit = sellTrade.get().amount.subtract(buyTrade.get().amount).setScale(2, RoundingMode.CEILING);
+        BigDecimal fee = buyTrade.get().feeAmount.add(sellTrade.get().feeAmount).setScale(5, RoundingMode.CEILING);
+        BigDecimal withdrawFee = buyTrade.get().withdrawFee.setScale(5, RoundingMode.CEILING);
         BigDecimal totalFee = fee.add(withdrawFee).setScale(5, RoundingMode.CEILING);
         BigDecimal profitSpread = profit.subtract(totalFee).setScale(2, RoundingMode.CEILING);
 
@@ -72,7 +72,7 @@ public class ArbitrageServiceImpl implements ArbitrageService {
 //            System.out.println(profitSpread);
 //        }
 
-        if (profitSpread.compareTo(asksAndBids.buyEvent.getUserMinProfit()) > 0) {
+        if (profitSpread.compareTo(MIN_TRADE_PROFIT) > 0) {
             arbitrageOpportunity.setCoinName(asksAndBids.buyEvent.getCoin());
             arbitrageOpportunity.setCoinMarketCapLogo(asksAndBids.buyEvent.getLogoLink());
             arbitrageOpportunity.setCoinMarketCapLink(asksAndBids.buyEvent.getCoinMarketCapLink());
@@ -108,6 +108,7 @@ public class ArbitrageServiceImpl implements ArbitrageService {
             eventData.setIsWarning(withdrawFee.compareTo(BigDecimal.ZERO) <= 0);
             eventData.setTransactionConfirmation(String.valueOf(asksAndBids.buyEvent.getConfirmations()));
             eventData.setMargin(asksAndBids.sellEvent.getIsMargin());
+            eventData.setTimestamp(System.currentTimeMillis());
             Map<String, EventData> tradingData = Collections.singletonMap(arbitrageOpportunity.getCoinName(), eventData);
             arbitrageOpportunity.setTradingData(tradingData);
         }
@@ -115,7 +116,8 @@ public class ArbitrageServiceImpl implements ArbitrageService {
         return arbitrageOpportunity;
     }
 
-    private static Trade getBuyTrade(BigDecimal maxUserAmount, List<Order> orders, BigDecimal tradeCommission, BigDecimal withdrawCommission) {
+    private static Optional<Trade> getBuyTrade(List<Order> orders, BigDecimal tradeCommission, BigDecimal withdrawCommission) {
+        if (orders.isEmpty()) return Optional.empty();
         BigDecimal userPriceLimitAmount = BigDecimal.ZERO;
         BigDecimal totalAmount = BigDecimal.ZERO;
         BigDecimal totalCoinVolume = BigDecimal.ZERO;
@@ -126,7 +128,7 @@ public class ArbitrageServiceImpl implements ArbitrageService {
             BigDecimal currentAmount = order.getPrice().multiply(order.getVolume());
             userPriceLimitAmount = userPriceLimitAmount.add(currentAmount);
 
-            if (userPriceLimitAmount.compareTo(maxUserAmount) < 0) {
+            if (userPriceLimitAmount.compareTo(MAX_USER_AMOUNT) < 0) {
                 totalAmount = totalAmount.add(currentAmount);
                 totalCoinVolume = totalCoinVolume.add(order.getVolume());
             } else {
@@ -137,13 +139,14 @@ public class ArbitrageServiceImpl implements ArbitrageService {
         totalCommissionAmount = totalAmount.multiply(tradeCommission);
         totalWithdrawCommission = withdrawCommission.multiply(orders.getFirst().getPrice());
 
-        return new Trade(totalAmount, totalCoinVolume, totalCommissionAmount, totalWithdrawCommission);
+        return Optional.of(new Trade(totalAmount, totalCoinVolume, totalCommissionAmount, totalWithdrawCommission));
     }
 
-    private Trade getSellTrade(List<Order> sellOrders, BigDecimal takerFee, BigDecimal totalCoinVolume) {
+    private Optional<Trade> getSellTrade(List<Order> sellOrders, BigDecimal takerFee, Optional<Trade> buyTrade) {
+        if (buyTrade.isEmpty() || sellOrders.isEmpty()) return Optional.empty();
         BigDecimal totalAmount = BigDecimal.ZERO;
         BigDecimal totalCommissionAmount;
-        BigDecimal coinLimit = totalCoinVolume;
+        BigDecimal coinLimit = buyTrade.get().totalCoinVolume;
 
         for (Order order : sellOrders) {
             BigDecimal currentVolume = order.getVolume().min(coinLimit);
@@ -154,7 +157,7 @@ public class ArbitrageServiceImpl implements ArbitrageService {
         }
         totalCommissionAmount = totalAmount.multiply(takerFee);
 
-        return new Trade(totalAmount, totalCoinVolume, totalCommissionAmount, BigDecimal.ZERO);
+        return Optional.of(new Trade(totalAmount, buyTrade.get().totalCoinVolume, totalCommissionAmount, BigDecimal.ZERO));
     }
 
     private List<Order> getOrders(AsksAndBids asksAndBids, BigDecimal totalTradeVolume) {
@@ -263,8 +266,22 @@ public class ArbitrageServiceImpl implements ArbitrageService {
                 .getFirst()
                 .getPrice()
                 .compareTo(buyEvent.getAsks().getFirst().getPrice()) > 0;
+        boolean isSameCoin = isSameCoin(buyEvent, sellEvent);
 
-        return !emptyAsks && !emptyBids && isTradePrice && validChains;
+        return !emptyAsks && !emptyBids && isTradePrice && validChains && isSameCoin;
+    }
+
+    private static boolean isSameCoin(UserBuyTradeEventDTO buyEvent, UserSellTradeEventDTO sellEvent) {
+        boolean isSameCoin;
+        BigDecimal sellPrice = sellEvent.getBids().getFirst().getPrice();
+        BigDecimal buyPrice = buyEvent.getAsks().getFirst().getPrice();
+        if (buyPrice.compareTo(BigDecimal.ZERO) == 0) {
+            isSameCoin = false;
+        } else {
+            BigDecimal percentageChange = sellPrice.subtract(buyPrice).divide(buyPrice, 2, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100));
+            isSameCoin = percentageChange.compareTo(BigDecimal.valueOf(50)) <= 0;
+        }
+        return isSameCoin;
     }
 
     private AsksAndBids createPossibleOpportunity(UserBuyTradeEventDTO buyEvent, UserSellTradeEventDTO sellEvent) {

@@ -16,20 +16,41 @@ import com.exchange.scanner.dto.response.exchangedata.depth.coindepth.CoinDepth;
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.model.OrdersBook;
+import com.exchange.scanner.repositories.OrdersBookRepository;
 import com.exchange.scanner.services.utils.AppUtils.*;
 import com.exchange.scanner.services.utils.Coinex.CoinExCoinDepthBuilder;
 import com.exchange.scanner.services.utils.Coinex.CoinexSignatureBuilder;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelOption;
+import io.netty.handler.codec.http.websocketx.WebSocketFrame;
 import lombok.extern.slf4j.Slf4j;
+import org.json.JSONObject;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Hooks;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
+import reactor.netty.http.client.HttpClient;
+import reactor.netty.http.websocket.WebsocketOutbound;
 import reactor.util.retry.Retry;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
+import java.util.zip.GZIPInputStream;
 
 @Service
 @Slf4j
@@ -41,17 +62,23 @@ public class ApiCoinEx implements ApiExchange {
     @Value("${exchanges.apiKeys.Coinex.secret}")
     private String secret;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private OrdersBookRepository ordersBookRepository;
+
+    private static final String WSS_URL = "wss://socket.coinex.com/v2/spot";
+
+    private static final int MAX_WEBSOCKET_CONNECTION_RETRIES = 3;
+
+    private static final Duration WEBSOCKET_RECONNECT_DELAY = Duration.ofSeconds(20);
+
     private static final String NAME = "CoinEx";
 
     public final static String BASE_ENDPOINT = "https://api.coinex.com/v2";
 
     private static final int TIMEOUT = 10000;
-
-    private static final int REQUEST_DELAY_DURATION = 25;
-
-    private static final int DEPTH_REQUEST_LIMIT = 20;
-
-    private static final int REQUEST_INTERVAL = 0;
 
     private final WebClient webClient;
 
@@ -68,15 +95,15 @@ public class ApiCoinEx implements ApiExchange {
         if (response == null || response.getData() == null) return coins;
 
         coins = response.getData().stream()
-                .filter(symbol -> symbol.getQuoteCcy().equals("USDT"))
-                .map(symbol -> {
-                    LinkDTO links = new LinkDTO();
-                    links.setDepositLink(exchange.getDepositLink());
-                    links.setWithdrawLink(exchange.getWithdrawLink());
-                    links.setTradeLink(exchange.getTradeLink() + symbol.getBaseCcy().toLowerCase() + "-usdt" + "#spot");
-                    return ObjectUtils.getCoin(symbol.getBaseCcy(), NAME, links, symbol.getIsMarginAvailable());
-                })
-                .collect(Collectors.toSet());
+            .filter(symbol -> symbol.getQuoteCcy().equals("USDT"))
+            .map(symbol -> {
+                LinkDTO links = new LinkDTO();
+                links.setDepositLink(exchange.getDepositLink());
+                links.setWithdrawLink(exchange.getWithdrawLink());
+                links.setTradeLink(exchange.getTradeLink() + symbol.getBaseCcy().toLowerCase() + "-usdt" + "#spot");
+                return ObjectUtils.getCoin(symbol.getBaseCcy(), NAME, links, symbol.getIsMarginAvailable());
+            })
+            .collect(Collectors.toSet());
 
         return coins;
     }
@@ -85,16 +112,16 @@ public class ApiCoinEx implements ApiExchange {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
-                    .path("/spot/market")
-                    .build()
+                .path("/spot/market")
+                .build()
             )
             .retrieve()
             .onStatus(
-                    status -> status.is4xxClientError() || status.is5xxServerError(),
-                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения списка валют. Причина: {}", errorBody);
-                        return Mono.empty();
-                    })
+                status -> status.is4xxClientError() || status.is5xxServerError(),
+                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                    log.error("Ошибка получения списка валют. Причина: {}", errorBody);
+                    return Mono.empty();
+                })
             )
             .bodyToMono(CoinExCurrencyResponse.class)
             .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
@@ -112,11 +139,11 @@ public class ApiCoinEx implements ApiExchange {
         if (response == null || response.getData() == null) return chainsDTOSet;
         Set<String> coinsNames = coins.stream().map(Coin::getName).collect(Collectors.toSet());
         List<CoinexChainsData> filteredData = response.getData().stream()
-                .filter(data -> coinsNames.contains(data.getAsset().getCcy()))
-                .filter(data -> data.getChains().stream()
-                        .allMatch(chain -> chain.getDepositEnabled() && chain.getWithdrawEnabled())
-                )
-                .toList();
+            .filter(data -> coinsNames.contains(data.getAsset().getCcy()))
+            .filter(data -> data.getChains().stream()
+                    .allMatch(chain -> chain.getDepositEnabled() && chain.getWithdrawEnabled())
+            )
+            .toList();
 
         coins.forEach(coin -> filteredData.forEach(data -> {
             if (coin.getName().equals(data.getAsset().getCcy())) {
@@ -154,11 +181,11 @@ public class ApiCoinEx implements ApiExchange {
             .header("X-COINEX-TIMESTAMP", signatureBuilder.getTimestamp())
             .retrieve()
             .onStatus(
-                    status -> status.is4xxClientError() || status.is5xxServerError(),
-                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
-                        return Mono.empty();
-                    })
+                status -> status.is4xxClientError() || status.is5xxServerError(),
+                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                    log.error("Ошибка получения списка сетей от " + NAME + ". Причина: {}", errorBody);
+                    return Mono.empty();
+                })
             )
             .bodyToMono(CoinexChainsResponse.class)
             .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
@@ -175,8 +202,8 @@ public class ApiCoinEx implements ApiExchange {
         if (response == null || response.getData() == null) return tradingFeeSet;
         List<String> symbols = coins.stream().map(Coin::getName).toList();
         List<CoinexFeeData> data = response.getData().stream()
-                .filter(fee -> fee.getQuoteCcy().equalsIgnoreCase("USDT") && symbols.contains(fee.getBaseCcy()))
-                .toList();
+            .filter(fee -> fee.getQuoteCcy().equalsIgnoreCase("USDT") && symbols.contains(fee.getBaseCcy()))
+            .toList();
 
         coins.forEach(coin -> {
             data.forEach(fee -> {
@@ -198,16 +225,16 @@ public class ApiCoinEx implements ApiExchange {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder
-                    .path("/spot/market")
-                    .build()
+                .path("/spot/market")
+                .build()
             )
             .retrieve()
             .onStatus(
-                    status -> status.is4xxClientError() || status.is5xxServerError(),
-                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения торговой комиссии от " + NAME + ". Причина: {}", errorBody);
-                        return Mono.empty();
-                    })
+                status -> status.is4xxClientError() || status.is5xxServerError(),
+                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                    log.error("Ошибка получения торговой комиссии от " + NAME + ". Причина: {}", errorBody);
+                    return Mono.empty();
+                })
             )
             .bodyToMono(CoinexTradingFeeResponse.class)
             .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
@@ -224,15 +251,15 @@ public class ApiCoinEx implements ApiExchange {
         if (response == null || response.getData() == null) return volume24HSet;
         List<String> symbols = coins.stream().map(coin -> coin.getName() + "USDT").toList();
         List<CoinExVolumeTickerData> dataVolume = response.getData().stream()
-                .filter(data -> symbols.contains(data.getMarket()))
-                .toList();
+            .filter(data -> symbols.contains(data.getMarket()))
+            .toList();
 
         coins.forEach(coin -> dataVolume.forEach(data -> {
             if (data.getMarket().equalsIgnoreCase(coin.getName() + "USDT")) {
                 Volume24HResponseDTO responseDTO = ObjectUtils.getVolume24HResponseDTO(
-                        exchange,
-                        coin,
-                        data.getValue()
+                    exchange,
+                    coin,
+                    data.getValue()
                 );
 
                 volume24HSet.add(responseDTO);
@@ -246,15 +273,15 @@ public class ApiCoinEx implements ApiExchange {
         return webClient
             .get()
             .uri(uriBuilder -> uriBuilder.path("/spot/ticker")
-                    .build()
+                .build()
             )
             .retrieve()
             .onStatus(
-                    status -> status.is4xxClientError() || status.is5xxServerError(),
-                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
-                        return Mono.empty();
-                    })
+                status -> status.is4xxClientError() || status.is5xxServerError(),
+                response -> response.bodyToMono(String.class).flatMap(errorBody -> {
+                    log.error("Ошибка получения торгового объёма за 24 часа от " + NAME + ". Причина: {}", errorBody);
+                    return Mono.empty();
+                })
             )
             .bodyToMono(CoinExVolumeTicker.class)
             .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
@@ -265,58 +292,187 @@ public class ApiCoinEx implements ApiExchange {
     }
 
     @Override
-    public void getOrderBook(Set<Coin> coins, String exchange) {
-        Set<CoinDepth> coinDepthSet = new HashSet<>();
+    public void getOrderBook(Set<Coin> coins, String exchange, BlockingDeque<Runnable> taskQueue, ReentrantLock lock) {
+        List<String> symbols = coins.stream().map(coin -> coin.getName().toUpperCase() + "USDT").toList();
+        Map<String, Coin> coinMap = coins.stream().collect(Collectors.toMap(coin -> coin.getName().toUpperCase(), coin -> coin));
+        HttpClient client = createClient();
 
-        coins.forEach(coin -> {
-            CoinExCoinDepth response = getCoinDepth(coin).block();
+        connect(symbols, coinMap, taskQueue, client, lock);
+    }
 
-            if (response != null && response.getData() != null) {
-                CoinDepth coinDepth = CoinExCoinDepthBuilder.getCoinDepth(coin, response.getData().getDepth(), exchange);
-                coinDepthSet.add(coinDepth);
-            }
+    private HttpClient createClient() {
+        return HttpClient.create()
+            .keepAlive(true)
+            .option(ChannelOption.SO_KEEPALIVE, true);
+    }
 
-            try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
-            }
+    private void connect(
+            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
+    ) {
+        Hooks.onErrorDropped(error -> log.error(error.getLocalizedMessage()));
+
+        client.websocket()
+            .uri(WSS_URL)
+            .handle((inbound, outbound) -> {
+                List<List<String>> batches = ListUtils.partition(symbols, 100);
+                List<String> args = batches.stream().map(this::createArgs).toList();
+                sendSubscribeMessage(args, outbound);
+                Flux<Void> sendPingMessage = sendPingMessage(outbound, new JSONObject(args.getFirst()).getInt("id"));
+                inbound.receiveFrames()
+                    .retryWhen(Retry.fixedDelay(MAX_WEBSOCKET_CONNECTION_RETRIES, WEBSOCKET_RECONNECT_DELAY))
+                    .doOnTerminate(() -> processTerminate(symbols, coinMap, taskQueue, client, lock))
+                    .onErrorResume(this::processError)
+                    .flatMap(this::decompressGZIPData)
+                    .map(this::processWebsocketResponse)
+                    .filter(this::isValidResponseData)
+                    .map(Optional::get)
+                    .windowTimeout(coinMap.size(), Duration.ofSeconds(5))
+                    .flatMap(Flux::collectList)
+                    .subscribeOn(Schedulers.boundedElastic())
+                    .doOnNext(depthList -> processResult(coinMap, taskQueue, depthList, lock))
+                    .subscribe();
+
+                return outbound.then().thenMany(sendPingMessage);
+            })
+            .subscribe();
+    }
+
+    private void sendSubscribeMessage(List<String> args, WebsocketOutbound outbound) {
+        Flux.fromIterable(args).flatMap(payload -> outbound.sendString(Mono.just(payload)))
+            .delaySubscription(Duration.ofMillis(10))
+            .subscribeOn(Schedulers.boundedElastic())
+            .subscribe();
+    }
+
+    private String createArgs(List<String> symbols) {
+        StringBuilder args = new StringBuilder();
+        symbols.forEach(symbol -> {
+            args.append("[").append("\"").append(symbol).append("\"").append(", ").append(10).append(", ").append("\"").append("0").append("\"").append(", ").append(true).append("]");
+            args.append(",");
         });
+        args.deleteCharAt(args.length() - 1);
+
+        int userId = new Random().nextInt(0, 1_000_000);
+        return String.format(
+            "{" +
+                "\"method\": " + "\"depth.subscribe\", " +
+                "\"params\": " + "{" +
+                "\"market_list\": [" + "%s" + "]" +
+                "}," +
+                "\"id\": " + userId +
+            "}", args);
     }
 
-    private Mono<CoinExCoinDepth> getCoinDepth(Coin coin) {
-        String symbol = coin.getName() + "USDT";
-
-        return webClient
-            .get()
-            .uri(uriBuilder -> uriBuilder.path("/spot/depth")
-                    .queryParam("market", symbol)
-                    .queryParam("limit", DEPTH_REQUEST_LIMIT)
-                    .queryParam("interval", REQUEST_INTERVAL)
-                    .build())
-            .retrieve()
-            .onStatus(
-                    status -> status.is4xxClientError() || status.is5xxServerError(),
-                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
-                        return Mono.empty();
-                    })
-            )
-            .bodyToMono(CoinExCoinDepth.class)
-            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
-            .onErrorResume(error -> {
-                LogsUtils.createErrorResumeLogs(error, NAME);
-                return Mono.empty();
-            });
+    private Flux<Void> sendPingMessage(WebsocketOutbound outbound, int id) {
+        return Flux.interval(Duration.ofSeconds(20))
+            .flatMap(tick -> outbound.send(
+                Mono.just(String.format("{\"method\": \"server.ping\", \"params\": {}, \"id\": %s}", id)).then(Mono.empty()))
+            );
     }
 
-    private static String generateParameters(List<Coin> coins) {
-        String parameters;
-        StringBuilder sb = new StringBuilder();
-        coins.forEach(coin -> sb.append(coin.getName()).append("USDT").append(","));
-        sb.deleteCharAt(sb.length() - 1);
-        parameters = sb.toString();
+    private void processTerminate(
+            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
+    ) {
+        log.error("Потеряно соединение с Websocket. Попытка повторного подключения...");
+        reconnect(symbols, coinMap, taskQueue, client, lock);
+    }
 
-        return parameters;
+    private void reconnect(
+            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
+    ) {
+        Mono.delay(WEBSOCKET_RECONNECT_DELAY)
+            .subscribe(aLong -> connect(symbols, coinMap, taskQueue, client, lock));
+    }
+
+    private Mono<WebSocketFrame> processError(Throwable error) {
+        log.debug(error.getLocalizedMessage());
+        return Mono.empty();
+    }
+
+    private Mono<String> decompressGZIPData(WebSocketFrame frame) {
+        ByteBuf byteBuf = frame.content();
+        byte[] compressedData = new byte[byteBuf.readableBytes()];
+        byteBuf.readBytes(compressedData);
+
+        try {
+            String decompressData = getDecompressedData(compressedData);
+            return Mono.just(decompressData);
+        } catch (IOException e) {
+            return Mono.error(e);
+        }
+    }
+
+    private String getDecompressedData(byte[] compressedData) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayInputStream in = new ByteArrayInputStream(compressedData);
+        GZIPInputStream gzipInputStream = new GZIPInputStream(in);
+
+        byte[] buffer = new byte[1024];
+        int len;
+
+        while ((len = gzipInputStream.read(buffer)) > 0) {
+            out.write(buffer, 0, len);
+        }
+        gzipInputStream.close();
+        out.close();
+        return out.toString(StandardCharsets.UTF_8);
+    }
+
+    private Optional<CoinExCoinDepth> processWebsocketResponse(String response) {
+        try {
+            return Optional.of(objectMapper.readValue(response, CoinExCoinDepth.class));
+        } catch (JsonProcessingException e) {
+            log.debug(e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private Boolean isValidResponseData(Optional<CoinExCoinDepth> depth) {
+        return depth.isPresent() && depth.get().getData() != null &&
+            depth.get().getData().getDepth() != null &&
+            depth.get().getData().getDepth().getAsks() != null &&
+            !depth.get().getData().getDepth().getAsks().isEmpty() &&
+            depth.get().getData().getDepth().getBids() != null &&
+            !depth.get().getData().getDepth().getBids().isEmpty() &&
+            depth.get().getData().getMarket() != null;
+    }
+
+    private void processResult(
+            Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, List<CoinExCoinDepth> depthList, ReentrantLock lock
+    ) {
+        if (depthList != null && !depthList.isEmpty()) {
+            try {
+                lock.lock();
+                saveOrderBooks(createOrderBooks(coinMap, depthList));
+            } finally {
+                lock.unlock();
+            }
+        }
+    }
+
+    private Set<OrdersBook> createOrderBooks(Map<String, Coin> coinMap, List<CoinExCoinDepth> depthList) {
+        return depthList.stream().map(depth -> {
+                Coin currentCoin = coinMap.get(depth.getData().getMarket().replaceAll("USDT", ""));
+                if (currentCoin == null) return Optional.<OrdersBook>empty();
+                return getCurrentOrderBook(depth, currentCoin);
+            })
+            .filter(Optional::isPresent)
+            .map(Optional::get)
+            .collect(Collectors.toSet());
+    }
+
+    private Optional<OrdersBook> getCurrentOrderBook(CoinExCoinDepth depth, Coin currentCoin) {
+        CoinDepth coinDepth = CoinExCoinDepthBuilder.getCoinDepth(currentCoin, depth.getData().getDepth(), NAME);
+        OrdersBook ordersBook = OrdersBookUtils.createOrderBooks(coinDepth);
+
+        if (ordersBook.getBids().isEmpty() || ordersBook.getAsks().isEmpty()) return Optional.empty();
+
+        return ordersBookRepository.findBySlug(ordersBook.getSlug())
+                .map(book -> OrdersBookUtils.updateOrderBooks(book, coinDepth))
+                .or(() -> Optional.of(ordersBook));
+    }
+
+    private void saveOrderBooks(Set<OrdersBook> ordersBookSet) {
+        ordersBookRepository.saveAllAndFlush(ordersBookSet);
     }
 }

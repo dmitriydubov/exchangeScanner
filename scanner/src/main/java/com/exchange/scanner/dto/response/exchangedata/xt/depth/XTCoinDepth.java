@@ -7,5 +7,5 @@ import lombok.Setter;
 @Setter
 public class XTCoinDepth {
 
-    private XTDepthResult result;
+    private XTDepthData data;
 }

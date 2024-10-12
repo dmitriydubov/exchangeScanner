@@ -9,6 +9,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 /**
@@ -35,14 +38,15 @@ public class OrdersBookUtils {
     @Transactional
     public void getOrderBooks(
             ExchangeRepository exchangeRepository,
-            ApiExchangeAdapter apiExchangeAdapter
-    ) {
+            ApiExchangeAdapter apiExchangeAdapter,
+            BlockingDeque<Runnable> taskQueue,
+            ReentrantLock lock) {
         Set<Exchange> exchanges = new HashSet<>(exchangeRepository.findAll());
         if (exchanges.isEmpty()) return;
 
         exchanges.forEach(exchange -> {
             Set<Coin> coins = exchange.getCoins();
-            apiExchangeAdapter.getOrderBook(exchange, coins);
+            apiExchangeAdapter.getOrderBook(exchange, coins, taskQueue, lock);
         });
     }
 
@@ -61,7 +65,6 @@ public class OrdersBookUtils {
 
         ordersBook.setAsks(asks);
         ordersBook.setBids(bids);
-        ordersBook.setFrequencyFactor(0);
         ordersBook.setTimestamp(getTimestamp());
 
         return ordersBook;
@@ -72,35 +75,34 @@ public class OrdersBookUtils {
         ordersBook.getBids().clear();
         ordersBook.getAsks().addAll(getAsks(coinDepth, ordersBook));
         ordersBook.getBids().addAll(getBids(coinDepth, ordersBook));
-        ordersBook.setFrequencyFactor(ordersBook.getFrequencyFactor() + 1);
         ordersBook.setTimestamp(getTimestamp());
         return ordersBook;
     }
 
     private static Set<Ask> getAsks(CoinDepth coinDepth, OrdersBook ordersBook) {
         return coinDepth.getCoinDepthAsks().stream().limit(ORDERS_BOOK_SIZE_LIMIT)
-                .filter(askResponse -> askResponse.getPrice() != null && askResponse.getVolume() != null)
-                .map(askResponse -> {
-                    Ask ask = new Ask();
-                    ask.setOrdersBook(ordersBook);
-                    ask.setPrice(askResponse.getPrice());
-                    ask.setVolume(askResponse.getVolume());
-                    return ask;
-                })
-                .collect(Collectors.toSet());
+            .filter(askResponse -> askResponse.getPrice() != null && askResponse.getVolume() != null)
+            .map(askResponse -> {
+                Ask ask = new Ask();
+                ask.setOrdersBook(ordersBook);
+                ask.setPrice(askResponse.getPrice());
+                ask.setVolume(askResponse.getVolume());
+                return ask;
+            })
+            .collect(Collectors.toSet());
     }
 
     private static Set<Bid> getBids(CoinDepth coinDepth, OrdersBook ordersBook) {
         return coinDepth.getCoinDepthBids().stream().limit(ORDERS_BOOK_SIZE_LIMIT)
-                .filter(bidResponse -> bidResponse.getPrice() != null && bidResponse.getVolume() != null)
-                .map(bidResponse -> {
-                    Bid bid = new Bid();
-                    bid.setOrdersBook(ordersBook);
-                    bid.setPrice(bidResponse.getPrice());
-                    bid.setVolume(bidResponse.getVolume());
-                    return bid;
-                })
-                .collect(Collectors.toSet());
+            .filter(bidResponse -> bidResponse.getPrice() != null && bidResponse.getVolume() != null)
+            .map(bidResponse -> {
+                Bid bid = new Bid();
+                bid.setOrdersBook(ordersBook);
+                bid.setPrice(bidResponse.getPrice());
+                bid.setVolume(bidResponse.getVolume());
+                return bid;
+            })
+            .collect(Collectors.toSet());
     }
 
     private static String getTimestamp() {

@@ -1,6 +1,12 @@
 server:
   port: 8080
 
+logging:
+  level:
+    org:
+      springframework:
+        web: ERROR
+
 jwt:
   secret: 86dc1443b4e0c83dcda17c4e4635c16517bac495e5cb7675eefcb650222fc70e7f697b5d5c75992ff9e2c4ecc5092121e3990e8abdf3879337c8195a27f986cfc1390319cb67dcc24f88e643e78a999e8d2b6fa8a9dde995ebf5b122ca999b3f673dddf4a00f20e73c23e90f8c19f4ca34655ff4e507ed2fe4af4f6f93b36a2c97866540409af95227d8a20ee302ed050a15a061105d8df94bbe04921624fe07d859272c69394fecaa00e4f76784b25e33ebd6afd9a24b7e80e8dc3932e3c67cc5d2e6107359f63fd0abf9387484eac455905b84d8d0307e93cc16bdb3338ff8fb5fd043f5d365139f7c9533a60039248ebf1024cdbf64bab78bd90838f007d3
   lifetime: 360m
@@ -17,6 +23,11 @@ spring:
     username: postgres
     password: postgres
     url: jdbc:postgresql://localhost:5432/scannerdb
+    hikari:
+      maximum-pool-size: 20
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
   jpa:
     hibernate:
       ddl-auto: update
@@ -35,19 +46,20 @@ exchanges:
   apiKeys:
     #Api ключ Gate.io с истекающим сроком
     GateIO:
-      key: 772206b7012c7e1032e2bcb6d206716d
-      secret: ac5066ea5bed73af02bd53ad998045d879e2a93c0ae4b33dd6c339d4057c6d02
+      key: 4f590a73c7b462534941dfa8b9850024
+      secret: a583d3f5f61da6683ade6df164f13ccb5ef6df6033686ebd43e53230c3cd9c88
+    #Api ключ Mexc с истекающим сроком
     MEXC:
-      key: mx0vglPGU3h0E9HsH9
-      secret: 9db3c31ec9ec4ff5bef23a4e4c73b8bd
+      key: mx0vgl4CypF0zJ41kX
+      secret: bd08696f0f3a4e17930c49992e474ff1
     Kucoin:
       key: 6682ea71c3ea0f0001512c6c
       secret: 79d4417f-f6ae-43e5-a07f-77ce2555a2ce
       passphrase: passphrase
     #Api ключ Bybit с истекающим сроком
     Bybit:
-      key: jF9vCKenFLZVvoUnIM
-      secret: YXzD07o4fFFQqaSafzFWGnoZ0fdoGCuoO2qD
+      key: Fe0GDvphFS1t1X5ejq
+      secret: qjK8UUEXiqcWNTX0TVVeGOm8j0U6RsHnA2Lj
     #Api ключ Huobi с истекающим сроком
     Huobi:
       key: 822a8341-e3fa1297-bgbfh5tv3f-8e510
@@ -68,8 +80,8 @@ exchanges:
       secret: 009554932EFC398E2A63C9E8E1737852
     #Api ключ Coinex с истекающим сроком
     Coinex:
-      key: 7323B954D3EF4A61A86B1F1B843538D4
-      secret: B34DC3F4376AA64345CD0EC811391A599D2A60C01FF954EB
+      key: 62F84282B9DD4D8BACD215CA41C7F5BB
+      secret: B148C4E36A139BDA47E1D4E540D73B299628BB348F9BC3FB
     XT:
       key: 21f4f1a6-7d48-4a08-b712-6993d4262bc5
       secret: 10db7f81923dc256b4de9738de75626d1e436574

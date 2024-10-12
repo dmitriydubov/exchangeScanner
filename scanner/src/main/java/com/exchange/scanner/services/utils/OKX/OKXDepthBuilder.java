@@ -20,22 +20,22 @@ public class OKXDepthBuilder {
         coinDepth.setSlug(coin.getName() + "-" + exchange);
 
         Set<CoinDepthAsk> coinDepthAskSet = data.getAsks().stream()
-                .map(ask -> {
-                    CoinDepthAsk coinDepthAsk = new CoinDepthAsk();
-                    coinDepthAsk.setPrice(new BigDecimal(ask.getFirst()));
-                    coinDepthAsk.setVolume(new BigDecimal(ask.getLast()));
-                    return coinDepthAsk;
-                })
-                .collect(Collectors.toSet());
+            .map(ask -> {
+                CoinDepthAsk coinDepthAsk = new CoinDepthAsk();
+                coinDepthAsk.setPrice(new BigDecimal(ask.getFirst()));
+                coinDepthAsk.setVolume(new BigDecimal(ask.get(1)));
+                return coinDepthAsk;
+            })
+            .collect(Collectors.toSet());
 
         Set<CoinDepthBid> coinDepthBidSet = data.getBids().stream()
-                .map(bid -> {
-                    CoinDepthBid coinDepthBid = new CoinDepthBid();
-                    coinDepthBid.setPrice(new BigDecimal(bid.getFirst()));
-                    coinDepthBid.setVolume(new BigDecimal(bid.getLast()));
-                    return coinDepthBid;
-                })
-                .collect(Collectors.toSet());
+            .map(bid -> {
+                CoinDepthBid coinDepthBid = new CoinDepthBid();
+                coinDepthBid.setPrice(new BigDecimal(bid.getFirst()));
+                coinDepthBid.setVolume(new BigDecimal(bid.get(1)));
+                return coinDepthBid;
+            })
+            .collect(Collectors.toSet());
 
         if (coinDepthAskSet.isEmpty() || coinDepthBidSet.isEmpty()) {
             coinDepth.setStatusCode(404);

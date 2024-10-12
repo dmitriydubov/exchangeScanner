@@ -30,9 +30,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Hooks;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import reactor.netty.http.client.HttpClient;
+import reactor.netty.http.websocket.WebsocketOutbound;
 import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
@@ -40,6 +42,8 @@ import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 @Service
@@ -58,16 +62,6 @@ public class ApiBybit implements ApiExchange {
     @Autowired
     private OrdersBookRepository ordersBookRepository;
 
-    private final BlockingDeque<Runnable> taskQueue = new LinkedBlockingDeque<>(20);
-
-    private final ExecutorService executorService = new ThreadPoolExecutor(
-            10,
-            20,
-            60L, TimeUnit.SECONDS,
-            new LinkedBlockingDeque<>(20),
-            new ThreadPoolExecutor.DiscardOldestPolicy()
-    );
-
     private static final String NAME = "Bybit";
 
     public static final String BASE_ENDPOINT = "https://api.bybit.com";
@@ -78,7 +72,7 @@ public class ApiBybit implements ApiExchange {
 
     private static final int MAX_WEBSOCKET_CONNECTION_RETRIES = 3;
 
-    private static final Duration WEBSOCKET_RECONNECT_DELAY = Duration.ofSeconds(10);
+    private static final Duration WEBSOCKET_RECONNECT_DELAY = Duration.ofSeconds(20);
 
     private final WebClient webClient;
 
@@ -95,15 +89,16 @@ public class ApiBybit implements ApiExchange {
         if (response == null || response.getResult() == null) return coins;
 
         coins = response.getResult().getList().stream()
-                .filter(symbol -> symbol.getShowStatus().equals("1") && symbol.getQuoteCoin().equals("USDT"))
-                .map(symbol -> {
-                    LinkDTO links = new LinkDTO();
-                    links.setDepositLink(exchange.getDepositLink());
-                    links.setWithdrawLink(exchange.getWithdrawLink());
-                    links.setTradeLink(exchange.getTradeLink() + symbol.getBaseCoin().toUpperCase() + "/USDT/");
-                    return ObjectUtils.getCoin(symbol.getBaseCoin(), NAME, links, false);
-                })
-                .collect(Collectors.toSet());
+            .filter(symbol -> symbol.getShowStatus().equals("1") && !symbol.getBaseCoin().endsWith("3S") &&
+                    !symbol.getBaseCoin().endsWith("3L") && symbol.getQuoteCoin().equals("USDT"))
+            .map(symbol -> {
+                LinkDTO links = new LinkDTO();
+                links.setDepositLink(exchange.getDepositLink());
+                links.setWithdrawLink(exchange.getWithdrawLink());
+                links.setTradeLink(exchange.getTradeLink() + symbol.getBaseCoin().toUpperCase() + "/USDT/");
+                return ObjectUtils.getCoin(symbol.getBaseCoin(), NAME, links, false);
+            })
+            .collect(Collectors.toSet());
 
         return coins;
     }
@@ -308,104 +303,134 @@ public class ApiBybit implements ApiExchange {
     }
 
     @Override
-    public void getOrderBook(Set<Coin> coins, String exchange) {
+    public void getOrderBook(Set<Coin> coins, String exchange, BlockingDeque<Runnable> taskQueue, ReentrantLock lock) {
         List<String> symbols = coins.stream().map(coin -> coin.getName().toUpperCase() + "USDT").toList();
         Map<String, Coin> coinMap = coins.stream().collect(Collectors.toMap(Coin::getName, coin -> coin));
+        HttpClient client = createClient();
 
-        int batchSize = 10;
-        List<List<String>> batches = ListUtils.partition(symbols, batchSize);
-
-        batches.forEach(batch ->  getCoinDepth(batch, coinMap));
+        connect(symbols, coinMap, taskQueue, client, lock);
     }
 
-    private void getCoinDepth(List<String> symbols, Map<String, Coin> coinMap) {
-        submitExecutorService();
+    private HttpClient createClient() {
+        return HttpClient.create()
+            .keepAlive(true)
+            .option(ChannelOption.SO_KEEPALIVE, true);
+    }
 
+    private void connect(
+            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
+    ) {
+        Hooks.onErrorDropped(error -> log.error(error.getLocalizedMessage()));
+
+        client.websocket()
+            .uri(WSS_URL)
+            .handle((inbound, outbound) -> {
+                sendSubscribeMessage(symbols, outbound);
+                Flux<Void> sendPingMessage = sendPingMessage(outbound);
+                inbound.receive()
+                    .asString()
+                    .retryWhen(Retry.fixedDelay(MAX_WEBSOCKET_CONNECTION_RETRIES, WEBSOCKET_RECONNECT_DELAY))
+                    .doOnTerminate(() -> processTerminate(symbols, coinMap, taskQueue, client, lock))
+                    .onErrorResume(this::processError)
+                    .map(this::processWebsocketResponse)
+                    .filter(this::isValidResponseData)
+                    .map(Optional::get)
+                    .windowTimeout(coinMap.size(), Duration.ofSeconds(5))
+                    .flatMap(Flux::collectList)
+                    .subscribeOn(Schedulers.boundedElastic())
+                    .doOnNext(depthList -> processResult(coinMap, taskQueue, depthList, lock))
+                    .subscribe();
+
+                return outbound.then().thenMany(sendPingMessage);
+            })
+            .subscribe();
+    }
+
+    private void sendSubscribeMessage(List<String> symbols, WebsocketOutbound outbound) {
+        List<List<String>> batches = ListUtils.partition(symbols, 10);
+
+        Flux.fromIterable(batches).flatMap(batch -> outbound.sendString(Mono.just(createArgs(batch))))
+            .delaySubscription(Duration.ofMillis(10))
+            .subscribeOn(Schedulers.boundedElastic())
+            .subscribe();
+    }
+
+    private String createArgs(List<String> symbols) {
         StringBuilder args = new StringBuilder();
         symbols.forEach(symbol -> {
             args.append("\"").append("orderbook.50.").append(symbol).append("\"").append(",");
         });
         args.deleteCharAt(args.length() - 1);
-        String payload = "{" +
+        return "{" +
                 "\"op\": " + "\"subscribe\"," +
-                "\"args\": " + "[" +
-                args + "]" +
+                "\"args\": " + "[" + args + "]" +
                 "}";
-
-        connectWebsocket(payload, coinMap);
     }
 
-    private void submitExecutorService() {
-        executorService.submit(() -> {
-            while (true) {
-                try {
-                    Runnable task = taskQueue.take();
-                    task.run();
-                } catch (Exception ex) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-        });
+    private Flux<Void> sendPingMessage(WebsocketOutbound outbound) {
+        return Flux.interval(Duration.ofMinutes(5))
+            .flatMap(tick -> outbound.send(Mono.just("{\"op\":\"ping\"}").then(Mono.empty())));
     }
 
-    private void connectWebsocket(String payload, Map<String, Coin> coinMap) {
-        HttpClient client = HttpClient.create()
-            .keepAlive(true)
-            .option(ChannelOption.SO_KEEPALIVE, true);
+    private void processTerminate(
+            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
+    ) {
+        log.error("Потеряно соединение с Websocket. Попытка повторного подключения...");
+        reconnect(symbols, coinMap, taskQueue, client, lock);
+    }
 
-        client.websocket()
-            .uri(WSS_URL)
-            .handle((inbound, outbound) -> {
-                inbound.receive()
-                    .asString()
-                    .retryWhen(Retry.fixedDelay(MAX_WEBSOCKET_CONNECTION_RETRIES, WEBSOCKET_RECONNECT_DELAY))
-                    .doOnTerminate(() -> {
-                        log.error("Потеряно соединение с Websocket");
-                        executorService.shutdownNow();
-                    })
-                    .map(this::processWebsocketResponse)
-                    .filter(this::isValidResponseData)
-                    .map(Optional::get)
-                    .windowTimeout(coinMap.size(), Duration.ofSeconds(2))
-                    .flatMap(Flux::collectList)
-                    .subscribeOn(Schedulers.boundedElastic())
-                    .subscribe(depthList -> {
-                        if (depthList != null && !depthList.isEmpty()) {
-                            taskQueue.offer(() -> saveOrderBooks(createOrderBooks(coinMap, depthList)));
-                        }
-                    });
+    private void reconnect(
+            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
+    ) {
+        Mono.delay(WEBSOCKET_RECONNECT_DELAY)
+            .subscribe(aLong -> connect(symbols, coinMap, taskQueue, client, lock));
+    }
 
-                return outbound.sendString(Mono.just(payload)).neverComplete();
-            })
-            .subscribe();
+    private Mono<String> processError(Throwable error) {
+        log.debug(error.getLocalizedMessage());
+        return Mono.empty();
     }
 
     private Optional<BybitCoinDepth> processWebsocketResponse(String response) {
+        if (response.contains("pong")) return Optional.empty();
         try {
             return Optional.of(objectMapper.readValue(response, BybitCoinDepth.class));
         } catch (JsonProcessingException e) {
-            log.info(e.getMessage());
+            log.debug(e.getMessage());
             return Optional.empty();
         }
     }
 
     private Boolean isValidResponseData(Optional<BybitCoinDepth> depth) {
         return depth.isPresent() &&
-                depth.get().getData() != null &&
-                depth.get().getData().getS() != null &&
-                depth.get().getData().getA() != null && !depth.get().getData().getA().isEmpty() &&
-                depth.get().getData().getB() != null && !depth.get().getData().getB().isEmpty();
+            depth.get().getData() != null &&
+            depth.get().getData().getS() != null &&
+            depth.get().getData().getA() != null && !depth.get().getData().getA().isEmpty() &&
+            depth.get().getData().getB() != null && !depth.get().getData().getB().isEmpty();
+    }
+
+    private void processResult(
+            Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, List<BybitCoinDepth> depthList, ReentrantLock lock
+    ) {
+        if (depthList != null && !depthList.isEmpty()) {
+            try {
+                lock.lock();
+                saveOrderBooks(createOrderBooks(coinMap, depthList));
+            } finally {
+                lock.unlock();
+            }
+        }
     }
 
     private Set<OrdersBook> createOrderBooks(Map<String, Coin> coinMap, List<BybitCoinDepth> depthList) {
         return depthList.stream().map(depth -> {
-                    Coin currentCoin = coinMap.get(depth.getData().getS().replaceAll("USDT", ""));
-                    return getCurrentOrderBook(depth, currentCoin);
-                })
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .collect(Collectors.toSet());
+                Coin currentCoin = coinMap.get(depth.getData().getS().replaceAll("USDT", ""));
+                if (currentCoin == null) return Optional.<OrdersBook>empty();
+                return getCurrentOrderBook(depth, currentCoin);
+            })
+            .filter(Optional::isPresent)
+            .map(Optional::get)
+            .collect(Collectors.toSet());
     }
 
     private Optional<OrdersBook> getCurrentOrderBook(BybitCoinDepth depth, Coin currentCoin) {
@@ -415,8 +440,8 @@ public class ApiBybit implements ApiExchange {
         if (ordersBook.getBids().isEmpty() || ordersBook.getAsks().isEmpty()) return Optional.empty();
 
         return ordersBookRepository.findBySlug(ordersBook.getSlug())
-                .map(book -> OrdersBookUtils.updateOrderBooks(book, coinDepth))
-                .or(() -> Optional.of(ordersBook));
+            .map(book -> OrdersBookUtils.updateOrderBooks(book, coinDepth))
+            .or(() -> Optional.of(ordersBook));
     }
 
     private void saveOrderBooks(Set<OrdersBook> ordersBookSet) {

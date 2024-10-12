@@ -14,20 +14,36 @@ import com.exchange.scanner.dto.response.exchangedata.xt.tickervolume.XTVolumeTi
 import com.exchange.scanner.model.Chain;
 import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
+import com.exchange.scanner.model.OrdersBook;
+import com.exchange.scanner.repositories.OrdersBookRepository;
 import com.exchange.scanner.services.utils.AppUtils.*;
 import com.exchange.scanner.services.utils.XT.XTCoinDepthBuilder;
 import com.exchange.scanner.services.utils.XT.XTSignatureBuilder;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.socket.WebSocketMessage;
+import org.springframework.web.reactive.socket.WebSocketSession;
+import org.springframework.web.reactive.socket.client.ReactorNettyWebSocketClient;
+import org.springframework.web.reactive.socket.client.WebSocketClient;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Hooks;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
+import reactor.netty.http.websocket.WebsocketOutbound;
 import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
+import java.net.URI;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 @Service
@@ -42,13 +58,21 @@ public class ApiXT implements ApiExchange {
 
     private static final String NAME = "XT";
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private OrdersBookRepository ordersBookRepository;
+
+    private static final String WSS_URL = "wss://stream.xt.com/public";
+
+    private static final int MAX_WEBSOCKET_CONNECTION_RETRIES = 3;
+
+    private static final Duration WEBSOCKET_RECONNECT_DELAY = Duration.ofSeconds(20);
+
     public final static String BASE_ENDPOINT = "https://sapi.xt.com";
 
     private static final int TIMEOUT = 10000;
-
-    private static final int REQUEST_DELAY_DURATION = 20;
-
-    private static final int DEPTH_REQUEST_LIMIT = 10;
 
     private final WebClient webClient;
 
@@ -66,9 +90,10 @@ public class ApiXT implements ApiExchange {
 
         coins = response.getResult().getSymbols().stream()
                 .filter(symbol ->
-                        symbol.getQuoteCurrency().equals("usdt") &&
-                                symbol.getTradingEnabled() &&
-                                symbol.getState().equals("ONLINE")
+                    symbol.getQuoteCurrency().equals("usdt") &&
+                    !symbol.getBaseCurrency().endsWith("3s") && !symbol.getBaseCurrency().endsWith("3l") &&
+                    symbol.getTradingEnabled() &&
+                    symbol.getState().equals("ONLINE")
                 )
                 .map(symbol -> {
                     String coinName = symbol.getBaseCurrency().toUpperCase();
@@ -242,60 +267,131 @@ public class ApiXT implements ApiExchange {
     }
 
     @Override
-    public void getOrderBook(Set<Coin> coins, String exchange) {
-        Set<CoinDepth> coinDepthSet = new HashSet<>();
+    public void getOrderBook(Set<Coin> coins, String exchange, BlockingDeque<Runnable> taskQueue, ReentrantLock lock) {
+        List<String> symbols = coins.stream().map(coin -> coin.getName().toLowerCase() + "_usdt").toList();
+        Map<String, Coin> coinMap = coins.stream().collect(Collectors.toMap(coin -> coin.getName().toLowerCase(), coin -> coin));
+        String id = String.valueOf(UUID.randomUUID());
+        WebSocketClient client = new ReactorNettyWebSocketClient();
+        connect(symbols, coinMap, id, client, taskQueue, lock);
+    }
 
-        coins.forEach(coin -> {
-            XTCoinDepth response = getCoinDepth(coin).block();
+    private String createArgs(List<String> symbols, String id) {
+        StringBuilder args = new StringBuilder();
+        symbols.forEach(symbol -> args.append("\"").append("depth_update@").append(symbol).append("\"").append(","));
+        args.deleteCharAt(args.length() - 1);
 
-            if (response != null && response.getResult() != null) {
-                CoinDepth coinDepth = XTCoinDepthBuilder.getCoinDepth(coin, response.getResult(), exchange);
-                coinDepthSet.add(coinDepth);
-            }
+        return String.format(
+            "{ " +
+                "\"method\": \"subscribe\"," +
+                "\"params\": [%s]," +
+                "\"id\": \"%s\"" +
+            " }", args, id);
+    }
 
+    private void connect(
+            List<String> symbols, Map<String, Coin> coinMap, String id, WebSocketClient client, BlockingDeque<Runnable> taskQueue, ReentrantLock lock
+    ) {
+        Hooks.onErrorDropped(error -> log.error(error.getLocalizedMessage()));
+
+        client.execute(URI.create(WSS_URL), session -> {
+            session.receive()
+                .retryWhen(Retry.fixedDelay(MAX_WEBSOCKET_CONNECTION_RETRIES, WEBSOCKET_RECONNECT_DELAY))
+                .doOnTerminate(() -> processTerminate(symbols, coinMap, id, client, taskQueue, lock))
+                .onErrorResume(this::processError)
+                .map(this::processWebsocketResponse)
+                .filter(this::isValidResponseData)
+                .map(Optional::get)
+                .windowTimeout(coinMap.size(), Duration.ofSeconds(5))
+                .flatMap(Flux::collectList)
+                .subscribeOn(Schedulers.boundedElastic())
+                .doOnNext(depthList -> processResult(coinMap, taskQueue, depthList, lock))
+                .subscribe();
+
+            String payload = createArgs(symbols, id);
+            WebSocketMessage message = session.textMessage(payload);
+            return session.send(Mono.just(message)).then(sendPingFlux(session));
+        })
+        .subscribe();
+    }
+
+    private Mono<Void> sendPingFlux(WebSocketSession session) {
+        return Flux.interval(Duration.ofSeconds(5))
+            .flatMap(tick -> {
+                WebSocketMessage message = session.textMessage("ping");
+                return session.send(Mono.just(message));
+            }).then();
+    }
+
+    private void processTerminate(
+            List<String> symbols, Map<String, Coin> coinMap, String id, WebSocketClient client, BlockingDeque<Runnable> taskQueue, ReentrantLock lock
+    ) {
+        log.error("Потеряно соединение с Websocket. Попытка повторного подключения...");
+        reconnect(symbols, coinMap, id, client, taskQueue, lock);
+    }
+
+    private void reconnect(
+            List<String> symbols, Map<String, Coin> coinMap, String id, WebSocketClient client, BlockingDeque<Runnable> taskQueue, ReentrantLock lock
+    ) {
+        Mono.delay(WEBSOCKET_RECONNECT_DELAY)
+            .subscribe(aLong -> connect(symbols, coinMap, id, client, taskQueue, lock));
+    }
+
+    private Mono<WebSocketMessage> processError(Throwable error) {
+        log.debug(error.getLocalizedMessage());
+        return Mono.empty();
+    }
+
+    private Optional<XTCoinDepth> processWebsocketResponse(WebSocketMessage response) {
+        if (response.getPayloadAsText().contains("pong")) return Optional.empty();
+        try {
+            return Optional.of(objectMapper.readValue(response.getPayloadAsText(), XTCoinDepth.class));
+        } catch (JsonProcessingException e) {
+            log.debug(e.getLocalizedMessage());
+            return Optional.empty();
+        }
+    }
+
+    private Boolean isValidResponseData(Optional<XTCoinDepth> coinDepth) {
+        return coinDepth.isPresent() &&
+            coinDepth.get().getData() != null &&
+            coinDepth.get().getData().getB() != null && !coinDepth.get().getData().getB().isEmpty() &&
+            coinDepth.get().getData().getA() != null && !coinDepth.get().getData().getA().isEmpty();
+    }
+
+    private void processResult(Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, List<XTCoinDepth> depthList, ReentrantLock lock) {
+        if (depthList != null && !depthList.isEmpty()) {
             try {
-                Thread.sleep(REQUEST_DELAY_DURATION);
-            } catch (InterruptedException ex) {
-                throw new RuntimeException();
+                lock.lock();
+                saveOrderBooks(createOrderBooks(coinMap, depthList));
+            } finally {
+                lock.unlock();
             }
-        });
+        }
     }
 
-    private Mono<XTCoinDepth> getCoinDepth(Coin coin) {
-        String symbol = coin.getName().toLowerCase() + "_usdt";
-
-        return webClient
-            .get()
-            .uri(uriBuilder -> uriBuilder.path("/v4/public/depth")
-                    .queryParam("symbol", symbol)
-                    .queryParam("limit", DEPTH_REQUEST_LIMIT)
-                    .build()
-            )
-            .retrieve()
-            .onStatus(
-                    status -> status.is4xxClientError() || status.is5xxServerError(),
-                    response -> response.bodyToMono(String.class).flatMap(errorBody -> {
-                        log.error("Ошибка получения order book от " + NAME + ". Причина: {}", errorBody);
-                        return Mono.empty();
-                    })
-            )
-            .bodyToMono(XTCoinDepth.class)
-            .retryWhen(Retry.backoff(3, Duration.ofSeconds(2)))
-            .onErrorResume(error -> {
-                LogsUtils.createErrorResumeLogs(error, NAME);
-                return Mono.empty();
-            });
+    private Set<OrdersBook> createOrderBooks(Map<String, Coin> coinMap, List<XTCoinDepth> depthList) {
+        return depthList.stream().map(depth -> {
+                Coin currentCoin = coinMap.get(depth.getData().getS().replaceAll("_usdt", ""));
+                if (currentCoin == null) return Optional.<OrdersBook>empty();
+                return getCurrentOrderBook(depth, currentCoin);
+            })
+            .filter(Optional::isPresent)
+            .map(Optional::get)
+            .collect(Collectors.toSet());
     }
 
-    private static String generateParameters(List<Coin> coins) {
-        String parameters;
-        StringBuilder sb = new StringBuilder();
-        coins.forEach(coin -> sb.append(coin.getName().toLowerCase())
-                .append("_usdt")
-                .append(","));
-        sb.deleteCharAt(sb.length() - 1);
-        parameters = sb.toString();
+    private Optional<OrdersBook> getCurrentOrderBook(XTCoinDepth depth, Coin currentCoin) {
+        CoinDepth coinDepth = XTCoinDepthBuilder.getCoinDepth(currentCoin, depth.getData(), NAME);
+        OrdersBook ordersBook = OrdersBookUtils.createOrderBooks(coinDepth);
 
-        return parameters;
+        if (ordersBook.getBids().isEmpty() || ordersBook.getAsks().isEmpty()) return Optional.empty();
+
+        return ordersBookRepository.findBySlug(ordersBook.getSlug())
+            .map(book -> OrdersBookUtils.updateOrderBooks(book, coinDepth))
+            .or(() -> Optional.of(ordersBook));
+    }
+
+    private void saveOrderBooks(Set<OrdersBook> ordersBookSet) {
+        ordersBookRepository.saveAllAndFlush(ordersBookSet);
     }
 }

@@ -23,23 +23,26 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.ChannelOption;
 import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Hooks;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import reactor.netty.http.client.HttpClient;
+import reactor.netty.http.websocket.WebsocketOutbound;
 import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 @Service
 @Slf4j
@@ -58,16 +61,6 @@ public class ApiMEXC implements ApiExchange {
     @Autowired
     private OrdersBookRepository ordersBookRepository;
 
-    private final BlockingDeque<Runnable> taskQueue = new LinkedBlockingDeque<>(20);
-
-    private final ExecutorService executorService = new ThreadPoolExecutor(
-            10,
-            20,
-            60L, TimeUnit.SECONDS,
-            new LinkedBlockingDeque<>(20),
-            new ThreadPoolExecutor.DiscardOldestPolicy()
-    );
-
     private static final String NAME = "MEXC";
 
     public static final String BASE_HTTP_ENDPOINT = "https://api.mexc.com";
@@ -78,7 +71,7 @@ public class ApiMEXC implements ApiExchange {
 
     private static final int MAX_WEBSOCKET_CONNECTION_RETRIES = 3;
 
-    private static final Duration WEBSOCKET_RECONNECT_DELAY = Duration.ofSeconds(10);
+    private static final Duration WEBSOCKET_RECONNECT_DELAY = Duration.ofSeconds(20);
 
     private final WebClient webClient;
 
@@ -95,7 +88,7 @@ public class ApiMEXC implements ApiExchange {
         if (response == null || response.getSymbols() == null) return coins;
 
         coins = response.getSymbols().stream()
-                .filter(symbol -> symbol.getStatus().equals("ENABLED") &&
+                .filter(symbol -> symbol.getStatus().equals("1") &&
                         symbol.getQuoteAsset().equals("USDT") &&
                         symbol.getIsSpotTradingAllowed()
                 )
@@ -305,103 +298,132 @@ public class ApiMEXC implements ApiExchange {
     }
 
     @Override
-    public void getOrderBook(Set<Coin> coins, String exchange) {
+    public void getOrderBook(Set<Coin> coins, String exchange, BlockingDeque<Runnable> taskQueue, ReentrantLock lock) {
         List<String> symbols = coins.stream().map(coin -> coin.getName().toUpperCase() + "USDT").toList();
         Map<String, Coin> coinMap = coins.stream().collect(Collectors.toConcurrentMap(Coin::getName, coin -> coin));
+        HttpClient client = createClient();
 
-        int batchSize = 20;
-        List<List<String>> batches = ListUtils.partition(symbols, batchSize);
-
-        batches.forEach(batch -> getCoinDepth(batch, coinMap));
+        connect(symbols, coinMap, taskQueue, client, lock);
     }
 
-    private void getCoinDepth(List<String> symbols, Map<String, Coin> coinMap) {
-        submitExecutorService();
-
-        List<String> subscriptionMessages = symbols.stream()
-                .map(symbol -> "{" +
-                        "\"method\": " + "\"SUBSCRIPTION\"" + "," +
-                        "\"params\": " +
-                        "[" +
-                        "\"" + "spot@public.limit.depth.v3.api@" + symbol + "@10" + "\"" +
-                        "]" + "," +
-                        "\"id\": " + System.currentTimeMillis() +
-                        "}")
-                .toList();
-
-        connectWebSocket(subscriptionMessages, coinMap);
-    }
-
-    private void submitExecutorService() {
-        executorService.submit(() -> {
-            while (true) {
-                try {
-                    Runnable task = taskQueue.take();
-                    task.run();
-                } catch (Exception ex) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-        });
-    }
-
-    private void connectWebSocket(List<String> payload, Map<String, Coin> coinMap) {
-        HttpClient client = HttpClient.create()
+    private HttpClient createClient() {
+        return HttpClient.create()
             .keepAlive(true)
             .option(ChannelOption.SO_KEEPALIVE, true);
+    }
+
+    private void connect(
+            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
+    ) {
+        Hooks.onErrorDropped(error -> log.error(error.getLocalizedMessage()));
 
         client.websocket()
             .uri(WSS_URL)
             .handle((inbound, outbound) -> {
+                Flux<Void> sendPingMessage = sendPingMessage(outbound);
+                sendSubscribeMessage(symbols, outbound);
                 inbound.receive()
                     .asString()
                     .retryWhen(Retry.fixedDelay(MAX_WEBSOCKET_CONNECTION_RETRIES, WEBSOCKET_RECONNECT_DELAY))
-                    .doOnTerminate(() -> {
-                        log.error("Потеряно соединение с Websocket");
-                        executorService.shutdownNow();
-                    })
+                    .doOnTerminate(() -> processTerminate(symbols, coinMap, taskQueue, client, lock))
+                    .onErrorResume(this::processError)
                     .map(this::processWebsocketResponse)
                     .filter(this::isValidResponseData)
                     .map(Optional::get)
-                    .windowTimeout(coinMap.size(), Duration.ofSeconds(2))
+                    .windowTimeout(coinMap.size(), Duration.ofSeconds(5))
                     .flatMap(Flux::collectList)
                     .subscribeOn(Schedulers.boundedElastic())
-                    .subscribe(depthList -> {
-                        if (depthList != null && !depthList.isEmpty()) {
-                            taskQueue.offer(() -> saveOrderBooks(createOrderBooks(coinMap, depthList)));
-                        }
-                    });
+                    .doOnNext(depthList -> processResult(coinMap, taskQueue, depthList, lock))
+                    .subscribe();
 
-                return outbound.sendString(Flux.fromIterable(payload)).neverComplete();
+                return outbound.then().thenMany(sendPingMessage);
             })
             .subscribe();
     }
 
+    private Flux<Void> sendPingMessage(WebsocketOutbound outbound) {
+        return Flux.interval(Duration.ofSeconds(30))
+            .flatMap(tick -> outbound.send(Mono.just("{\"method\":\"PING\"}").then(Mono.empty())));
+    }
+
+    private void sendSubscribeMessage(List<String> symbols, WebsocketOutbound outbound) {
+        List<List<String>> batches = ListUtils.partition(symbols, 20);
+        Flux.fromIterable(batches).flatMap(batch -> outbound.sendString(Flux.fromIterable(createArgs(batch))))
+            .delaySubscription(Duration.ofMillis(10))
+            .subscribeOn(Schedulers.boundedElastic())
+            .subscribe();
+    }
+
+    private List<String> createArgs(List<String> symbols) {
+        return symbols.stream()
+            .map(symbol ->
+                "{" +
+                    "\"method\": " + "\"SUBSCRIPTION\"" + "," +
+                    "\"params\": " + "[" + "\"" + "spot@public.limit.depth.v3.api@" + symbol + "@10" + "\"" + "]" + "," +
+                    "\"id\": " + System.currentTimeMillis() +
+                "}"
+            )
+            .toList();
+    }
+
+    private void processTerminate(
+            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
+    ) {
+        log.error("Потеряно соединение с Websocket. Попытка повторного подключения...");
+        reconnect(symbols, coinMap, taskQueue, client, lock);
+    }
+
+    private void reconnect(
+            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
+    ) {
+        Mono.delay(WEBSOCKET_RECONNECT_DELAY)
+                .subscribe(aLong -> connect(symbols, coinMap, taskQueue, client, lock));
+    }
+
+    private Mono<String> processError(Throwable error) {
+        log.debug(error.getLocalizedMessage());
+        return Mono.empty();
+    }
+
     private Optional<MexcCoinDepth> processWebsocketResponse(String response) {
+        if (response.contains("PONG")) return Optional.empty();
         try {
             return Optional.of(objectMapper.readValue(response, MexcCoinDepth.class));
         } catch (JsonProcessingException e) {
-            log.info(e.getMessage());
+            log.debug(e.getMessage());
             return Optional.empty();
         }
     }
 
     private Boolean isValidResponseData(Optional<MexcCoinDepth> coinDepth) {
         return coinDepth.isPresent() &&
-                coinDepth.get().getD() != null &&
-                coinDepth.get().getD().getAsks() != null &&
-                coinDepth.get().getD().getBids() != null;
+            coinDepth.get().getD() != null &&
+            coinDepth.get().getD().getAsks() != null &&
+            coinDepth.get().getD().getBids() != null;
+    }
+
+    private void processResult(
+            Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, List<MexcCoinDepth> depthList, ReentrantLock lock
+    ) {
+        if (depthList != null && !depthList.isEmpty()) {
+            try {
+                lock.lock();
+                saveOrderBooks(createOrderBooks(coinMap, depthList));
+            } finally {
+                lock.unlock();
+            }
+        }
     }
 
     private Set<OrdersBook> createOrderBooks(Map<String, Coin> coinMap, List<MexcCoinDepth> depthList) {
         return depthList.stream().map(depth -> {
-                    Coin currentCoin = coinMap.get(depth.getS().replaceAll("USDT", ""));
-                    return getCurrentOrderBook(depth, currentCoin);
-                })
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .collect(Collectors.toSet());
+                Coin currentCoin = coinMap.get(depth.getS().replaceAll("USDT", ""));
+                if (currentCoin == null) return Optional.<OrdersBook>empty();
+                return getCurrentOrderBook(depth, currentCoin);
+            })
+            .filter(Optional::isPresent)
+            .map(Optional::get)
+            .collect(Collectors.toSet());
     }
     
     private Optional<OrdersBook> getCurrentOrderBook(MexcCoinDepth depth, Coin currentCoin) {
@@ -415,8 +437,8 @@ public class ApiMEXC implements ApiExchange {
         }
 
         return ordersBookRepository.findBySlug(ordersBook.getSlug())
-                .map(book -> OrdersBookUtils.updateOrderBooks(book, coinDepth))
-                .or(() -> Optional.of(ordersBook));
+            .map(book -> OrdersBookUtils.updateOrderBooks(book, coinDepth))
+            .or(() -> Optional.of(ordersBook));
     }
 
     private void saveOrderBooks(Set<OrdersBook> ordersBookSet) {
