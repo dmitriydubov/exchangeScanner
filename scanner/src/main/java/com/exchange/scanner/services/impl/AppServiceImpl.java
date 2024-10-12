@@ -286,72 +286,57 @@ public class AppServiceImpl implements AppService {
     @Override
     public CompletableFuture<ExchangeData> getExchanges(UserDetails userDetails) {
         return CompletableFuture.supplyAsync(() -> {
-            try {
-                lock.lock();
-                if (userDetails == null) {
-                    return new ExchangeData();
-                }
-
-                var user = getUser(userDetails);
-                UserMarketSettings userMarketSettings = getUserMarketSettings(user);
-
-                return getExchangeData(userMarketSettings);
-            } finally {
-                lock.unlock();
+            if (userDetails == null) {
+                return new ExchangeData();
             }
+
+            var user = getUser(userDetails);
+            UserMarketSettings userMarketSettings = getUserMarketSettings(user);
+
+            return getExchangeData(userMarketSettings);
         });
     }
 
     @Override
     public CompletableFuture<ExchangeData> updateUserMarketData(UserUpdateMarketData userData, UserDetails userDetails) {
         return CompletableFuture.supplyAsync(() -> {
-            try {
-                lock.lock();
-                if (userDetails == null) {
-                    return new ExchangeData();
-                }
-
-                var user = getUser(userDetails);
-                UserMarketSettings userMarketSettings = getUserMarketSettings(user);
-
-                userMarketSettings.setMarketsBuy(new ArrayList<>(userData.getBuyExchanges()));
-                userMarketSettings.setMarketsSell(new ArrayList<>(userData.getSellExchanges()));
-                userMarketSettings.setCoins(new ArrayList<>(userData.getCoins()));
-                userMarketSettings.setProfitSpread(new BigDecimal(userData.getMinProfit()));
-                userMarketSettings.setMinVolume(new BigDecimal(userData.getMinDealAmount()));
-                userMarketSettings.setMaxVolume(new BigDecimal(userData.getMaxDealAmount()));
-                userMarketSettingsRepository.save(userMarketSettings);
-
-                return getExchangeData(userMarketSettings);
-            } finally {
-                lock.unlock();
+            if (userDetails == null) {
+                return new ExchangeData();
             }
+
+            var user = getUser(userDetails);
+            UserMarketSettings userMarketSettings = getUserMarketSettings(user);
+
+            userMarketSettings.setMarketsBuy(new ArrayList<>(userData.getBuyExchanges()));
+            userMarketSettings.setMarketsSell(new ArrayList<>(userData.getSellExchanges()));
+            userMarketSettings.setCoins(new ArrayList<>(userData.getCoins()));
+            userMarketSettings.setProfitSpread(new BigDecimal(userData.getMinProfit()));
+            userMarketSettings.setMinVolume(new BigDecimal(userData.getMinDealAmount()));
+            userMarketSettings.setMaxVolume(new BigDecimal(userData.getMaxDealAmount()));
+            userMarketSettingsRepository.save(userMarketSettings);
+
+            return getExchangeData(userMarketSettings);
         });
     }
 
     @Override
     public CompletableFuture<Set<ArbitrageEventDTO>> getArbitrageEvents(UserDetails userDetails) {
         return CompletableFuture.supplyAsync(() -> {
-            try {
-                lock.lock();
-                if (userDetails == null) {
-                    return new HashSet<>();
-                }
-                Comparator<ArbitrageEventDTO> comparator = Comparator.comparing(ArbitrageEventDTO::coin);
-                Set<ArbitrageEventDTO> arbitrageEvents = new TreeSet<>(comparator);
-
-                var user = getUser(userDetails);
-                UserMarketSettings userMarketSettings = getUserMarketSettings(user);
-                Set<ArbitrageEvent> arbitrageEventSet = new HashSet<>(arbitrageEventRepository.findAll());
-                arbitrageEventSet.stream()
-                        .filter(event -> isUserSettingsCoin(event, userMarketSettings))
-                        .map(event -> filterEventData(event, userMarketSettings))
-                        .forEach(arbitrageEvents::add);
-
-                return arbitrageEvents;
-            } finally {
-                lock.unlock();
+            if (userDetails == null) {
+                return new HashSet<>();
             }
+            Comparator<ArbitrageEventDTO> comparator = Comparator.comparing(ArbitrageEventDTO::coin);
+            Set<ArbitrageEventDTO> arbitrageEvents = new TreeSet<>(comparator);
+
+            var user = getUser(userDetails);
+            UserMarketSettings userMarketSettings = getUserMarketSettings(user);
+            Set<ArbitrageEvent> arbitrageEventSet = new HashSet<>(arbitrageEventRepository.findAll());
+            arbitrageEventSet.stream()
+                    .filter(event -> isUserSettingsCoin(event, userMarketSettings))
+                    .map(event -> filterEventData(event, userMarketSettings))
+                    .forEach(arbitrageEvents::add);
+
+            return arbitrageEvents;
         });
     }
 
