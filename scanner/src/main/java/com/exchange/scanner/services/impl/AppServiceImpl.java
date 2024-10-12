@@ -285,9 +285,9 @@ public class AppServiceImpl implements AppService {
 
     @Override
     public CompletableFuture<ExchangeData> getExchanges(UserDetails userDetails) {
-        try {
-            lock.lock();
-            return CompletableFuture.supplyAsync(() -> {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                lock.lock();
                 if (userDetails == null) {
                     return new ExchangeData();
                 }
@@ -296,17 +296,17 @@ public class AppServiceImpl implements AppService {
                 UserMarketSettings userMarketSettings = getUserMarketSettings(user);
 
                 return getExchangeData(userMarketSettings);
-            });
-        } finally {
-            lock.unlock();
-        }
+            } finally {
+                lock.unlock();
+            }
+        });
     }
 
     @Override
     public CompletableFuture<ExchangeData> updateUserMarketData(UserUpdateMarketData userData, UserDetails userDetails) {
-        try {
-            lock.lock();
-            return CompletableFuture.supplyAsync(() -> {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                lock.lock();
                 if (userDetails == null) {
                     return new ExchangeData();
                 }
@@ -323,17 +323,17 @@ public class AppServiceImpl implements AppService {
                 userMarketSettingsRepository.save(userMarketSettings);
 
                 return getExchangeData(userMarketSettings);
-            });
-        } finally {
-            lock.unlock();
-        }
+            } finally {
+                lock.unlock();
+            }
+        });
     }
 
     @Override
     public CompletableFuture<Set<ArbitrageEventDTO>> getArbitrageEvents(UserDetails userDetails) {
-        try {
-            lock.lock();
-            return CompletableFuture.supplyAsync(() -> {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                lock.lock();
                 if (userDetails == null) {
                     return new HashSet<>();
                 }
@@ -349,10 +349,10 @@ public class AppServiceImpl implements AppService {
                         .forEach(arbitrageEvents::add);
 
                 return arbitrageEvents;
-            });
-        } finally {
-            lock.unlock();
-        }
+            } finally {
+                lock.unlock();
+            }
+        });
     }
 
     private boolean isUserSettingsCoin(ArbitrageEvent arbitrageEvent, UserMarketSettings userMarketSettings) {
