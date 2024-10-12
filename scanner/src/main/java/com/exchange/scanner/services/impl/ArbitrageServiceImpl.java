@@ -278,10 +278,10 @@ public class ArbitrageServiceImpl implements ArbitrageService {
         if (buyPrice.compareTo(BigDecimal.ZERO) == 0) {
             isSameCoin = false;
         } else {
-            BigDecimal percentageChange = sellPrice.subtract(buyPrice).divide(buyPrice, 2, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100));
-            isSameCoin = percentageChange.compareTo(BigDecimal.valueOf(50)) <= 0;
+//            BigDecimal percentageChange = sellPrice.subtract(buyPrice).divide(buyPrice, 2, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100));
+//            isSameCoin = percentageChange.compareTo(BigDecimal.valueOf(50)) <= 0;
         }
-        return isSameCoin;
+        return true;
     }
 
     private AsksAndBids createPossibleOpportunity(UserBuyTradeEventDTO buyEvent, UserSellTradeEventDTO sellEvent) {

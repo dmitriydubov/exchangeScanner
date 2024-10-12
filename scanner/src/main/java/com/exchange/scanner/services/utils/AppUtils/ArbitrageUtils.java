@@ -9,6 +9,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -20,36 +21,42 @@ public class ArbitrageUtils {
             OrdersBookRepository ordersBookRepository,
             AskRepository askRepository,
             BidRepository bidRepository,
-            CoinRepository coinRepository
+            CoinRepository coinRepository,
+            ReentrantLock lock
     ) {
         UserTradeEvent userTradeEvent = new UserTradeEvent();
         Set<String> coinNames = coinRepository.findAll().stream().map(Coin::getName).collect(Collectors.toSet());
         Set<Exchange> marketsForBuy = new HashSet<>(exchangeRepository.findAll());
         Set<Exchange> marketsForSell = new HashSet<>(exchangeRepository.findAll());
 
-        Set<UserBuyTradeEventDTO> buyTradeEventDTO = generateTradeEvents(
-                marketsForBuy,
-                coinNames,
-                ordersBookRepository,
-                askRepository,
-                bidRepository,
-                coinRepository,
-                UserBuyTradeEventDTO.class, true);
+        try {
+            lock.lock();
+            Set<UserBuyTradeEventDTO> buyTradeEventDTO = generateTradeEvents(
+                    marketsForBuy,
+                    coinNames,
+                    ordersBookRepository,
+                    askRepository,
+                    bidRepository,
+                    coinRepository,
+                    UserBuyTradeEventDTO.class, true);
 
-        Set<UserSellTradeEventDTO> sellTradeEventDTO = generateTradeEvents(
-                marketsForSell,
-                coinNames,
-                ordersBookRepository,
-                askRepository,
-                bidRepository,
-                coinRepository,
-                UserSellTradeEventDTO.class,
-                false);
+            Set<UserSellTradeEventDTO> sellTradeEventDTO = generateTradeEvents(
+                    marketsForSell,
+                    coinNames,
+                    ordersBookRepository,
+                    askRepository,
+                    bidRepository,
+                    coinRepository,
+                    UserSellTradeEventDTO.class,
+                    false);
 
-        userTradeEvent.setBuyTradeEventDTO(new TreeSet<>(buyTradeEventDTO));
-        userTradeEvent.setSellTradeEventDTO(new TreeSet<>(sellTradeEventDTO));
+            userTradeEvent.setBuyTradeEventDTO(new TreeSet<>(buyTradeEventDTO));
+            userTradeEvent.setSellTradeEventDTO(new TreeSet<>(sellTradeEventDTO));
 
-        return userTradeEvent;
+            return userTradeEvent;
+        } finally {
+            lock.unlock();
+        }
     }
 
     private <T extends TradeEventDTO> Set<T> generateTradeEvents(

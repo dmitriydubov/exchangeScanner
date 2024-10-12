@@ -26,6 +26,7 @@ public class WebConfig implements WebMvcConfigurer {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
         config.setAllowedOrigins(List.of(
+                "http://3605259-mp26375.twc1.net",
                 "http://94.241.141.242:3000",
                 "http://94.241.141.242:80",
                 "http://localhost:3000",
