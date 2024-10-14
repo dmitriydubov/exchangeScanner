@@ -23,7 +23,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.ChannelOption;
 import lombok.extern.slf4j.Slf4j;
-import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
@@ -40,8 +39,6 @@ import reactor.util.retry.Retry;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 @Service
@@ -287,12 +284,12 @@ public class ApiPoloniex implements ApiExchange {
     }
 
     @Override
-    public void getOrderBook(Set<Coin> coins, String exchange, BlockingDeque<Runnable> taskQueue, ReentrantLock lock) {
+    public void getOrderBook(Set<Coin> coins, String exchange) {
         List<String> symbols = coins.stream().map(coin -> coin.getName() + "_USDT").toList();
         Map<String, Coin> coinMap = coins.stream().collect(Collectors.toMap(coin -> coin.getName().toUpperCase(), coin -> coin));
         HttpClient client = createClient();
 
-        connect(symbols, coinMap, taskQueue, client, lock);
+        connect(symbols, coinMap, client);
     }
 
     private HttpClient createClient() {
@@ -301,9 +298,7 @@ public class ApiPoloniex implements ApiExchange {
             .option(ChannelOption.SO_KEEPALIVE, true);
     }
 
-    private void connect(
-            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
-    ) {
+    private void connect(List<String> symbols, Map<String, Coin> coinMap, HttpClient client) {
         Hooks.onErrorDropped(error -> log.error(error.getLocalizedMessage()));
 
         client.websocket()
@@ -314,7 +309,7 @@ public class ApiPoloniex implements ApiExchange {
                 inbound.receive()
                     .asString()
                     .retryWhen(Retry.fixedDelay(MAX_WEBSOCKET_CONNECTION_RETRIES, WEBSOCKET_RECONNECT_DELAY))
-                    .doOnTerminate(() -> processTerminate(symbols, coinMap, taskQueue, client, lock))
+                    .doOnTerminate(() -> processTerminate(symbols, coinMap, client))
                     .onErrorResume(this::processError)
                     .map(this::processWebsocketResponse)
                     .filter(this::isValidResponseData)
@@ -322,7 +317,7 @@ public class ApiPoloniex implements ApiExchange {
                     .windowTimeout(coinMap.size(), Duration.ofSeconds(5))
                     .flatMap(Flux::collectList)
                     .subscribeOn(Schedulers.boundedElastic())
-                    .doOnNext(depthList -> processResult(coinMap, taskQueue, depthList, lock))
+                    .doOnNext(depthList -> processResult(coinMap, depthList))
                     .subscribe();
 
                 return outbound.then().thenMany(pingFlux);
@@ -364,18 +359,14 @@ public class ApiPoloniex implements ApiExchange {
                 });
     }
 
-    private void processTerminate(
-            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
-    ) {
+    private void processTerminate(List<String> symbols, Map<String, Coin> coinMap, HttpClient client) {
         log.error("Потеряно соединение с Websocket. Попытка повторного подключения...");
-        reconnect(symbols, coinMap, taskQueue, client, lock);
+        reconnect(symbols, coinMap, client);
     }
 
-    private void reconnect(
-            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
-    ) {
+    private void reconnect(List<String> symbols, Map<String, Coin> coinMap, HttpClient client) {
         Mono.delay(WEBSOCKET_RECONNECT_DELAY)
-            .subscribe(aLong -> connect(symbols, coinMap, taskQueue, client, lock));
+            .subscribe(aLong -> connect(symbols, coinMap, client));
     }
 
     private Mono<String> processError(Throwable error) {
@@ -401,16 +392,9 @@ public class ApiPoloniex implements ApiExchange {
             !depth.get().getData().getFirst().getBids().isEmpty();
     }
 
-    private void processResult(
-            Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, List<PoloniexCoinDepth> depthList, ReentrantLock lock
-    ) {
+    private void processResult(Map<String, Coin> coinMap, List<PoloniexCoinDepth> depthList) {
         if (depthList != null && !depthList.isEmpty()) {
-            try {
-                lock.lock();
-                saveOrderBooks(createOrderBooks(coinMap, depthList));
-            } finally {
-                lock.unlock();
-            }
+            saveOrderBooks(createOrderBooks(coinMap, depthList));
         }
     }
 

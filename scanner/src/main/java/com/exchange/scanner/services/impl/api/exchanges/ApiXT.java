@@ -267,12 +267,12 @@ public class ApiXT implements ApiExchange {
     }
 
     @Override
-    public void getOrderBook(Set<Coin> coins, String exchange, BlockingDeque<Runnable> taskQueue, ReentrantLock lock) {
+    public void getOrderBook(Set<Coin> coins, String exchange) {
         List<String> symbols = coins.stream().map(coin -> coin.getName().toLowerCase() + "_usdt").toList();
         Map<String, Coin> coinMap = coins.stream().collect(Collectors.toMap(coin -> coin.getName().toLowerCase(), coin -> coin));
         String id = String.valueOf(UUID.randomUUID());
         WebSocketClient client = new ReactorNettyWebSocketClient();
-        connect(symbols, coinMap, id, client, taskQueue, lock);
+        connect(symbols, coinMap, id, client);
     }
 
     private String createArgs(List<String> symbols, String id) {
@@ -288,15 +288,13 @@ public class ApiXT implements ApiExchange {
             " }", args, id);
     }
 
-    private void connect(
-            List<String> symbols, Map<String, Coin> coinMap, String id, WebSocketClient client, BlockingDeque<Runnable> taskQueue, ReentrantLock lock
-    ) {
+    private void connect(List<String> symbols, Map<String, Coin> coinMap, String id, WebSocketClient client) {
         Hooks.onErrorDropped(error -> log.error(error.getLocalizedMessage()));
 
         client.execute(URI.create(WSS_URL), session -> {
             session.receive()
                 .retryWhen(Retry.fixedDelay(MAX_WEBSOCKET_CONNECTION_RETRIES, WEBSOCKET_RECONNECT_DELAY))
-                .doOnTerminate(() -> processTerminate(symbols, coinMap, id, client, taskQueue, lock))
+                .doOnTerminate(() -> processTerminate(symbols, coinMap, id, client))
                 .onErrorResume(this::processError)
                 .map(this::processWebsocketResponse)
                 .filter(this::isValidResponseData)
@@ -304,7 +302,7 @@ public class ApiXT implements ApiExchange {
                 .windowTimeout(coinMap.size(), Duration.ofSeconds(5))
                 .flatMap(Flux::collectList)
                 .subscribeOn(Schedulers.boundedElastic())
-                .doOnNext(depthList -> processResult(coinMap, taskQueue, depthList, lock))
+                .doOnNext(depthList -> processResult(coinMap, depthList))
                 .subscribe();
 
             String payload = createArgs(symbols, id);
@@ -322,18 +320,14 @@ public class ApiXT implements ApiExchange {
             }).then();
     }
 
-    private void processTerminate(
-            List<String> symbols, Map<String, Coin> coinMap, String id, WebSocketClient client, BlockingDeque<Runnable> taskQueue, ReentrantLock lock
-    ) {
+    private void processTerminate(List<String> symbols, Map<String, Coin> coinMap, String id, WebSocketClient client) {
         log.error("Потеряно соединение с Websocket. Попытка повторного подключения...");
-        reconnect(symbols, coinMap, id, client, taskQueue, lock);
+        reconnect(symbols, coinMap, id, client);
     }
 
-    private void reconnect(
-            List<String> symbols, Map<String, Coin> coinMap, String id, WebSocketClient client, BlockingDeque<Runnable> taskQueue, ReentrantLock lock
-    ) {
+    private void reconnect(List<String> symbols, Map<String, Coin> coinMap, String id, WebSocketClient client) {
         Mono.delay(WEBSOCKET_RECONNECT_DELAY)
-            .subscribe(aLong -> connect(symbols, coinMap, id, client, taskQueue, lock));
+            .subscribe(aLong -> connect(symbols, coinMap, id, client));
     }
 
     private Mono<WebSocketMessage> processError(Throwable error) {
@@ -358,14 +352,9 @@ public class ApiXT implements ApiExchange {
             coinDepth.get().getData().getA() != null && !coinDepth.get().getData().getA().isEmpty();
     }
 
-    private void processResult(Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, List<XTCoinDepth> depthList, ReentrantLock lock) {
+    private void processResult(Map<String, Coin> coinMap, List<XTCoinDepth> depthList) {
         if (depthList != null && !depthList.isEmpty()) {
-            try {
-                lock.lock();
-                saveOrderBooks(createOrderBooks(coinMap, depthList));
-            } finally {
-                lock.unlock();
-            }
+            saveOrderBooks(createOrderBooks(coinMap, depthList));
         }
     }
 

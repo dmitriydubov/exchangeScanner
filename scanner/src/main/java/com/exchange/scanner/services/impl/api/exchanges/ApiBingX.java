@@ -6,7 +6,6 @@ import com.exchange.scanner.dto.response.TradingFeeResponseDTO;
 import com.exchange.scanner.dto.response.Volume24HResponseDTO;
 import com.exchange.scanner.dto.response.exchangedata.bingx.chains.BingXChainData;
 import com.exchange.scanner.dto.response.exchangedata.bingx.chains.BingXChainResponse;
-import com.exchange.scanner.dto.response.exchangedata.bingx.depth.BingXCoinDepth;
 import com.exchange.scanner.dto.response.exchangedata.bingx.tickervolume.BingXVolumeTicker;
 import com.exchange.scanner.dto.response.exchangedata.bingx.coins.BingXCurrencyResponse;
 import com.exchange.scanner.dto.response.exchangedata.bingx.tickervolume.BingXVolumeTickerData;
@@ -18,7 +17,6 @@ import com.exchange.scanner.model.Exchange;
 import com.exchange.scanner.model.OrdersBook;
 import com.exchange.scanner.repositories.OrdersBookRepository;
 import com.exchange.scanner.services.utils.AppUtils.*;
-import com.exchange.scanner.services.utils.BingX.BingXCoinDepthBuilder;
 import com.exchange.scanner.services.utils.BingX.BingXSignatureBuilder;
 import com.exchange.scanner.services.utils.Huobi.HuobiCoinDepthBuilder;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -26,10 +24,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelOption;
 import io.netty.handler.codec.http.websocketx.WebSocketFrame;
-import jakarta.annotation.security.RunAs;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -49,8 +45,6 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.BlockingDeque;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 
@@ -272,13 +266,13 @@ public class ApiBingX implements ApiExchange {
     }
 
     @Override
-    public void getOrderBook(Set<Coin> coins, String exchange, BlockingDeque<Runnable> taskQueue, ReentrantLock lock) {
+    public void getOrderBook(Set<Coin> coins, String exchange) {
         List<String> symbols = coins.stream().limit(60).map(coin -> coin.getName().toUpperCase() + "-USDT").toList();
         Map<String, Coin> coinMap = coins.stream().collect(Collectors.toMap(coin -> coin.getName().toUpperCase(), coin -> coin));
         HttpClient client = createClient();
         int batchSize = 1;
         List<List<String>> batches = ListUtils.partition(symbols, batchSize);
-        batches.forEach(batch -> createArgsAndConnectWebsocket(batch, coinMap, taskQueue, client));
+        batches.forEach(batch -> createArgsAndConnectWebsocket(batch, coinMap, client));
     }
 
     private HttpClient createClient() {
@@ -287,9 +281,7 @@ public class ApiBingX implements ApiExchange {
                 .option(ChannelOption.SO_KEEPALIVE, true);
     }
 
-    private void createArgsAndConnectWebsocket(
-            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client
-    ) {
+    private void createArgsAndConnectWebsocket(List<String> symbols, Map<String, Coin> coinMap, HttpClient client) {
         String userId = UUID.randomUUID().toString();
         StringBuilder args = new StringBuilder();
         symbols.forEach(symbol -> args.append(symbol).append("@").append("depth10").append("/"));
@@ -302,10 +294,10 @@ public class ApiBingX implements ApiExchange {
                 "\"dataType\":\"%s\"" +
             " }", userId, args);
 
-        connect(payload, coinMap, taskQueue, client);
+        connect(payload, coinMap, client);
     }
 
-    private void connect(String payload, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client) {
+    private void connect(String payload, Map<String, Coin> coinMap, HttpClient client) {
         Hooks.onErrorDropped(error -> log.error(error.getLocalizedMessage()));
 
         client.websocket()
@@ -314,7 +306,7 @@ public class ApiBingX implements ApiExchange {
                 inbound.receiveFrames()
                     .doOnTerminate(() -> {
                         log.error("Потеряно соединение с Websocket. Попытка повторного подключения...");
-                        reconnect(payload, coinMap, taskQueue, client);
+                        reconnect(payload, coinMap, client);
                     })
                     .onErrorResume(error -> {
                         log.error(error.getLocalizedMessage());
@@ -336,12 +328,7 @@ public class ApiBingX implements ApiExchange {
                     .subscribeOn(Schedulers.boundedElastic())
                     .doOnNext(depthList -> {
                         if (depthList != null && !depthList.isEmpty()) {
-                            taskQueue.offer(() -> saveOrderBooks(createOrderBooks(coinMap, depthList)));
-                            try {
-                                Thread.sleep(5000);
-                            } catch (InterruptedException ex) {
-                                throw new RuntimeException();
-                            }
+                            saveOrderBooks(createOrderBooks(coinMap, depthList));
                         }
                     })
                     .subscribe();
@@ -351,9 +338,9 @@ public class ApiBingX implements ApiExchange {
             .subscribe();
     }
 
-    private void reconnect(String payload, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client) {
+    private void reconnect(String payload, Map<String, Coin> coinMap, HttpClient client) {
         Mono.delay(WEBSOCKET_RECONNECT_DELAY)
-            .subscribe(aLong -> connect(payload, coinMap, taskQueue, client));
+            .subscribe(aLong -> connect(payload, coinMap, client));
     }
 
     private Mono<String> decompressGZIPData(WebSocketFrame frame) {

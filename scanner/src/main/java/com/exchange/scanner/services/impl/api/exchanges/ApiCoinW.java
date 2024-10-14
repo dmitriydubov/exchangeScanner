@@ -21,7 +21,6 @@ import io.socket.client.IO;
 import io.socket.client.Socket;
 import io.socket.emitter.Emitter;
 import lombok.extern.slf4j.Slf4j;
-import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -34,8 +33,6 @@ import java.math.BigDecimal;
 import java.net.URISyntaxException;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 @Service
@@ -255,7 +252,7 @@ public class ApiCoinW implements ApiExchange {
     }
 
     @Override
-    public void getOrderBook(Set<Coin> coins, String exchange, BlockingDeque<Runnable> taskQueue, ReentrantLock lock) {
+    public void getOrderBook(Set<Coin> coins, String exchange) {
         List<String> symbols = coins.stream().limit(10).map(coin -> coin.getName().toUpperCase() + "-USDT").toList();
         Map<String, Coin> coinMap = coins.stream().collect(Collectors.toMap(coin -> coin.getName().toUpperCase(), coin -> coin));
 

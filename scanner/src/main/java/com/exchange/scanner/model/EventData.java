@@ -14,7 +14,6 @@ import java.util.Objects;
 @AllArgsConstructor
 @Builder
 public class EventData {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(nullable = false)

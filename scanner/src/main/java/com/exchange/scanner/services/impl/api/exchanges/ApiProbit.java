@@ -24,7 +24,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.ChannelOption;
 import lombok.extern.slf4j.Slf4j;
-import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -40,8 +39,6 @@ import reactor.util.retry.Retry;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.BlockingDeque;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 @Service
@@ -276,12 +273,12 @@ public class ApiProbit implements ApiExchange {
     }
 
     @Override
-    public void getOrderBook(Set<Coin> coins, String exchange, BlockingDeque<Runnable> taskQueue, ReentrantLock lock) {
+    public void getOrderBook(Set<Coin> coins, String exchange) {
         List<String> symbols = coins.stream().map(coin -> coin.getName().toUpperCase() + "-USDT").toList();
         Map<String, Coin> coinMap = coins.stream().collect(Collectors.toMap(Coin::getName, coin -> coin));
         HttpClient client = createClient();
 
-        connect(symbols, coinMap, taskQueue, client, lock);
+        connect(symbols, coinMap, client);
     }
 
     private HttpClient createClient() {
@@ -290,9 +287,7 @@ public class ApiProbit implements ApiExchange {
             .option(ChannelOption.SO_KEEPALIVE, true);
     }
 
-    private void connect(
-            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
-    ) {
+    private void connect(List<String> symbols, Map<String, Coin> coinMap, HttpClient client) {
         Hooks.onErrorDropped(error -> log.error(error.getLocalizedMessage()));
 
         client.websocket(WebsocketClientSpec.builder()
@@ -303,7 +298,7 @@ public class ApiProbit implements ApiExchange {
                 sendSubscribeMessage(symbols, outbound);
                 inbound.receive()
                     .asString()
-                    .doOnTerminate(() -> processTerminate(symbols, coinMap, taskQueue, client, lock))
+                    .doOnTerminate(() -> processTerminate(symbols, coinMap, client))
                     .onErrorResume(this::processError)
                     .map(this::processWebsocketResponse)
                     .filter(this::isValidResponseData)
@@ -311,7 +306,7 @@ public class ApiProbit implements ApiExchange {
                     .windowTimeout(coinMap.size(), Duration.ofSeconds(5))
                     .flatMap(Flux::collectList)
                     .subscribeOn(Schedulers.boundedElastic())
-                    .doOnNext(depthList -> processResult(coinMap, taskQueue, depthList, lock))
+                    .doOnNext(depthList -> processResult(coinMap, depthList))
                     .subscribe();
 
                 return outbound.neverComplete();
@@ -337,18 +332,14 @@ public class ApiProbit implements ApiExchange {
             "}", symbol);
     }
 
-    private void processTerminate(
-            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
-    ) {
+    private void processTerminate(List<String> symbols, Map<String, Coin> coinMap, HttpClient client) {
         log.error("Потеряно соединение с Websocket. Попытка повторного подключения...");
-        reconnect(symbols, coinMap, taskQueue, client, lock);
+        reconnect(symbols, coinMap, client);
     }
 
-    private void reconnect(
-            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
-    ) {
+    private void reconnect(List<String> symbols, Map<String, Coin> coinMap, HttpClient client) {
         Mono.delay(WEBSOCKET_RECONNECT_DELAY)
-            .subscribe(aLong -> connect(symbols, coinMap, taskQueue, client, lock));
+            .subscribe(aLong -> connect(symbols, coinMap, client));
     }
 
     private Mono<String> processError(Throwable error) {
@@ -371,16 +362,9 @@ public class ApiProbit implements ApiExchange {
             !coinDepth.get().getOrderBooksL1().isEmpty();
     }
 
-    private void processResult(
-            Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, List<ProbitCoinDepth> depthList, ReentrantLock lock
-    ) {
+    private void processResult(Map<String, Coin> coinMap, List<ProbitCoinDepth> depthList) {
         if (depthList != null && !depthList.isEmpty()) {
-            try {
-                lock.lock();
-                saveOrderBooks(createOrderBooks(coinMap, depthList));
-            } finally {
-                lock.unlock();
-            }
+            saveOrderBooks(createOrderBooks(coinMap, depthList));
         }
     }
 

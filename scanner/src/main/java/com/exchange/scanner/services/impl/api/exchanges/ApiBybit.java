@@ -41,9 +41,6 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 @Service
@@ -303,12 +300,12 @@ public class ApiBybit implements ApiExchange {
     }
 
     @Override
-    public void getOrderBook(Set<Coin> coins, String exchange, BlockingDeque<Runnable> taskQueue, ReentrantLock lock) {
+    public void getOrderBook(Set<Coin> coins, String exchange) {
         List<String> symbols = coins.stream().map(coin -> coin.getName().toUpperCase() + "USDT").toList();
         Map<String, Coin> coinMap = coins.stream().collect(Collectors.toMap(Coin::getName, coin -> coin));
         HttpClient client = createClient();
 
-        connect(symbols, coinMap, taskQueue, client, lock);
+        connect(symbols, coinMap, client);
     }
 
     private HttpClient createClient() {
@@ -317,9 +314,7 @@ public class ApiBybit implements ApiExchange {
             .option(ChannelOption.SO_KEEPALIVE, true);
     }
 
-    private void connect(
-            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
-    ) {
+    private void connect(List<String> symbols, Map<String, Coin> coinMap, HttpClient client) {
         Hooks.onErrorDropped(error -> log.error(error.getLocalizedMessage()));
 
         client.websocket()
@@ -330,7 +325,7 @@ public class ApiBybit implements ApiExchange {
                 inbound.receive()
                     .asString()
                     .retryWhen(Retry.fixedDelay(MAX_WEBSOCKET_CONNECTION_RETRIES, WEBSOCKET_RECONNECT_DELAY))
-                    .doOnTerminate(() -> processTerminate(symbols, coinMap, taskQueue, client, lock))
+                    .doOnTerminate(() -> processTerminate(symbols, coinMap, client))
                     .onErrorResume(this::processError)
                     .map(this::processWebsocketResponse)
                     .filter(this::isValidResponseData)
@@ -338,7 +333,7 @@ public class ApiBybit implements ApiExchange {
                     .windowTimeout(coinMap.size(), Duration.ofSeconds(5))
                     .flatMap(Flux::collectList)
                     .subscribeOn(Schedulers.boundedElastic())
-                    .doOnNext(depthList -> processResult(coinMap, taskQueue, depthList, lock))
+                    .doOnNext(depthList -> processResult(coinMap, depthList))
                     .subscribe();
 
                 return outbound.then().thenMany(sendPingMessage);
@@ -372,18 +367,14 @@ public class ApiBybit implements ApiExchange {
             .flatMap(tick -> outbound.send(Mono.just("{\"op\":\"ping\"}").then(Mono.empty())));
     }
 
-    private void processTerminate(
-            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
-    ) {
+    private void processTerminate(List<String> symbols, Map<String, Coin> coinMap, HttpClient client) {
         log.error("Потеряно соединение с Websocket. Попытка повторного подключения...");
-        reconnect(symbols, coinMap, taskQueue, client, lock);
+        reconnect(symbols, coinMap, client);
     }
 
-    private void reconnect(
-            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
-    ) {
+    private void reconnect(List<String> symbols, Map<String, Coin> coinMap, HttpClient client) {
         Mono.delay(WEBSOCKET_RECONNECT_DELAY)
-            .subscribe(aLong -> connect(symbols, coinMap, taskQueue, client, lock));
+            .subscribe(aLong -> connect(symbols, coinMap, client));
     }
 
     private Mono<String> processError(Throwable error) {
@@ -409,16 +400,9 @@ public class ApiBybit implements ApiExchange {
             depth.get().getData().getB() != null && !depth.get().getData().getB().isEmpty();
     }
 
-    private void processResult(
-            Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, List<BybitCoinDepth> depthList, ReentrantLock lock
-    ) {
+    private void processResult(Map<String, Coin> coinMap, List<BybitCoinDepth> depthList) {
         if (depthList != null && !depthList.isEmpty()) {
-            try {
-                lock.lock();
-                saveOrderBooks(createOrderBooks(coinMap, depthList));
-            } finally {
-                lock.unlock();
-            }
+            saveOrderBooks(createOrderBooks(coinMap, depthList));
         }
     }
 

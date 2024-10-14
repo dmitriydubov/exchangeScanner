@@ -26,7 +26,7 @@ public class ArbitrageEvent {
     @Column(name = "coin_market_cap_logo")
     private String coinMarketCapLogo;
 
-    @OneToMany(cascade = {CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REMOVE}, fetch = FetchType.EAGER)
+    @OneToMany(cascade = {CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REMOVE}, fetch = FetchType.LAZY)
     @JoinColumn(name = "arbitrage_event_id")
     private Set<EventData> eventData;
 

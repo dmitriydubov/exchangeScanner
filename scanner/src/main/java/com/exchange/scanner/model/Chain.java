@@ -6,14 +6,12 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.util.HashSet;
-import java.util.Objects;
 import java.util.Set;
 
 @Entity
 @Getter
 @Setter
 public class Chain implements Comparable<Chain> {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

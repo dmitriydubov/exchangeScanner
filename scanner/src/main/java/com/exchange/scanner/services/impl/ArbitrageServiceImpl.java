@@ -19,20 +19,20 @@ public class ArbitrageServiceImpl implements ArbitrageService {
 
     private static final BigDecimal MIN_TRADE_PROFIT = BigDecimal.ONE;
 
-    private static final BigDecimal MAX_USER_AMOUNT = BigDecimal.valueOf(10.000);
+    private static final BigDecimal MAX_USER_AMOUNT = BigDecimal.valueOf(10000);
 
     @Override
     public Set<ArbitrageOpportunity> getArbitrageOpportunities(UserTradeEvent userTradeEvent) {
         return userTradeEvent.getBuyTradeEventDTO().stream()
-                .flatMap(buyEvent -> userTradeEvent.getSellTradeEventDTO().stream()
-                        .filter(sellEvent -> !buyEvent.getExchange().equals(sellEvent.getExchange()))
-                        .filter(sellEvent -> buyEvent.getCoin().equals(sellEvent.getCoin()))
-                        .filter(sellEvent -> isValidArbitrage(buyEvent, sellEvent))
-                        .map(sellEvent -> createPossibleOpportunity(buyEvent, sellEvent)))
-                .map(this::getArbitrageOpportunity)
-                .filter(Objects::nonNull)
-                .filter(arbitrage -> arbitrage.getTradingData() != null)
-                .collect(Collectors.toSet());
+            .flatMap(buyEvent -> userTradeEvent.getSellTradeEventDTO().stream()
+                .filter(sellEvent -> !buyEvent.getExchange().equals(sellEvent.getExchange()))
+                .filter(sellEvent -> buyEvent.getCoin().equals(sellEvent.getCoin()))
+                .filter(sellEvent -> isValidArbitrage(buyEvent, sellEvent))
+                .map(sellEvent -> createPossibleOpportunity(buyEvent, sellEvent)))
+            .map(this::getArbitrageOpportunity)
+            .filter(Objects::nonNull)
+            .filter(arbitrage -> arbitrage.getTradingData() != null)
+            .collect(Collectors.toSet());
     }
 
     private ArbitrageOpportunity getArbitrageOpportunity(AsksAndBids asksAndBids) {
@@ -65,9 +65,17 @@ public class ArbitrageServiceImpl implements ArbitrageService {
         BigDecimal totalFee = fee.add(withdrawFee).setScale(5, RoundingMode.CEILING);
         BigDecimal profitSpread = profit.subtract(totalFee).setScale(2, RoundingMode.CEILING);
 
-//        if (asksAndBids.buyEvent.getCoin().equals("GOMINING")) {
+//        if (asksAndBids.buyEvent.getCoin().equals("TRUMP")) {
 //            System.out.println(asksAndBids.buyEvent.getExchange());
 //            System.out.println(asksAndBids.sellEvent.getExchange());
+//            System.out.println("price for buy: " + buyOrders.getFirst().getPrice());
+//            System.out.println("chain: " + asksAndBids.buyEvent.getMostProfitableChain());
+//            System.out.println("amount: " + totalAmount);
+//            System.out.println("total coin volume: " + totalCoinVolume);
+//            System.out.println("profit: " + profit);
+//            System.out.println("fee: " + fee);
+//            System.out.println("withdrawFee: " + withdrawFee);
+//            System.out.println("total fee: " + totalFee);
 //            System.out.println(asksAndBids.buyEvent.getCoin());
 //            System.out.println(profitSpread);
 //        }
@@ -266,22 +274,8 @@ public class ArbitrageServiceImpl implements ArbitrageService {
                 .getFirst()
                 .getPrice()
                 .compareTo(buyEvent.getAsks().getFirst().getPrice()) > 0;
-        boolean isSameCoin = isSameCoin(buyEvent, sellEvent);
 
-        return !emptyAsks && !emptyBids && isTradePrice && validChains && isSameCoin;
-    }
-
-    private static boolean isSameCoin(UserBuyTradeEventDTO buyEvent, UserSellTradeEventDTO sellEvent) {
-        boolean isSameCoin;
-        BigDecimal sellPrice = sellEvent.getBids().getFirst().getPrice();
-        BigDecimal buyPrice = buyEvent.getAsks().getFirst().getPrice();
-        if (buyPrice.compareTo(BigDecimal.ZERO) == 0) {
-            isSameCoin = false;
-        } else {
-//            BigDecimal percentageChange = sellPrice.subtract(buyPrice).divide(buyPrice, 2, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100));
-//            isSameCoin = percentageChange.compareTo(BigDecimal.valueOf(50)) <= 0;
-        }
-        return true;
+        return !emptyAsks && !emptyBids && isTradePrice && validChains;
     }
 
     private AsksAndBids createPossibleOpportunity(UserBuyTradeEventDTO buyEvent, UserSellTradeEventDTO sellEvent) {

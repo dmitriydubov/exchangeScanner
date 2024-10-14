@@ -17,7 +17,7 @@ public interface ApiExchange {
 
     Set<Volume24HResponseDTO> getCoinVolume24h(Set<Coin> coins, String exchangeName);
 
-    void getOrderBook(Set<Coin> coins, String exchangeName, BlockingDeque<Runnable> taskQueue, ReentrantLock lock);
+    void getOrderBook(Set<Coin> coins, String exchangeName);
 
     Set<ChainResponseDTO> getCoinChain(Set<Coin> coins, String exchangeName);
 

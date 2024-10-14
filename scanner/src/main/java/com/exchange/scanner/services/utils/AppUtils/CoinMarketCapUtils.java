@@ -15,12 +15,9 @@ import java.util.stream.Collectors;
 public class CoinMarketCapUtils {
 
     public Set<CoinInfoDTO> getCoinMarketCapCoinInfo(CoinMarketCapService coinMarketCapService,
-                                                     Set<ArbitrageEvent> arbitrageEvents)
+                                                     Set<String> arbitrageEvents)
     {
-        Set<String> coinNames = arbitrageEvents.stream()
-            .map(ArbitrageEvent::getCoin)
-            .collect(Collectors.toSet());
 
-        return coinMarketCapService.getCoinMarketCapCoinsInfo(coinNames);
+        return coinMarketCapService.getCoinMarketCapCoinsInfo(arbitrageEvents);
     }
 }

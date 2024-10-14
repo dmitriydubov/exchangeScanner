@@ -26,7 +26,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.ChannelOption;
 import lombok.extern.slf4j.Slf4j;
-import org.jetbrains.annotations.NotNull;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -44,8 +43,6 @@ import reactor.util.retry.Retry;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.BlockingDeque;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 @Service
@@ -290,7 +287,7 @@ public class ApiKucoin implements ApiExchange {
     }
 
     @Override
-    public void getOrderBook(Set<Coin> coins, String exchange, BlockingDeque<Runnable> taskQueue, ReentrantLock lock) {
+    public void getOrderBook(Set<Coin> coins, String exchange) {
         Optional<PublicKeyForWebsocket> optionalPublicToken = Optional.ofNullable(getPublicToken().block());
         if (optionalPublicToken.isEmpty()) {
             log.debug("отсутствует публичный токен подключения");
@@ -308,7 +305,7 @@ public class ApiKucoin implements ApiExchange {
         Map<String, Coin> coinMap = coins.stream().collect(Collectors.toMap(Coin::getName, coin -> coin));
 
         HttpClient client = createClient();
-        connect(symbols, coinMap, url, taskQueue, client, lock);
+        connect(symbols, coinMap, url, client);
     }
 
     private Mono<PublicKeyForWebsocket> getPublicToken() {
@@ -343,14 +340,7 @@ public class ApiKucoin implements ApiExchange {
                 .option(ChannelOption.SO_KEEPALIVE, true);
     }
 
-    private void connect(
-        List<String> symbols,
-        Map<String, Coin> coinMap,
-        String url,
-        BlockingDeque<Runnable> taskQueue,
-        HttpClient client,
-        ReentrantLock lock
-    ) {
+    private void connect(List<String> symbols, Map<String, Coin> coinMap, String url, HttpClient client) {
         Hooks.onErrorDropped(error -> log.error(error.getLocalizedMessage()));
 
         client.websocket(WebsocketClientSpec.builder()
@@ -364,7 +354,7 @@ public class ApiKucoin implements ApiExchange {
                 inbound.receive()
                     .asString()
                     .retryWhen(Retry.fixedDelay(MAX_WEBSOCKET_CONNECTION_RETRIES, WEBSOCKET_RECONNECT_DELAY))
-                    .doOnTerminate(() -> processTerminate(symbols, coinMap, url, taskQueue, client, lock))
+                    .doOnTerminate(() -> processTerminate(symbols, coinMap, url, client))
                     .onErrorResume(this::processError)
                     .map(this::processWebsocketResponse)
                     .filter(this::isValidResponseData)
@@ -372,7 +362,7 @@ public class ApiKucoin implements ApiExchange {
                     .windowTimeout(coinMap.size(), Duration.ofSeconds(5))
                     .flatMap(Flux::collectList)
                     .subscribeOn(Schedulers.boundedElastic())
-                    .doOnNext(depthList -> processResult(coinMap, taskQueue, depthList, lock))
+                    .doOnNext(depthList -> processResult(coinMap, depthList))
                     .subscribe();
 
                 return outbound.then().thenMany(pingFlux);
@@ -417,28 +407,14 @@ public class ApiKucoin implements ApiExchange {
             });
     }
 
-    private void processTerminate(
-        List<String> symbols,
-        Map<String, Coin> coinMap,
-        String url,
-        BlockingDeque<Runnable> taskQueue,
-        HttpClient client,
-        ReentrantLock lock
-    ) {
+    private void processTerminate(List<String> symbols, Map<String, Coin> coinMap, String url, HttpClient client) {
         log.error("Потеряно соединение с Websocket. Попытка повторного подключения...");
-        reconnect(symbols, coinMap, url, taskQueue, client, lock);
+        reconnect(symbols, coinMap, url, client);
     }
 
-    private void reconnect(
-        List<String> symbols,
-        Map<String, Coin> coinMap,
-        String url,
-        BlockingDeque<Runnable> taskQueue,
-        HttpClient client,
-        ReentrantLock lock
-    ) {
+    private void reconnect(List<String> symbols, Map<String, Coin> coinMap, String url, HttpClient client) {
         Mono.delay(WEBSOCKET_RECONNECT_DELAY)
-            .subscribe(aLong -> connect(symbols, coinMap, url, taskQueue, client, lock));
+            .subscribe(aLong -> connect(symbols, coinMap, url, client));
     }
 
     private Mono<String> processError(Throwable error) {
@@ -462,16 +438,9 @@ public class ApiKucoin implements ApiExchange {
             coinDepth.get().getData().getAsks() != null && !coinDepth.get().getData().getAsks().isEmpty();
     }
 
-    private void processResult(
-            Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, List<KucoinCoinDepth> depthList, ReentrantLock lock
-    ) {
+    private void processResult(Map<String, Coin> coinMap, List<KucoinCoinDepth> depthList) {
         if (depthList != null && !depthList.isEmpty()) {
-            try {
-                lock.lock();
-                saveOrderBooks(createOrderBooks(coinMap, depthList));
-            } finally {
-                lock.unlock();
-            }
+            saveOrderBooks(createOrderBooks(coinMap, depthList));
         }
     }
 

@@ -27,7 +27,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelOption;
 import io.netty.handler.codec.http.websocketx.WebSocketFrame;
 import lombok.extern.slf4j.Slf4j;
-import org.jetbrains.annotations.NotNull;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,8 +47,6 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 
@@ -327,12 +324,12 @@ public class ApiHuobi implements ApiExchange {
     }
 
     @Override
-    public void getOrderBook(Set<Coin> coins, String exchange, BlockingDeque<Runnable> taskQueue, ReentrantLock lock) {
+    public void getOrderBook(Set<Coin> coins, String exchange) {
         List<String> symbols = coins.stream().map(coin -> coin.getName().toLowerCase() + "usdt").toList();
         Map<String, Coin> coinMap = coins.stream()
                 .collect(Collectors.toMap(coin -> coin.getName().toLowerCase(), coin -> coin));
         HttpClient client = createClient();
-        connect(symbols, coinMap, taskQueue, client, lock);
+        connect(symbols, coinMap, client);
     }
 
     private HttpClient createClient() {
@@ -341,9 +338,7 @@ public class ApiHuobi implements ApiExchange {
             .option(ChannelOption.SO_KEEPALIVE, true);
     }
 
-    private void connect(
-            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
-    ) {
+    private void connect(List<String> symbols, Map<String, Coin> coinMap, HttpClient client) {
         Hooks.onErrorDropped(error -> log.error(error.getLocalizedMessage()));
 
         client.websocket()
@@ -351,7 +346,7 @@ public class ApiHuobi implements ApiExchange {
             .handle((inbound, outbound) -> {
                 sendSubscribeMessage(symbols, outbound);
                 inbound.receiveFrames()
-                    .doOnTerminate(() -> processTerminate(symbols, coinMap, taskQueue, client, lock))
+                    .doOnTerminate(() -> processTerminate(symbols, coinMap, client))
                     .onErrorResume(this::processError)
                     .retryWhen(Retry.fixedDelay(MAX_WEBSOCKET_CONNECTION_RETRIES, WEBSOCKET_RECONNECT_DELAY))
                     .flatMap(this::decompressGZIPData)
@@ -362,7 +357,7 @@ public class ApiHuobi implements ApiExchange {
                     .windowTimeout(coinMap.size(), Duration.ofSeconds(5))
                     .flatMap(Flux::collectList)
                     .subscribeOn(Schedulers.boundedElastic())
-                    .doOnNext(depthList -> processResult(coinMap, depthList, taskQueue, lock))
+                    .doOnNext(depthList -> processResult(coinMap, depthList))
                     .subscribe();
 
                 return outbound.neverComplete();
@@ -416,18 +411,14 @@ public class ApiHuobi implements ApiExchange {
         return out.toString(StandardCharsets.UTF_8);
     }
 
-    private void processTerminate(
-            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
-    ) {
+    private void processTerminate(List<String> symbols, Map<String, Coin> coinMap, HttpClient client) {
         log.error("Потеряно соединение с Websocket. Попытка повторного подключения...");
-        reconnect(symbols, coinMap, taskQueue, client, lock);
+        reconnect(symbols, coinMap, client);
     }
 
-    private void reconnect(
-            List<String> symbols, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client, ReentrantLock lock
-    ) {
+    private void reconnect(List<String> symbols, Map<String, Coin> coinMap, HttpClient client) {
         Mono.delay(WEBSOCKET_RECONNECT_DELAY)
-            .subscribe(aLong -> connect(symbols, coinMap, taskQueue, client, lock));
+            .subscribe(aLong -> connect(symbols, coinMap, client));
     }
 
     private Mono<WebSocketFrame> processError(Throwable error) {
@@ -489,16 +480,9 @@ public class ApiHuobi implements ApiExchange {
             .or(() -> Optional.of(ordersBook));
     }
 
-    private void processResult(
-            Map<String, Coin> coinMap, List<HuobiCoinDepth> depthList, BlockingDeque<Runnable> taskQueue, ReentrantLock lock
-    ) {
+    private void processResult(Map<String, Coin> coinMap, List<HuobiCoinDepth> depthList) {
         if (depthList != null && !depthList.isEmpty()) {
-            try {
-                lock.lock();
-                saveOrderBooks(createOrderBooks(coinMap, depthList));
-            } finally {
-                lock.unlock();
-            }
+            saveOrderBooks(createOrderBooks(coinMap, depthList));
         }
     }
 

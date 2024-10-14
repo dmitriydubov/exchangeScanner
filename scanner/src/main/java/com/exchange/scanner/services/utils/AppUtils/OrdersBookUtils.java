@@ -36,17 +36,13 @@ public class OrdersBookUtils {
      * **/
 
     @Transactional
-    public void getOrderBooks(
-            ExchangeRepository exchangeRepository,
-            ApiExchangeAdapter apiExchangeAdapter,
-            BlockingDeque<Runnable> taskQueue,
-            ReentrantLock lock) {
+    public void getOrderBooks(ExchangeRepository exchangeRepository, ApiExchangeAdapter apiExchangeAdapter) {
         Set<Exchange> exchanges = new HashSet<>(exchangeRepository.findAll());
         if (exchanges.isEmpty()) return;
 
         exchanges.forEach(exchange -> {
             Set<Coin> coins = exchange.getCoins();
-            apiExchangeAdapter.getOrderBook(exchange, coins, taskQueue, lock);
+            apiExchangeAdapter.getOrderBook(exchange, coins);
         });
     }
 

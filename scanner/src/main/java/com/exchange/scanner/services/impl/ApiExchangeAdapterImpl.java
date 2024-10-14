@@ -7,13 +7,10 @@ import com.exchange.scanner.model.Coin;
 import com.exchange.scanner.model.Exchange;
 import com.exchange.scanner.services.ApiExchangeAdapter;
 import com.exchange.scanner.services.impl.api.exchanges.*;
-import jakarta.annotation.security.RunAs;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
-import java.util.concurrent.BlockingDeque;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.locks.ReentrantLock;
 
 @Service
@@ -65,24 +62,24 @@ public class ApiExchangeAdapterImpl implements ApiExchangeAdapter {
     }
 
     @Override
-    public void getOrderBook(Exchange exchange, Set<Coin> coins, BlockingDeque<Runnable> taskQueue, ReentrantLock lock) {
+    public void getOrderBook(Exchange exchange, Set<Coin> coins) {
         switch (exchange.getName()) {
-            case "Binance" -> apiBinance.getOrderBook(coins, exchange.getName(), taskQueue, lock);
-            case "Gate.io" -> apiGateIO.getOrderBook(coins, exchange.getName(), taskQueue, lock);
-            case "MEXC" -> apiMEXC.getOrderBook(coins, exchange.getName(), taskQueue, lock);
-            case "Bybit" -> apiBybit.getOrderBook(coins, exchange.getName(), taskQueue, lock);
-            case "Kucoin" ->  apiKucoin.getOrderBook(coins, exchange.getName(), taskQueue, lock);
-            case "Bitget" -> apiBitget.getOrderBook(coins, exchange.getName(), taskQueue, lock);
-            case "Huobi" -> apiHuobi.getOrderBook(coins, exchange.getName(), taskQueue, lock);
-            case "Poloniex" -> apiPoloniex.getOrderBook(coins, exchange.getName(), taskQueue, lock);
-            case "OKX" -> apiOKX.getOrderBook(coins, exchange.getName(), taskQueue, lock);
-            case "Bitmart" -> apiBitmart.getOrderBook(coins, exchange.getName(), taskQueue, lock);
-//            case "LBank" -> apiLBank.getOrderBook(coins, exchange.getName(), taskQueue, lock); //?
-            case "CoinEx" -> apiCoinEx.getOrderBook(coins, exchange.getName(), taskQueue, lock);
-//            case "CoinW" -> apiCoinW.getOrderBook(coins, exchange.getName(), taskQueue, lock); //?
-            case "XT" -> apiXT.getOrderBook(coins, exchange.getName(), taskQueue, lock);
-            case "Probit" -> apiProbit.getOrderBook(coins, exchange.getName(), taskQueue, lock);
-//            case "BingX" -> apiBingX.getOrderBook(coins, exchange.getName(), taskQueue, lock); //?
+            case "Binance" -> apiBinance.getOrderBook(coins, exchange.getName());
+            case "Gate.io" -> apiGateIO.getOrderBook(coins, exchange.getName());
+            case "MEXC" -> apiMEXC.getOrderBook(coins, exchange.getName());
+            case "Bybit" -> apiBybit.getOrderBook(coins, exchange.getName());
+            case "Kucoin" ->  apiKucoin.getOrderBook(coins, exchange.getName());
+            case "Bitget" -> apiBitget.getOrderBook(coins, exchange.getName());
+            case "Huobi" -> apiHuobi.getOrderBook(coins, exchange.getName());
+            case "Poloniex" -> apiPoloniex.getOrderBook(coins, exchange.getName());
+            case "OKX" -> apiOKX.getOrderBook(coins, exchange.getName());
+            case "Bitmart" -> apiBitmart.getOrderBook(coins, exchange.getName());
+//            case "LBank" -> apiLBank.getOrderBook(coins, exchange.getName()); //?
+            case "CoinEx" -> apiCoinEx.getOrderBook(coins, exchange.getName());
+//            case "CoinW" -> apiCoinW.getOrderBook(coins, exchange.getName()); //?
+            case "XT" -> apiXT.getOrderBook(coins, exchange.getName());
+            case "Probit" -> apiProbit.getOrderBook(coins, exchange.getName());
+//            case "BingX" -> apiBingX.getOrderBook(coins, exchange.getName()); //?
         }
     }
 

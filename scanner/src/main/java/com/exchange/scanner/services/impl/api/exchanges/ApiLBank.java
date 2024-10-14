@@ -40,8 +40,6 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 @Service
@@ -289,11 +287,11 @@ public class ApiLBank implements ApiExchange {
     }
 
     @Override
-    public void getOrderBook(Set<Coin> coins, String exchange, BlockingDeque<Runnable> taskQueue, ReentrantLock lock) {
+    public void getOrderBook(Set<Coin> coins, String exchangek) {
         List<String> symbols = coins.stream().limit(20).map(coin -> coin.getName().toLowerCase() + "_usdt").toList();
         Map<String, Coin> coinMap = coins.stream().collect(Collectors.toMap(coin -> coin.getName().toLowerCase(), coin -> coin));
         HttpClient client = createClient();
-        symbols.forEach(symbol -> createArgsAndConnectWebsocket(symbol, coinMap, taskQueue, client));
+        symbols.forEach(symbol -> createArgsAndConnectWebsocket(symbol, coinMap, client));
     }
 
     private HttpClient createClient() {
@@ -302,9 +300,7 @@ public class ApiLBank implements ApiExchange {
                 .option(ChannelOption.SO_KEEPALIVE, true);
     }
 
-    private void createArgsAndConnectWebsocket(
-            String symbol, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client
-    ) {
+    private void createArgsAndConnectWebsocket(String symbol, Map<String, Coin> coinMap, HttpClient client) {
         String payload = String.format(
             "{" +
                 "\"action\":\"subscribe\"," +
@@ -313,10 +309,10 @@ public class ApiLBank implements ApiExchange {
                 "\"pair\":\"%s\"" +
             "}", symbol);
 
-        connect(payload, coinMap, taskQueue, client);
+        connect(payload, coinMap, client);
     }
 
-    private void connect(String payload, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client) {
+    private void connect(String payload, Map<String, Coin> coinMap, HttpClient client) {
         client.websocket()
             .uri(WSS_URL)
             .handle((inbound, outbound) -> {
@@ -325,7 +321,7 @@ public class ApiLBank implements ApiExchange {
                     .retryWhen(Retry.fixedDelay(MAX_WEBSOCKET_CONNECTION_RETRIES, WEBSOCKET_RECONNECT_DELAY))
                     .doOnTerminate(() -> {
                         log.error("Потеряно соединение с Websocket. Попытка повторного подключения...");
-                        reconnect(payload, coinMap, taskQueue, client);
+                        reconnect(payload, coinMap, client);
                     })
                     .onErrorResume(error -> {
                         log.error(error.getLocalizedMessage());
@@ -345,12 +341,7 @@ public class ApiLBank implements ApiExchange {
                     .subscribeOn(Schedulers.boundedElastic())
                     .doOnNext(depthList -> {
                         if (depthList != null && !depthList.isEmpty()) {
-                            taskQueue.offer(() -> saveOrderBooks(createOrderBooks(coinMap, depthList)));
-                            try {
-                                Thread.sleep(5000);
-                            } catch (InterruptedException ex) {
-                                throw new RuntimeException();
-                            }
+                            saveOrderBooks(createOrderBooks(coinMap, depthList));
                         }
                     })
                     .subscribe();
@@ -360,9 +351,9 @@ public class ApiLBank implements ApiExchange {
             .subscribe();
     }
 
-    private void reconnect(String payload, Map<String, Coin> coinMap, BlockingDeque<Runnable> taskQueue, HttpClient client) {
+    private void reconnect(String payload, Map<String, Coin> coinMap, HttpClient client) {
         Mono.delay(WEBSOCKET_RECONNECT_DELAY)
-                .subscribe(aLong -> connect(payload, coinMap, taskQueue, client));
+                .subscribe(aLong -> connect(payload, coinMap, client));
     }
 
     private String extractPing(String response) {
